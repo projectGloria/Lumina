@@ -1,0 +1,194 @@
+/*
+ * Every colour, font and dimension in Lumina is declared here and nowhere else.
+ *
+ * The theme editor works by writing these same names onto the root element's
+ * inline style, and user snippets override them the same way. That only holds
+ * as long as no component hardcodes a value — so if you are adding CSS and
+ * reach for a hex code, add a token instead.
+ */
+
+:root {
+  /* ---------------------------------------------------------- surfaces */
+  --lum-bg: #faf9f5;              /* the app canvas: warm paper */
+  --lum-bg-sidebar: #f5f4ee;
+  --lum-bg-titlebar: #f5f4ee;
+  --lum-surface: #ffffff;          /* cards, modals, popovers */
+  --lum-surface-hover: #f0eee6;
+  --lum-surface-active: #e9e6dc;
+  --lum-overlay: rgba(20, 20, 19, 0.32);
+
+  /* ------------------------------------------------------------ lines */
+  --lum-border: #e5e3dc;
+  --lum-border-strong: #d6d3c8;
+
+  /* ------------------------------------------------------------- text */
+  --lum-text: #141413;
+  --lum-text-muted: #73726c;
+  --lum-text-faint: #a3a29b;
+  --lum-text-on-accent: #ffffff;
+
+  /* ----------------------------------------------------------- accent */
+  --lum-accent: #c96442;           /* Claude clay */
+  --lum-accent-hover: #b5533a;
+  --lum-accent-soft: #f5e6e0;      /* active nav pill, selection wash */
+  --lum-accent-ring: rgba(201, 100, 66, 0.35);
+  --lum-selection: rgba(201, 100, 66, 0.16);
+
+  /* --------------------------------------------------------- semantic */
+  --lum-success: #4a7c59;
+  --lum-warning: #a97b21;
+  --lum-danger: #b34a3f;
+  --lum-info: #4a6fa5;
+
+  /* --------------------------------------------------------- markdown */
+  --lum-link: var(--lum-accent);
+  --lum-link-unresolved: #b9a99f;
+  --lum-tag-bg: #efece2;
+  --lum-tag-text: #6d6a5f;
+  --lum-code-bg: #f2f0e8;
+  --lum-code-text: #8a4a33;
+  --lum-quote-border: #ddd9cc;
+  --lum-hr: #e5e3dc;
+  --lum-mark-bg: #f8e7b8;
+
+  /* ------------------------------------------------------------ graph */
+  --lum-graph-node: #c9a793;
+  --lum-graph-node-active: var(--lum-accent);
+  --lum-graph-node-unresolved: #d9d5c8;
+  --lum-graph-edge: rgba(20, 20, 19, 0.13);
+  --lum-graph-edge-active: rgba(201, 100, 66, 0.55);
+  --lum-graph-label: var(--lum-text-muted);
+
+  /* ------------------------------------------------------------ fonts */
+  --lum-font-ui: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+    Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --lum-font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif,
+    "Times New Roman", serif;
+  --lum-font-mono: "Cascadia Code", ui-monospace, "SF Mono", "JetBrains Mono", Consolas,
+    "Liberation Mono", monospace;
+  --lum-font-editor: var(--lum-font-ui);
+  --lum-font-heading: var(--lum-font-serif);
+
+  /* ------------------------------------------------------- typography */
+  --lum-font-size: 16px;
+  --lum-font-size-ui: 13.5px;
+  --lum-font-size-small: 12px;
+  --lum-line-height: 1.7;
+  --lum-editor-width: 46rem;
+  /* The measure the editor centres text to. Settings swaps this for `100%`
+     when readable line length is off. */
+  --lum-content-width: 46rem;
+
+  /* ---------------------------------------------------------- spacing */
+  --lum-space-1: 4px;
+  --lum-space-2: 8px;
+  --lum-space-3: 12px;
+  --lum-space-4: 16px;
+  --lum-space-5: 24px;
+  --lum-space-6: 32px;
+
+  /* ------------------------------------------------------------ shape */
+  --lum-radius: 10px;
+  --lum-radius-sm: 6px;
+  --lum-radius-lg: 16px;
+
+  /* ---------------------------------------------------------- surface
+   * Claude leans on flat surfaces and 1px warm borders rather than shadow.
+   * The two shadows here are only for things that genuinely float. */
+  --lum-shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05);
+  --lum-shadow-lg: 0 12px 32px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+
+  /* ---------------------------------------------------------- chrome */
+  --lum-titlebar-height: 38px;
+  --lum-statusbar-height: 26px;
+  --lum-sidebar-icon: 20px;
+
+  /* --------------------------------------------------------- motion */
+  --lum-transition: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme='dark'] {
+  --lum-bg: #262624;
+  --lum-bg-sidebar: #1f1e1d;
+  --lum-bg-titlebar: #1f1e1d;
+  --lum-surface: #30302e;
+  --lum-surface-hover: #3a3a37;
+  --lum-surface-active: #454541;
+  --lum-overlay: rgba(0, 0, 0, 0.5);
+
+  --lum-border: #3d3d3a;
+  --lum-border-strong: #52514c;
+
+  --lum-text: #f5f4ef;
+  --lum-text-muted: #b7b5ac;
+  --lum-text-faint: #82817b;
+  --lum-text-on-accent: #ffffff;
+
+  --lum-accent: #d97757;
+  --lum-accent-hover: #e08a6d;
+  --lum-accent-soft: #3c2e28;
+  --lum-accent-ring: rgba(217, 119, 87, 0.4);
+  --lum-selection: rgba(217, 119, 87, 0.22);
+
+  --lum-success: #7aa87f;
+  --lum-warning: #d0a755;
+  --lum-danger: #e08074;
+  --lum-info: #7fa3d9;
+
+  --lum-link-unresolved: #6f6a63;
+  --lum-tag-bg: #3a3a36;
+  --lum-tag-text: #c2bfb4;
+  --lum-code-bg: #35342f;
+  --lum-code-text: #e0a284;
+  --lum-quote-border: #4a4945;
+  --lum-hr: #3d3d3a;
+  --lum-mark-bg: #5c4c22;
+
+  --lum-graph-node: #7a6a60;
+  --lum-graph-node-unresolved: #46443f;
+  --lum-graph-edge: rgba(245, 244, 239, 0.12);
+  --lum-graph-edge-active: rgba(217, 119, 87, 0.6);
+
+  --lum-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --lum-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* A deliberately plain, maximum-contrast alternative to the warm default. */
+[data-preset='contrast'] {
+  --lum-bg: #ffffff;
+  --lum-bg-sidebar: #f4f4f4;
+  --lum-bg-titlebar: #f4f4f4;
+  --lum-surface: #ffffff;
+  --lum-surface-hover: #ededed;
+  --lum-border: #c8c8c8;
+  --lum-border-strong: #9a9a9a;
+  --lum-text: #000000;
+  --lum-text-muted: #4a4a4a;
+  --lum-text-faint: #6e6e6e;
+  --lum-accent: #0b5cad;
+  --lum-accent-hover: #094a8c;
+  --lum-accent-soft: #dceaf8;
+  --lum-font-heading: var(--lum-font-ui);
+}
+
+[data-theme='dark'][data-preset='contrast'] {
+  --lum-bg: #000000;
+  --lum-bg-sidebar: #0d0d0d;
+  --lum-bg-titlebar: #0d0d0d;
+  --lum-surface: #171717;
+  --lum-surface-hover: #242424;
+  --lum-border: #3a3a3a;
+  --lum-border-strong: #5c5c5c;
+  --lum-text: #ffffff;
+  --lum-text-muted: #c4c4c4;
+  --lum-text-faint: #8f8f8f;
+  --lum-accent: #6cb0f5;
+  --lum-accent-hover: #8dc3f8;
+  --lum-accent-soft: #10263a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --lum-transition: 0ms;
+  }
+}

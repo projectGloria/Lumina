@@ -1,0 +1,36 @@
+appId: com.nihil.lumina
+productName: Lumina
+copyright: Copyright © 2026 Nihil
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - out/**/*
+  - package.json
+
+# Nothing is fetched at runtime, so the app works offline and inside a sandbox.
+asar: true
+compression: normal
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lumina
+  # Vaults live wherever the user put them, so nothing of theirs is touched.
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}

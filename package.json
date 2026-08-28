@@ -1,0 +1,50 @@
+{
+  "name": "lumina",
+  "version": "0.1.0",
+  "description": "A local-first, Claude-styled note app",
+  "author": "Nihil",
+  "license": "MIT",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "start": "electron-vite preview",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:win": "electron-vite build && electron-builder --win",
+    "build:dir": "electron-vite build && electron-builder --dir"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.19.0",
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/language-data": "^6.5.1",
+    "@codemirror/search": "^6.5.11",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.9",
+    "@lezer/highlight": "^1.2.1",
+    "@lezer/markdown": "^1.4.3",
+    "chokidar": "^4.0.3",
+    "d3-force": "^3.0.0",
+    "marked": "^15.0.7",
+    "minisearch": "^7.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.0.5"
+  }
+}

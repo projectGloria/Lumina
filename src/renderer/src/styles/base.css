@@ -1,0 +1,454 @@
+/* App chrome: reset, layout frame, and the handful of shared controls. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--lum-bg);
+  color: var(--lum-text);
+  font-family: var(--lum-font-ui);
+  font-size: var(--lum-font-size-ui);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--lum-selection);
+}
+
+:focus-visible {
+  outline: 2px solid var(--lum-accent-ring);
+  outline-offset: 1px;
+  border-radius: var(--lum-radius-sm);
+}
+
+/* Thin, warm scrollbars that stay out of the way until hovered. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lum-border-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+:hover::-webkit-scrollbar-thumb {
+  background: var(--lum-border-strong);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--lum-text-faint);
+  background-clip: content-box;
+}
+
+/* ------------------------------------------------------------- layout */
+
+.app {
+  display: grid;
+  grid-template-rows: var(--lum-titlebar-height) 1fr var(--lum-statusbar-height);
+  height: 100%;
+  background: var(--lum-bg);
+}
+
+.app.focus-mode {
+  grid-template-rows: var(--lum-titlebar-height) 1fr 0;
+}
+
+.app-body {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pane-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--lum-bg);
+}
+
+/* ------------------------------------------------------------ titlebar */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  padding: 0 var(--lum-space-2);
+  background: var(--lum-bg-titlebar);
+  border-bottom: 1px solid var(--lum-border);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.titlebar button,
+.titlebar input,
+.titlebar .no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar-spacer {
+  /* Leaves room for the native window controls drawn by the OS overlay. */
+  width: 138px;
+  flex: none;
+}
+
+/* ------------------------------------------------------------ statusbar */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-4);
+  padding: 0 var(--lum-space-4);
+  background: var(--lum-bg-sidebar);
+  border-top: 1px solid var(--lum-border);
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.statusbar-spacer {
+  flex: 1 1 auto;
+}
+
+.statusbar button {
+  color: inherit;
+}
+
+/* ------------------------------------------------------------ controls */
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lum-space-2);
+  height: 32px;
+  padding: 0 var(--lum-space-3);
+  border-radius: var(--lum-radius-sm);
+  border: 1px solid var(--lum-border);
+  background: var(--lum-surface);
+  color: var(--lum-text);
+  font-size: var(--lum-font-size-ui);
+  font-weight: 500;
+  transition: background var(--lum-transition), border-color var(--lum-transition);
+}
+.btn:hover {
+  background: var(--lum-surface-hover);
+  border-color: var(--lum-border-strong);
+}
+.btn:active {
+  background: var(--lum-surface-active);
+}
+.btn-primary {
+  background: var(--lum-accent);
+  border-color: var(--lum-accent);
+  color: var(--lum-text-on-accent);
+}
+.btn-primary:hover {
+  background: var(--lum-accent-hover);
+  border-color: var(--lum-accent-hover);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+.btn-ghost:hover {
+  background: var(--lum-surface-hover);
+  border-color: transparent;
+}
+.btn-danger {
+  color: var(--lum-danger);
+}
+
+/* Square icon button, used all over the chrome. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--lum-radius-sm);
+  color: var(--lum-text-muted);
+  transition: background var(--lum-transition), color var(--lum-transition);
+}
+.icon-btn:hover {
+  background: var(--lum-surface-hover);
+  color: var(--lum-text);
+}
+.icon-btn.is-active {
+  background: var(--lum-accent-soft);
+  color: var(--lum-accent);
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+input[type='text'],
+input[type='search'],
+input[type='number'],
+select,
+textarea {
+  font: inherit;
+  color: var(--lum-text);
+  background: var(--lum-surface);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  padding: 6px 10px;
+  transition: border-color var(--lum-transition), box-shadow var(--lum-transition);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--lum-accent);
+  box-shadow: 0 0 0 3px var(--lum-accent-ring);
+}
+input::placeholder {
+  color: var(--lum-text-faint);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lum-space-4);
+  padding: var(--lum-space-3) 0;
+  border-bottom: 1px solid var(--lum-border);
+}
+.field-row:last-child {
+  border-bottom: none;
+}
+.field-label {
+  font-weight: 500;
+}
+.field-hint {
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+  margin-top: 2px;
+  max-width: 46ch;
+  line-height: 1.45;
+}
+.field-control {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+}
+
+/* Switch ---------------------------------------------------------------- */
+
+.switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--lum-border-strong);
+  transition: background var(--lum-transition);
+  cursor: pointer;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--lum-transition);
+  box-shadow: var(--lum-shadow-sm);
+}
+.switch.on {
+  background: var(--lum-accent);
+}
+.switch.on::after {
+  transform: translateX(16px);
+}
+
+/* Range ----------------------------------------------------------------- */
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 150px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--lum-border-strong);
+  outline: none;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--lum-accent);
+  border: 2px solid var(--lum-surface);
+  box-shadow: var(--lum-shadow-sm);
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------- modals */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--lum-overlay);
+  display: flex;
+  justify-content: center;
+  animation: lum-fade var(--lum-transition) ease-out;
+}
+
+.overlay.top {
+  align-items: flex-start;
+  padding-top: 14vh;
+}
+.overlay.center {
+  align-items: center;
+}
+
+@keyframes lum-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes lum-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.modal {
+  background: var(--lum-surface);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-lg);
+  box-shadow: var(--lum-shadow-lg);
+  overflow: hidden;
+  animation: lum-rise 140ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ---------------------------------------------------------------- misc */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lum-space-3);
+  height: 100%;
+  padding: var(--lum-space-6);
+  text-align: center;
+  color: var(--lum-text-faint);
+}
+.empty-state h2 {
+  margin: 0;
+  font-family: var(--lum-font-heading);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--lum-text-muted);
+}
+.empty-state p {
+  margin: 0;
+  max-width: 44ch;
+  line-height: 1.6;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--lum-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--lum-surface);
+  color: var(--lum-text-muted);
+  font-family: var(--lum-font-ui);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Toasts ---------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  right: var(--lum-space-4);
+  bottom: calc(var(--lum-statusbar-height) + var(--lum-space-4));
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  max-width: 380px;
+  padding: 10px 14px;
+  border-radius: var(--lum-radius);
+  border: 1px solid var(--lum-border);
+  background: var(--lum-surface);
+  box-shadow: var(--lum-shadow-lg);
+  animation: lum-rise 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.toast.error {
+  border-color: var(--lum-danger);
+  color: var(--lum-danger);
+}

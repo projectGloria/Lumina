@@ -1,0 +1,434 @@
+/*
+ * Editor typography.
+ *
+ * These rules dress the CodeMirror document so that, with the markdown markers
+ * hidden, the source reads as a finished page. Everything is driven by the
+ * tokens, so the theme editor moves it all.
+ */
+
+.editor-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-editor {
+  height: 100%;
+  background: var(--lum-bg);
+  color: var(--lum-text);
+  font-family: var(--lum-font-editor);
+  font-size: var(--lum-font-size);
+  line-height: var(--lum-line-height);
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-scroller {
+  font-family: inherit;
+  line-height: inherit;
+  padding: var(--lum-space-6) 0 45vh; /* room to keep the last line off the floor */
+  overflow-y: auto;
+}
+
+/*
+ * Centre the text with padding rather than by capping the width.
+ *
+ * `.cm-content` is a flex item that CodeMirror gives `flex-grow: 2` and an
+ * explicit `margin: 0`; capping it with `max-width` and centring with auto
+ * margins did not take, and the text stayed pinned to the left of any pane
+ * wider than the measure. Keeping the content box full width and pushing the
+ * text inward with symmetric padding is not subject to that, and it has the
+ * better side effect: the line-number gutter sits beside the content edge
+ * instead of stranded at the far left of a wide pane.
+ *
+ * The selector carries two classes so it outranks the base theme regardless of
+ * how the stylesheets end up ordered.
+ */
+.cm-editor .cm-content {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  caret-color: var(--lum-accent);
+}
+
+.cm-line {
+  padding: 0;
+}
+
+.cm-cursor,
+.cm-dropCursor {
+  border-left: 2px solid var(--lum-accent);
+}
+
+.cm-selectionBackground,
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground,
+.cm-content ::selection {
+  background: var(--lum-selection) !important;
+}
+
+.cm-activeLine {
+  background: transparent;
+}
+
+.cm-gutters {
+  background: transparent;
+  border: none;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  padding-right: var(--lum-space-3);
+}
+
+.cm-lineNumbers .cm-gutterElement {
+  min-width: 2.5ch;
+}
+
+.cm-matchingBracket,
+.cm-nonmatchingBracket {
+  background: var(--lum-accent-soft);
+  outline: none;
+}
+
+/* ---------------------------------------------------------- structure */
+
+.cm-heading {
+  font-family: var(--lum-font-heading);
+  font-weight: 600;
+  color: var(--lum-text);
+  line-height: 1.3;
+}
+.cm-h1 { font-size: 1.85em; letter-spacing: -0.015em; }
+.cm-h2 { font-size: 1.45em; letter-spacing: -0.01em; }
+.cm-h3 { font-size: 1.22em; }
+.cm-h4 { font-size: 1.08em; }
+.cm-h5 { font-size: 1em; color: var(--lum-text-muted); }
+.cm-h6 { font-size: 0.94em; color: var(--lum-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.no-serif-headings .cm-heading {
+  font-family: var(--lum-font-editor);
+  font-weight: 650;
+}
+
+.cm-strong { font-weight: 680; color: var(--lum-text); }
+.cm-em { font-style: italic; }
+.cm-strike { text-decoration: line-through; color: var(--lum-text-muted); }
+.cm-highlight { background: var(--lum-mark-bg); border-radius: 3px; padding: 0 2px; }
+
+.cm-inline-code {
+  font-family: var(--lum-font-mono);
+  font-size: 0.88em;
+  background: var(--lum-code-bg);
+  color: var(--lum-code-text);
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+}
+
+.cm-code-block {
+  font-family: var(--lum-font-mono);
+  font-size: 0.88em;
+  background: var(--lum-code-bg);
+  display: inline-block;
+  width: 100%;
+  padding: 0 var(--lum-space-3);
+}
+.cm-code-block-first {
+  border-radius: var(--lum-radius-sm) var(--lum-radius-sm) 0 0;
+  padding-top: var(--lum-space-2);
+}
+.cm-code-block-last {
+  border-radius: 0 0 var(--lum-radius-sm) var(--lum-radius-sm);
+  padding-bottom: var(--lum-space-2);
+}
+
+.cm-quote {
+  border-left: 3px solid var(--lum-quote-border);
+  padding-left: var(--lum-space-4);
+  color: var(--lum-text-muted);
+  font-style: italic;
+  display: inline-block;
+  width: 100%;
+}
+
+.cm-hr-line {
+  position: relative;
+  color: transparent;
+}
+.cm-hr-line::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--lum-hr);
+}
+
+.cm-list-line { padding-left: 0; }
+.cm-list-bullet { color: var(--lum-accent); }
+
+/* ------------------------------------------------------------- links */
+
+.cm-wikilink,
+.cm-mdlink {
+  color: var(--lum-link);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.cm-wikilink:hover,
+.cm-mdlink:hover {
+  border-bottom-color: var(--lum-link);
+}
+.cm-wikilink.unresolved {
+  color: var(--lum-link-unresolved);
+  border-bottom: 1px dashed var(--lum-link-unresolved);
+}
+
+.cm-tag {
+  color: var(--lum-tag-text);
+  background: var(--lum-tag-bg);
+  border-radius: 999px;
+  padding: 0.08em 0.55em;
+  font-size: 0.86em;
+  cursor: pointer;
+}
+.cm-tag:hover {
+  color: var(--lum-accent);
+}
+
+/* Markdown syntax markers: dimmed when shown, replaced when not. */
+.cm-md-mark {
+  color: var(--lum-text-faint);
+  font-weight: 400;
+  font-family: var(--lum-font-mono);
+  font-size: 0.85em;
+}
+
+/* ------------------------------------------------------------- tasks */
+
+.cm-task-checkbox {
+  appearance: none;
+  width: 1em;
+  height: 1em;
+  margin: 0 0.45em 0 0;
+  vertical-align: -0.12em;
+  border: 1.5px solid var(--lum-border-strong);
+  border-radius: 4px;
+  background: var(--lum-surface);
+  cursor: pointer;
+  transition: background var(--lum-transition), border-color var(--lum-transition);
+}
+.cm-task-checkbox:hover {
+  border-color: var(--lum-accent);
+}
+.cm-task-checkbox:checked {
+  background: var(--lum-accent);
+  border-color: var(--lum-accent);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'><path d='M3 8.5l3.2 3.2L13 5'/></svg>");
+  background-size: 76%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.cm-task-done {
+  color: var(--lum-text-faint);
+  text-decoration: line-through;
+}
+
+/* ---------------------------------------------------------- callouts */
+
+.cm-callout {
+  display: inline-block;
+  width: 100%;
+  background: var(--lum-surface-hover);
+  border-left: 3px solid var(--lum-accent);
+  padding: 0 var(--lum-space-4);
+  color: var(--lum-text);
+  font-style: normal;
+}
+.cm-callout-first { border-radius: var(--lum-radius-sm) var(--lum-radius-sm) 0 0; padding-top: 6px; }
+.cm-callout-last { border-radius: 0 0 var(--lum-radius-sm) var(--lum-radius-sm); padding-bottom: 6px; }
+.cm-callout-title { font-weight: 640; color: var(--lum-accent); }
+.cm-callout.type-warning { border-left-color: var(--lum-warning); }
+.cm-callout.type-warning .cm-callout-title { color: var(--lum-warning); }
+.cm-callout.type-danger { border-left-color: var(--lum-danger); }
+.cm-callout.type-danger .cm-callout-title { color: var(--lum-danger); }
+.cm-callout.type-success { border-left-color: var(--lum-success); }
+.cm-callout.type-success .cm-callout-title { color: var(--lum-success); }
+.cm-callout.type-info { border-left-color: var(--lum-info); }
+.cm-callout.type-info .cm-callout-title { color: var(--lum-info); }
+
+/* ------------------------------------------------------------ tables */
+
+.cm-table-line {
+  font-family: var(--lum-font-mono);
+  font-size: 0.86em;
+  color: var(--lum-text-muted);
+}
+
+/* ------------------------------------------------------------ images */
+
+.cm-embed-image {
+  display: block;
+  max-width: 100%;
+  margin: var(--lum-space-3) 0;
+  border-radius: var(--lum-radius-sm);
+  border: 1px solid var(--lum-border);
+}
+
+/* ------------------------------------------------- autocomplete popup */
+
+.cm-tooltip.cm-tooltip-autocomplete {
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius);
+  background: var(--lum-surface);
+  box-shadow: var(--lum-shadow-lg);
+  overflow: hidden;
+  padding: 4px;
+  font-family: var(--lum-font-ui);
+  font-size: var(--lum-font-size-ui);
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  max-height: 260px;
+  font-family: inherit;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  padding: 6px 10px;
+  border-radius: var(--lum-radius-sm);
+  color: var(--lum-text);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: var(--lum-accent-soft);
+  color: var(--lum-accent);
+}
+.cm-completionDetail {
+  margin-left: auto;
+  color: var(--lum-text-faint);
+  font-style: normal;
+  font-size: var(--lum-font-size-small);
+}
+.cm-completionIcon {
+  display: none;
+}
+
+/* ------------------------------------------------------- search panel */
+
+.cm-panels {
+  background: var(--lum-bg-sidebar);
+  border-color: var(--lum-border);
+  color: var(--lum-text);
+}
+.cm-searchMatch {
+  background: var(--lum-mark-bg);
+}
+.cm-searchMatch-selected {
+  background: var(--lum-accent-soft);
+  outline: 1px solid var(--lum-accent);
+}
+
+/* ------------------------------------------------------ properties strip */
+
+/*
+ * Frontmatter, shown as metadata rather than prose. Clicking anywhere on it
+ * puts the caret back in the raw block, so nothing here is a dead end.
+ */
+.cm-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 var(--lum-space-5);
+  padding: var(--lum-space-3) 0 var(--lum-space-4);
+  border-bottom: 1px solid var(--lum-border);
+  font-family: var(--lum-font-ui);
+  font-size: var(--lum-font-size-ui);
+  line-height: 1.5;
+  cursor: text;
+}
+
+.cm-properties.is-empty {
+  padding: 0;
+  margin-bottom: var(--lum-space-4);
+}
+
+.cm-property {
+  display: flex;
+  align-items: baseline;
+  gap: var(--lum-space-3);
+}
+
+.cm-property-key {
+  flex: none;
+  min-width: 6.5rem;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  letter-spacing: 0.02em;
+}
+
+.cm-property-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--lum-text-muted);
+}
+
+.cm-property-tag {
+  background: var(--lum-tag-bg);
+  color: var(--lum-tag-text);
+  border-radius: 999px;
+  padding: 0.08em 0.6em;
+  font-size: 0.9em;
+}
+
+.cm-property-alias {
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  padding: 0.05em 0.5em;
+  font-size: 0.9em;
+}
+
+/* --------------------------------------------------------------- tables */
+
+.cm-table-wrap {
+  margin: var(--lum-space-3) 0 var(--lum-space-4);
+  overflow-x: auto;
+  cursor: text;
+}
+
+.cm-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.94em;
+  line-height: 1.5;
+}
+
+.cm-table th,
+.cm-table td {
+  border: 1px solid var(--lum-border);
+  padding: 0.42em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.cm-table th {
+  background: var(--lum-surface-hover);
+  font-weight: 620;
+  color: var(--lum-text);
+}
+
+.cm-table td {
+  color: var(--lum-text-muted);
+}
+
+.cm-table tr:hover td {
+  background: var(--lum-surface-hover);
+}
