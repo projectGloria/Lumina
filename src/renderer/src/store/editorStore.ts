@@ -21,6 +21,7 @@ interface EditorState {
   setContent: (path: string, content: string) => void
   save: (path: string) => Promise<void>
   saveAll: () => Promise<void>
+  reset: () => void
   close: (path: string) => void
   rename: (from: string, to: string) => void
   externalChange: (path: string) => Promise<void>
@@ -110,6 +111,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       .filter(([, b]) => b.content !== b.saved)
       .map(([p]) => p)
     await Promise.all(dirty.map((p) => get().save(p)))
+  },
+
+  /**
+   * Forget every buffer, for a switch to a different vault.
+   *
+   * Buffers are keyed by vault-relative path, so `Notes/Todo.md` in the vault
+   * being left collides with `Notes/Todo.md` in the one being opened. Left in
+   * place, `open` would short-circuit on the stale buffer and autosave would
+   * then write the old vault's text into the new vault's file.
+   */
+  reset: () => {
+    for (const timer of timers.values()) clearTimeout(timer)
+    timers.clear()
+    set({ buffers: {}, saving: [] })
   },
 
   close: (path) => {

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { CH } from '@shared/channels'
-import type { Settings, ThemeFile, VaultChange, WorkspaceState } from '@shared/types'
+import type { FileOpenRequest, Settings, ThemeFile, VaultChange, WorkspaceState } from '@shared/types'
 import {
   buildIndex,
   forgetNote,
@@ -10,6 +10,8 @@ import {
   indexNote,
   scheduleCacheSave
 } from './indexer'
+import { resolveFile, toRequest } from './openFile'
+import { samePath } from './paths'
 import { search, searchTitles } from './search'
 import {
   ensureLuminaDir,
@@ -50,6 +52,53 @@ function send(channel: string, payload?: unknown): void {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
 }
 
+/**
+ * Notes the OS asked for before the renderer was listening.
+ *
+ * A cold start driven by a double-click opens the vault while the page is
+ * still loading, so the request would land before React subscribed. The
+ * renderer drains this on mount, the same way it asks for the current vault.
+ */
+let rendererListening = false
+const pendingRequests: FileOpenRequest[] = []
+
+function pushFileRequest(request: FileOpenRequest): void {
+  // No live window means no listener, however ready the last one was — macOS
+  // keeps the app running with every window closed.
+  if (rendererListening && win && !win.isDestroyed()) send(CH.fileOpened, request)
+  else pendingRequests.push(request)
+}
+
+/**
+ * Give the renderer a chance to write out anything still dirty, and wait for it.
+ *
+ * Autosave is debounced, so at any moment up to a few hundred milliseconds of
+ * typing exists only in the renderer. Quitting without waiting would throw that
+ * away — the one bug a note app cannot afford. The timeout means a wedged
+ * renderer delays the quit rather than preventing it.
+ */
+export function flushRenderer(timeoutMs = 3000): Promise<void> {
+  if (!win || win.isDestroyed()) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer)
+      ipcMain.removeListener(CH.appFlushed, done)
+      resolve()
+    }
+    const timer = setTimeout(done, timeoutMs)
+    ipcMain.once(CH.appFlushed, done)
+    send(CH.appFlush)
+  })
+}
+
+/** Bring the window forward, for a note opened from outside the app. */
+function focusWindow(): void {
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
 /* ------------------------------------------------------------ open a vault */
 
 /** Everything the renderer needs to draw a freshly opened vault in one payload. */
@@ -73,6 +122,10 @@ async function vaultPayload(vault: string) {
 }
 
 export async function openVault(dir: string) {
+  // Anything still dirty belongs to the vault being left, and writes resolve
+  // against the root, so it has to reach disk before the root moves.
+  if (getRoot()) await flushRenderer()
+
   await setRoot(dir)
   await ensureLuminaDir(dir)
 
@@ -94,6 +147,35 @@ export async function openVault(dir: string) {
     )
   }
   return payload
+}
+
+/* ----------------------------------------------- a note handed to us by the OS */
+
+/**
+ * Open a note the OS gave us, opening or switching vaults if that is what it
+ * takes. `adopt` skips the "is this folder a vault?" question, because the
+ * renderer only calls back with it once the user has answered.
+ *
+ * Returns true when a note was actually opened, so startup can tell whether it
+ * still needs to fall back to the last vault.
+ */
+export async function openFileFromDisk(fileAbs: string, adopt = false): Promise<boolean> {
+  const recents = (await loadAppState()).recentVaults.map((v) => v.path)
+  const resolved = await resolveFile(fileAbs, getRoot(), recents)
+  if (!resolved) return false
+
+  if (resolved.unknown && !adopt) {
+    pushFileRequest(toRequest(resolved))
+    focusWindow()
+    return false
+  }
+
+  const root = getRoot()
+  if (!root || !samePath(root, resolved.vault)) await openVault(resolved.vault)
+
+  pushFileRequest({ path: resolved.path, ask: null })
+  focusWindow()
+  return true
 }
 
 /**
@@ -170,6 +252,17 @@ export function registerIpc(): void {
   ipcMain.handle(CH.vaultRecent, async () => (await loadAppState()).recentVaults)
   ipcMain.handle(CH.vaultTree, () => readTree())
   ipcMain.handle(CH.vaultReveal, (_e, rel: string) => revealInExplorer(rel))
+
+  // The renderer sends back the absolute path it was asked about, once the
+  // user has agreed to treat the containing folder as a vault.
+  ipcMain.handle(CH.fileOpen, (_e, fileAbs: string) => openFileFromDisk(fileAbs, true))
+
+  // Called once as the renderer mounts: anything that arrived while the page
+  // was still loading is handed over here instead of being lost.
+  ipcMain.handle(CH.filePending, () => {
+    rendererListening = true
+    return pendingRequests.splice(0, pendingRequests.length)
+  })
 
   /* notes --------------------------------------------------------------- */
   ipcMain.handle(CH.noteRead, (_e, rel: string) => readNote(rel))

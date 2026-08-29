@@ -194,6 +194,32 @@ export interface VaultChange {
   path: string
 }
 
+/* -------------------------------------------------- files opened by the OS */
+
+/**
+ * A note the operating system asked Lumina to open — a double-click, an
+ * "Open with", or a path on the command line.
+ */
+export interface FileOpenRequest {
+  /** Vault-relative path of the note, valid once its vault is open. */
+  path: string
+  /**
+   * Set when no vault Lumina knows about contains the file, in which case the
+   * renderer asks before adopting the folder. Without the question, opening a
+   * stray note would silently index wherever it happened to live.
+   */
+  ask: FileAdoptRequest | null
+}
+
+export interface FileAdoptRequest {
+  /** Absolute path of the note, handed back to `files.adopt` on confirmation. */
+  file: string
+  /** Absolute path of the folder that would become the vault. */
+  folder: string
+  /** Folder name, for the dialog. */
+  name: string
+}
+
 /* ------------------------------------------------------------------ misc */
 
 export interface WriteResult {

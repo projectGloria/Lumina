@@ -26,6 +26,9 @@ a `.lumina` folder beside them, and all of it is rebuildable.
 - **Deep customization.** Every colour, font and dimension is a CSS variable
   with a live editor behind it, plus a snippets folder for your own CSS that
   hot-reloads.
+- **Opens notes from your file manager.** Double-click any `.md` file and it
+  opens in Lumina, in the vault it belongs to. A note that is not in a vault
+  yet asks before Lumina adopts its folder as one.
 - Daily notes, templates, starred notes, callouts, task checkboxes, frontmatter
   properties, focus mode, and HTML/PDF export.
 
@@ -137,7 +140,12 @@ A few decisions worth knowing if you plan to extend this:
   the moment the caret enters it, so nothing is a one-way transformation.
 - **Writes are atomic** (temp file plus rename), and deletes go to the recycle
   bin. Files we write are suppressed in the watcher for a moment so autosave
-  does not look like an external edit.
+  does not look like an external edit. Quitting waits for the debounced autosave
+  to finish, so closing the window mid-sentence does not cost you the sentence.
+- **A double-clicked note has to find its vault**, which the app works out from
+  the `.lumina` folder beside it, falling back to vaults you have opened before.
+  It asks before treating an unfamiliar folder as a vault, rather than indexing
+  wherever the file happened to be.
 - **Commands are data.** `lib/commands.ts` is a flat list the palette, the
   hotkey handler and the settings screen all read. It is the seam a plugin API
   would extend.

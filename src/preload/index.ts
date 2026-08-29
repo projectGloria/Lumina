@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CH } from '@shared/channels'
 import type {
+  FileOpenRequest,
   FolderNode,
   OpResult,
   SearchHit,
@@ -51,6 +52,12 @@ const api = {
     setOverlay: (bg: string, symbol: string): Promise<void> =>
       ipcRenderer.invoke('win:setOverlay', bg, symbol),
     onMaximizeChanged: (cb: (max: boolean) => void) => on<boolean>(CH.winMaximizeChanged, cb)
+  },
+
+  app: {
+    /** The main process is shutting down and is waiting for pending saves. */
+    onFlush: (cb: () => void) => on<void>(CH.appFlush, cb),
+    flushed: (): void => ipcRenderer.send(CH.appFlushed)
   },
 
   vault: {
@@ -113,6 +120,12 @@ const api = {
   },
 
   files: {
+    /** A note the OS asked us to open, e.g. by double-clicking it. */
+    onOpenRequest: (cb: (r: FileOpenRequest) => void) => on<FileOpenRequest>(CH.fileOpened, cb),
+    /** Requests that arrived while the page was still loading. Call once, on mount. */
+    takeOpenRequests: (): Promise<FileOpenRequest[]> => ipcRenderer.invoke(CH.filePending),
+    /** Agree to treat the folder around `fileAbs` as a vault, then open it. */
+    adoptVault: (fileAbs: string): Promise<boolean> => ipcRenderer.invoke(CH.fileOpen, fileAbs),
     saveAttachment: (folder: string, name: string, data: ArrayBuffer): Promise<OpResult<string>> =>
       ipcRenderer.invoke(CH.attachmentSave, folder, name, data),
     exportHtml: (title: string, html: string): Promise<OpResult> =>

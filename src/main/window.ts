@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { BrowserWindow, screen, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { saveAppState } from './settings'
 
@@ -14,7 +14,31 @@ export interface Bounds {
   y?: number
 }
 
-export function createWindow(bounds: Bounds | undefined, dark: boolean): BrowserWindow {
+/**
+ * Drop a saved position that no longer lands on a screen.
+ *
+ * Monitors get unplugged and resolutions change, and a window restored onto a
+ * display that is gone opens somewhere the user cannot see or reach. Keeping
+ * the size but forgetting the position puts it back on the primary display.
+ */
+function onScreen(bounds: Bounds | undefined): Bounds | undefined {
+  if (!bounds) return undefined
+  if (bounds.x === undefined || bounds.y === undefined) return bounds
+
+  const { x, y, width, height } = bounds
+  // Enough of the title bar has to be reachable to move the window by hand.
+  const visible = screen.getAllDisplays().some(({ workArea: a }) => {
+    const overlapX = Math.min(x + width, a.x + a.width) - Math.max(x, a.x)
+    const overlapY = Math.min(y + height, a.y + a.height) - Math.max(y, a.y)
+    return overlapX >= 120 && overlapY >= 40
+  })
+
+  return visible ? bounds : { width, height }
+}
+
+export function createWindow(saved: Bounds | undefined, dark: boolean): BrowserWindow {
+  const bounds = onScreen(saved)
+
   const win = new BrowserWindow({
     width: bounds?.width ?? 1280,
     height: bounds?.height ?? 820,

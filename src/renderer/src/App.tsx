@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import type { FileOpenRequest } from '@shared/types'
 import type { VaultPayload } from '../../preload'
 import CommandPalette from './components/CommandPalette'
 import ContextMenu from './components/ContextMenu'
@@ -14,6 +15,7 @@ import TitleBar from './components/TitleBar'
 import Toasts from './components/Toasts'
 import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
+import { openNote } from './lib/actions'
 import { COMMANDS, hotkeyFor } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
 import { useEditor } from './store/editorStore'
@@ -34,6 +36,12 @@ export default function App(): React.JSX.Element {
   /* ------------------------------------------------------ main process */
   useEffect(() => {
     const receive = (payload: VaultPayload): void => {
+      // A different vault means every buffer belongs to the old one. Main has
+      // already flushed them, so dropping them here loses nothing.
+      if (useVault.getState().vault?.path !== payload.vault.path) {
+        useEditor.getState().reset()
+      }
+
       useSettings.getState().hydrate(payload.settings, payload.theme, payload.snippets)
       useWorkspace.getState().hydrate(payload.workspace)
       useVault.getState().setVault(payload.vault, payload.tree, payload.index)
@@ -41,6 +49,28 @@ export default function App(): React.JSX.Element {
       // Load the note that was open last time so the app resumes where it was.
       const active = payload.workspace.tabs[payload.workspace.activeTab]
       if (active) void useEditor.getState().open(active.path)
+    }
+
+    // A note double-clicked in the file manager. The main process has already
+    // opened the right vault unless it had to guess at one, in which case it
+    // asks rather than indexing wherever the file happened to live.
+    const openRequested = ({ path, ask }: FileOpenRequest): void => {
+      if (!ask) {
+        // A note arriving from outside gets its own tab: replacing the active
+        // one would throw away whatever the user was in the middle of. An
+        // already-open note is focused instead of opened twice.
+        const open = useWorkspace.getState().tabs.some((tab) => tab.path === path)
+        openNote(path, { newTab: !open })
+        return
+      }
+      useUi.getState().showConfirm({
+        title: `Open “${ask.name}” as a vault?`,
+        body:
+          `${path} is not inside a vault Lumina knows about. Opening its folder ` +
+          `as a vault lets Lumina index the notes beside it.`,
+        confirmLabel: 'Open folder',
+        onConfirm: () => void window.lumina.files.adoptVault(ask.file)
+      })
     }
 
     const unsubscribers = [
@@ -58,14 +88,27 @@ export default function App(): React.JSX.Element {
         }
       }),
 
+      window.lumina.files.onOpenRequest(openRequested),
+
+      // The app is quitting and the main process is waiting on us. Autosave is
+      // debounced, so the last few keystrokes live only here until this runs.
+      window.lumina.app.onFlush(() => {
+        void useEditor
+          .getState()
+          .saveAll()
+          .finally(() => window.lumina.app.flushed())
+      }),
+
       window.lumina.index.onUpdated((index) => useVault.getState().setIndex(index)),
       window.lumina.snippets.onChanged((snippets) => useSettings.getState().setSnippets(snippets))
     ]
 
-    // A vault may already be open by the time React mounts.
+    // A vault may already be open by the time React mounts, and a note passed
+    // on the command line may already have been resolved against it.
     void window.lumina.vault.current().then((payload) => {
       if (payload) receive(payload)
-    })
+      return window.lumina.files.takeOpenRequests()
+    }).then((requests) => requests?.forEach(openRequested))
 
     return () => unsubscribers.forEach((off) => off())
   }, [])

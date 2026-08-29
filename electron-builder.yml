@@ -14,6 +14,26 @@ files:
 asar: true
 compression: normal
 
+# Double-clicking a note opens it in Lumina. The installer registers these so
+# the app shows up under "Open with"; Windows still lets the user decide which
+# editor owns the extension by default.
+fileAssociations:
+  - ext: md
+    name: Markdown Document
+    description: Markdown note
+    role: Editor
+    icon: resources/icon.ico
+  - ext: markdown
+    name: Markdown Document
+    description: Markdown note
+    role: Editor
+    icon: resources/icon.ico
+  - ext: mdx
+    name: Markdown Document
+    description: Markdown note
+    role: Editor
+    icon: resources/icon.ico
+
 win:
   target:
     - target: nsis

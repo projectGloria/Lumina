@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { app } from 'electron'
 import type { Settings, ThemeFile, VaultInfo, WorkspaceState } from '@shared/types'
+import { luminaDir } from './paths'
 
 /* --------------------------------------------------------------- defaults */
 
@@ -113,7 +114,7 @@ export async function rememberVault(vaultPath: string): Promise<void> {
 
 /* ----------------------------------------------------- vault-level state */
 
-export const luminaDir = (vault: string): string => path.join(vault, '.lumina')
+export { luminaDir }
 
 const settingsFile = (v: string): string => path.join(luminaDir(v), 'settings.json')
 const themeFile = (v: string): string => path.join(luminaDir(v), 'theme.json')

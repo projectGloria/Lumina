@@ -45,6 +45,15 @@ export const CH = {
   workspaceGet: 'workspace:get',
   workspaceSet: 'workspace:set',
 
+  // files handed to us by the OS (double-click, "open with")
+  fileOpen: 'file:open',
+  fileOpened: 'file:opened',
+  filePending: 'file:pending',
+
+  // shutdown
+  appFlush: 'app:flush',
+  appFlushed: 'app:flushed',
+
   // misc
   attachmentSave: 'attachment:save',
   exportPdf: 'export:pdf',
