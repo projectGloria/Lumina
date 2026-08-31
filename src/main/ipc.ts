@@ -3,7 +3,14 @@ import path from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { isMarkdownPath } from '@shared/markdown-parse'
-import type { FileOpenRequest, Settings, ThemeFile, VaultChange, WorkspaceState } from '@shared/types'
+import type {
+  FileOpenRequest,
+  SearchOptions,
+  Settings,
+  ThemeFile,
+  VaultChange,
+  WorkspaceState
+} from '@shared/types'
 import {
   buildIndex,
   cancelCacheSave,
@@ -15,6 +22,18 @@ import {
 } from './indexer'
 import { resolveFile, toRequest } from './openFile'
 import { samePath } from './paths'
+import {
+  createProfile,
+  deleteProfile,
+  getActiveProfileId,
+  listProfiles,
+  renameProfile,
+  setProfilePassword,
+  setProfileVault,
+  signOutProfile,
+  switchProfile,
+  unlockProfile
+} from './profiles'
 import { search, searchTitles } from './search'
 import {
   ensureLuminaDir,
@@ -327,9 +346,27 @@ export function registerIpc(): void {
 
   /* index + search ------------------------------------------------------ */
   ipcMain.handle(CH.indexGet, async () => await getIndex())
-  ipcMain.handle(CH.searchQuery, (_e, q: string, mode: 'full' | 'titles' = 'full') =>
-    mode === 'titles' ? searchTitles(q) : search(q)
+  ipcMain.handle(
+    CH.searchQuery,
+    (_e, q: string, mode: 'full' | 'titles' = 'full', opts?: SearchOptions) =>
+      mode === 'titles' ? searchTitles(q) : search(q, 60, opts)
   )
+
+  /* profiles -------------------------------------------------------------- */
+  ipcMain.handle(CH.profileList, async () => ({
+    profiles: await listProfiles(),
+    activeProfileId: await getActiveProfileId()
+  }))
+  ipcMain.handle(CH.profileCreate, (_e, name: string) => createProfile(name))
+  ipcMain.handle(CH.profileRename, (_e, id: string, name: string) => renameProfile(id, name))
+  ipcMain.handle(CH.profileDelete, (_e, id: string) => deleteProfile(id))
+  ipcMain.handle(CH.profileSetVault, (_e, id: string, vaultPath: string) => setProfileVault(id, vaultPath))
+  ipcMain.handle(CH.profileSetPassword, (_e, id: string, password: string | null) =>
+    setProfilePassword(id, password)
+  )
+  ipcMain.handle(CH.profileUnlock, (_e, id: string, password: string) => unlockProfile(id, password))
+  ipcMain.handle(CH.profileSwitch, (_e, id: string) => switchProfile(id))
+  ipcMain.handle(CH.profileSignOut, () => signOutProfile())
 
   /* settings, theme, snippets ------------------------------------------- */
   ipcMain.handle(CH.settingsGet, async () => {

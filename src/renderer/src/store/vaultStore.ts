@@ -19,6 +19,8 @@ interface VaultState {
   loading: boolean
 
   setVault: (vault: VaultInfo, tree: TreeNode[], index: VaultIndex) => void
+  /** Drops the current vault from view without touching anything on disk — used when switching to a profile that has none yet. */
+  clearVault: () => void
   setTree: (tree: TreeNode[]) => void
   setIndex: (index: VaultIndex) => void
   setRecent: (recent: VaultInfo[]) => void
@@ -33,6 +35,7 @@ export const useVault = create<VaultState>((set) => ({
   loading: false,
 
   setVault: (vault, tree, index) => set({ vault, tree, index, loading: false }),
+  clearVault: () => set({ vault: null, tree: [], index: emptyIndex(), loading: false }),
   setTree: (tree) => set({ tree }),
   setIndex: (index) => set({ index }),
   setRecent: (recent) => set({ recent }),

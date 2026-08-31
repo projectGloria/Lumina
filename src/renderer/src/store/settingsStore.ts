@@ -18,7 +18,8 @@ const FALLBACK_SETTINGS: Settings = {
     showLineNumbers: false,
     autosaveDelay: 400,
     livePreview: true,
-    smartLists: true
+    smartLists: true,
+    showWordCount: false
   },
   dailyNotes: { folder: 'Daily', format: 'YYYY-MM-DD', template: '' },
   attachmentFolder: 'attachments',
@@ -26,7 +27,10 @@ const FALLBACK_SETTINGS: Settings = {
   hotkeys: {},
   snippets: {},
   starred: [],
-  graphPerformanceMode: false
+  graphPerformanceMode: false,
+  iconOverrides: {},
+  pinned: [],
+  sortOrder: 'name'
 }
 
 const FALLBACK_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }

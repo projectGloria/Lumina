@@ -95,6 +95,7 @@ export async function readTree(): Promise<TreeNode[]> {
           name: entry.name,
           title: stripExtension(entry.name),
           mtime: stat.mtimeMs,
+          createdAt: stat.birthtimeMs,
           size: stat.size
         })
       }

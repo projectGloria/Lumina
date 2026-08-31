@@ -20,6 +20,7 @@ import {
   insertCodeFence,
   insertDate,
   insertDivider,
+  insertMathBlock,
   insertTable
 } from './format'
 import { matchSlashItems } from '@shared/slashItems'
@@ -82,6 +83,13 @@ const BLOCK_ITEMS: SlashItem[] = [
     detail: "Insert today's date",
     group: 'Insert',
     apply: (view, from, to) => insertDate(view, from, to)
+  },
+  {
+    id: 'insert.math',
+    label: 'Math block',
+    detail: 'Insert a $$ ... $$ math block',
+    group: 'Insert',
+    apply: (view, from, to) => insertMathBlock(view, from, to)
   }
 ]
 

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme } from 'electron'
 import { CH } from '@shared/channels'
-import { flushRenderer, openFileFromDisk, openVault, registerIpc, setMainWindow, teardown } from './ipc'
+import { flushRenderer, openFileFromDisk, registerIpc, setMainWindow, teardown } from './ipc'
 import { saveCache } from './indexer'
 import { fileArgsFrom } from './paths'
 import { handleProtocol, registerScheme } from './protocol'
@@ -111,17 +111,11 @@ if (!app.requestSingleInstanceLock()) {
     // Wait for the renderer to be listening before pushing it a vault.
     mainWindow.webContents.once('did-finish-load', () => {
       acceptingFiles = true
-      draining = draining
-        .then(drainFiles)
-        .then(async () => {
-          // Nothing was opened from a file argument, so resume where the user
-          // left off. A file that did resolve has already chosen its vault.
-          if (!getRoot() && state.lastVault) {
-            await openVault(state.lastVault).catch(() => {
-              // Folder moved or deleted; the renderer falls back to the welcome screen.
-            })
-          }
-        })
+      draining = draining.then(drainFiles)
+      // Beyond a file argument (handled above), which vault opens is now the
+      // profile picker's call — see `profiles.ts` and the renderer's
+      // `ProfilePicker`. It requests `profiles:list` and opens the active
+      // profile's vault itself once chosen (and unlocked, if passworded).
         .catch(() => {})
     })
 

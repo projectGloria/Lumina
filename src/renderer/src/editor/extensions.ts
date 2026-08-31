@@ -30,9 +30,13 @@ import {
   type KeyBinding
 } from '@codemirror/view'
 import type { EditorSettings } from '@shared/types'
+import { attachmentDropExtension } from './attachments'
 import { luminaEditorTheme } from './cmTheme'
+import { editorContextMenu } from './contextMenu'
+import { linkPasteExtension } from './linkPaste'
 import { livePreviewExtension } from './livePreview'
 import { luminaMarkdownExtensions } from './markdownExtensions'
+import { setActiveView } from './activeView'
 import { linkClickHandlers, tagCompletion, wikilinkCompletion, type ClickHandlers } from './wikilink'
 import { slashCompletion } from './slashCommands'
 import { COMMANDS, hotkeyFor, runCommand } from '../lib/commands'
@@ -154,6 +158,9 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     settingsCompartment.of(settingsExtensions(opts.path, settings)),
     formatKeymapCompartment.of(buildFormatKeymap(opts.onSave)),
     linkClickHandlers(opts.handlers),
+    editorContextMenu(),
+    attachmentDropExtension(),
+    linkPasteExtension(),
     luminaEditorTheme,
 
     keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap]),
@@ -162,6 +169,13 @@ export function createExtensions(opts: EditorOptions): Extension[] {
 
     EditorView.updateListener.of((update) => {
       if (update.docChanged) opts.onChange(update.state.doc.toString())
+    }),
+
+    // With split view, more than one editor can be mounted at once — commands
+    // dispatch to whichever one last had focus, not just whichever mounted
+    // most recently (see `activeView.ts`).
+    EditorView.domEventHandlers({
+      focus: (_event, view) => setActiveView(view)
     })
   ]
 }

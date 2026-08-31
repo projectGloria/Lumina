@@ -164,6 +164,15 @@
   font-weight: 550;
 }
 
+.tree-icon {
+  flex: none;
+  color: var(--lum-text-faint);
+}
+.tree-row.folder .tree-icon,
+.tree-row.is-active .tree-icon {
+  color: currentColor;
+}
+
 .tree-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -188,6 +197,11 @@
 .tree-star {
   flex: none;
   color: var(--lum-accent);
+}
+
+.tree-pin {
+  flex: none;
+  color: var(--lum-text-faint);
 }
 
 .tree-star-btn {
@@ -243,6 +257,29 @@
 }
 .search-box input::-webkit-search-cancel-button {
   display: none;
+}
+
+.search-filters {
+  flex: none;
+  display: flex;
+  gap: var(--lum-space-2);
+  padding: 0 var(--lum-space-4) var(--lum-space-2);
+}
+.search-filter {
+  padding: 2px var(--lum-space-2);
+  border: 1px solid var(--lum-border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--lum-text-faint);
+}
+.search-filter:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.search-filter.on {
+  border-color: var(--lum-accent);
+  color: var(--lum-accent);
+  background: var(--lum-accent-soft);
 }
 
 .search-meta {
@@ -467,6 +504,13 @@
 }
 .backlink-context.unresolved:hover {
   color: var(--lum-accent);
+}
+
+.outgoing-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  color: var(--lum-text-muted);
 }
 
 .outline-row {
@@ -1092,6 +1136,69 @@
   color: var(--lum-text-faint);
   direction: rtl;
   text-align: left;
+}
+
+/* Profiles ---------------------------------------------------------------- */
+
+.profile-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--lum-space-4);
+  text-align: left;
+}
+.profile-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-3);
+  width: 100%;
+  padding: var(--lum-space-2) var(--lum-space-3);
+  border-radius: var(--lum-radius-sm);
+  color: var(--lum-text);
+}
+.profile-list-item:hover {
+  background: var(--lum-surface-hover);
+}
+.profile-list-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.profile-create-row {
+  display: flex;
+  gap: var(--lum-space-2);
+  justify-content: center;
+}
+.profile-create-row input {
+  flex: 1 1 auto;
+  max-width: 260px;
+}
+
+.profile-error {
+  margin: var(--lum-space-3) 0 0;
+  color: var(--lum-danger);
+  font-size: var(--lum-font-size-small);
+}
+
+.profile-back {
+  margin-top: var(--lum-space-5);
+  justify-content: center;
+}
+
+.profile-indicator {
+  padding: 0;
 }
 
 /* Empty editor pane ----------------------------------------------------- */

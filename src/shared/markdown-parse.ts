@@ -410,7 +410,7 @@ export function countWords(text: string): number {
  * Parse one note into an index entry. Links come back unresolved (`to: null`);
  * the indexer resolves them once every path in the vault is known.
  */
-export function parseNote(path: string, content: string, mtime = 0): NoteIndexEntry {
+export function parseNote(path: string, content: string, mtime = 0, createdAt = 0): NoteIndexEntry {
   const fm = parseFrontmatter(content)
   const headings = extractHeadings(fm.body)
   const lines = content.split('\n')
@@ -441,6 +441,7 @@ export function parseNote(path: string, content: string, mtime = 0): NoteIndexEn
     title: fmTitle || headings.find((h) => h.level === 1)?.text || titleFromPath(path),
     aliases,
     mtime,
+    createdAt,
     wordCount: countWords(fm.body),
     headings,
     tags: extractTags(fm.body, fm.data),

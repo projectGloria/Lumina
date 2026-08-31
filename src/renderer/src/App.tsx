@@ -5,6 +5,8 @@ import CommandPalette from './components/CommandPalette'
 import ContextMenu from './components/ContextMenu'
 import { ConfirmDialog, PromptDialog } from './components/Dialogs'
 import GraphModal from './components/GraphModal'
+import PasslockScreen from './components/PasslockScreen'
+import ProfilePicker from './components/ProfilePicker'
 import QuickSwitcher from './components/QuickSwitcher'
 import Resizer from './components/Resizer'
 import RightSidebar from './components/RightSidebar'
@@ -17,10 +19,11 @@ import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
 import { getActiveView } from './editor/activeView'
 import { captureActiveSession } from './editor/session'
-import { openNote, removeStarredPaths } from './lib/actions'
+import { openNote, removeStarredPaths, removeIconOverrides, removePinnedPaths } from './lib/actions'
 import { COMMANDS, hotkeyFor } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
 import { useEditor } from './store/editorStore'
+import { useProfiles } from './store/profileStore'
 import { flushSettingsPersistence, useSettings } from './store/settingsStore'
 import { toast, useUi } from './store/uiStore'
 import { useVault } from './store/vaultStore'
@@ -28,12 +31,18 @@ import { activePath, flushWorkspacePersistence, useWorkspace } from './store/wor
 
 export default function App(): React.JSX.Element {
   const vault = useVault((s) => s.vault)
+  const profileStatus = useProfiles((s) => s.status)
   const modal = useUi((s) => s.modal)
   const leftOpen = useWorkspace((s) => s.leftOpen)
   const rightOpen = useWorkspace((s) => s.rightOpen)
   const leftWidth = useWorkspace((s) => s.leftWidth)
   const rightWidth = useWorkspace((s) => s.rightWidth)
   const focusMode = useWorkspace((s) => s.focusMode)
+
+  /* --------------------------------------------------------- profiles */
+  useEffect(() => {
+    void useProfiles.getState().init()
+  }, [])
 
   /* ------------------------------------------------------ main process */
   useEffect(() => {
@@ -57,6 +66,7 @@ export default function App(): React.JSX.Element {
       const workspace = { ...payload.workspace, tabs, activeTab }
       useWorkspace.getState().hydrate(workspace)
       useVault.getState().setVault(payload.vault, payload.tree, payload.index)
+      useProfiles.getState().noteVaultPath(payload.vault.path)
 
       // Load the note that was open last time so the app resumes where it was.
       const active = workspace.tabs[workspace.activeTab]
@@ -101,6 +111,8 @@ export default function App(): React.JSX.Element {
             useEditor.getState().close(change.path)
             useWorkspace.getState().removePathFromTabs(change.path)
             removeStarredPaths(change.path)
+            removeIconOverrides(change.path)
+            removePinnedPaths(change.path)
           }
         }
       }),
@@ -204,6 +216,30 @@ export default function App(): React.JSX.Element {
       window.removeEventListener('blur', flush)
     }
   }, [])
+
+  if (profileStatus === 'loading') {
+    return <div className="app no-vault" />
+  }
+
+  if (profileStatus === 'picker') {
+    return (
+      <div className="app no-vault">
+        <TitleBar />
+        <ProfilePicker />
+        <Toasts />
+      </div>
+    )
+  }
+
+  if (profileStatus === 'locked') {
+    return (
+      <div className="app no-vault">
+        <TitleBar />
+        <PasslockScreen />
+        <Toasts />
+      </div>
+    )
+  }
 
   if (!vault) {
     return (

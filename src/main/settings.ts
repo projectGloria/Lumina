@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { app } from 'electron'
-import type { Settings, ThemeFile, VaultInfo, WorkspaceState } from '@shared/types'
+import type { Profile, Settings, ThemeFile, VaultInfo, WorkspaceState } from '@shared/types'
 import { luminaDir } from './paths'
 
 /* --------------------------------------------------------------- defaults */
@@ -22,7 +22,8 @@ export const DEFAULT_SETTINGS: Settings = {
     showLineNumbers: false,
     autosaveDelay: 400,
     livePreview: true,
-    smartLists: true
+    smartLists: true,
+    showWordCount: false
   },
   dailyNotes: {
     folder: 'Daily',
@@ -34,7 +35,10 @@ export const DEFAULT_SETTINGS: Settings = {
   hotkeys: {},
   snippets: {},
   starred: [],
-  graphPerformanceMode: false
+  graphPerformanceMode: false,
+  iconOverrides: {},
+  pinned: [],
+  sortOrder: 'name'
 }
 
 export const DEFAULT_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }
@@ -102,7 +106,7 @@ const writeQueues = new Map<string, Promise<void>>()
 
 /* ------------------------------------------------------- app-level state */
 
-interface AppState {
+export interface AppState {
   recentVaults: VaultInfo[]
   lastVault: string | null
   windowBounds?: { width: number; height: number; x?: number; y?: number }
@@ -111,9 +115,17 @@ interface AppState {
   // `loadSettings`/`saveSettings`) even though `Settings.hotkeys` still exists
   // in memory for the renderer.
   hotkeys: Record<string, string>
+  profiles: Profile[]
+  activeProfileId: string | null
 }
 
-const APP_STATE_DEFAULT: AppState = { recentVaults: [], lastVault: null, hotkeys: {} }
+const APP_STATE_DEFAULT: AppState = {
+  recentVaults: [],
+  lastVault: null,
+  hotkeys: {},
+  profiles: [],
+  activeProfileId: null
+}
 
 const appStateFile = (): string => path.join(app.getPath('userData'), 'lumina.json')
 let appStateUpdates: Promise<void> = Promise.resolve()

@@ -7,7 +7,7 @@ import { cacheFile, readJson, writeJson } from './settings'
 import { getRoot, listNotes, requireRoot } from './vault'
 import { loadSearch, removeDoc, resetSearch, serializeSearch, upsertDoc } from './search'
 
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 
 interface CacheShape {
   version: number
@@ -109,7 +109,7 @@ export async function indexNote(rel: string): Promise<boolean> {
   if (!abs) return false
   try {
     const [content, stat] = await Promise.all([fs.readFile(abs, 'utf8'), fs.stat(abs)])
-    const entry = parseNote(rel, content, stat.mtimeMs)
+    const entry = parseNote(rel, content, stat.mtimeMs, stat.birthtimeMs)
     notes.set(rel, entry)
     upsertDoc(rel, entry.title, entry.tags, content)
     markDirty()

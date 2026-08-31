@@ -1,8 +1,24 @@
+import { dirname } from '@shared/markdown-parse'
 import { Icon } from './Icon'
 import { runCommand } from '../lib/commands'
 import { useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 import { titleOf } from '../store/vaultStore'
+
+function revealFolder(folderPath: string): void {
+  const workspace = useWorkspace.getState()
+  const segments = folderPath ? folderPath.split('/') : []
+  const ancestors: string[] = []
+  let acc = ''
+  for (const seg of segments) {
+    acc = acc ? `${acc}/${seg}` : seg
+    ancestors.push(acc)
+  }
+  const expanded = new Set(workspace.expanded)
+  for (const a of ancestors) expanded.add(a)
+  workspace.setExpanded([...expanded])
+  workspace.setLeftPanel('files')
+}
 
 /**
  * The window title bar.
@@ -55,14 +71,47 @@ export default function TitleBar(): React.JSX.Element {
         <Icon name="forward" />
       </button>
 
-      <div className="titlebar-title">
-        {vault && path ? (
-          <>
-            <span style={{ color: 'var(--lum-text-faint)' }}>{vault.name}</span>
-            <span style={{ color: 'var(--lum-text-faint)', margin: '0 6px' }}>/</span>
-          </>
+      <div className="titlebar-title breadcrumbs">
+        {vault ? (
+          <button
+            className="breadcrumb-segment"
+            onClick={() => revealFolder('')}
+            title="Show vault root"
+          >
+            {vault.name}
+          </button>
         ) : null}
-        {label}
+        {path
+          ? (() => {
+              const folder = dirname(path)
+              const segments = folder ? folder.split('/') : []
+              let acc = ''
+              return segments.map((seg) => {
+                acc = acc ? `${acc}/${seg}` : seg
+                const target = acc
+                return (
+                  <span key={target} className="breadcrumb-item">
+                    <span className="breadcrumb-sep">/</span>
+                    <button
+                      className="breadcrumb-segment"
+                      onClick={() => revealFolder(target)}
+                      title={`Show ${seg} in the sidebar`}
+                    >
+                      {seg}
+                    </button>
+                  </span>
+                )
+              })
+            })()
+          : null}
+        {vault && path ? (
+          <span className="breadcrumb-item">
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-current truncate">{label}</span>
+          </span>
+        ) : !vault ? (
+          label
+        ) : null}
       </div>
 
       <button

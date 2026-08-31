@@ -169,6 +169,40 @@ class ImageWidget extends WidgetType {
   }
 }
 
+/** A pill-styled inline replacement for `[label](https://…)` links, shown when the caret is elsewhere. */
+class LinkChipWidget extends WidgetType {
+  constructor(
+    readonly label: string,
+    readonly url: string
+  ) {
+    super()
+  }
+  eq(other: LinkChipWidget): boolean {
+    return other.label === this.label && other.url === this.url
+  }
+  toDOM(): HTMLElement {
+    const el = document.createElement('a')
+    el.className = 'cm-link-chip'
+    el.href = this.url
+    el.draggable = false
+    let host = this.url
+    try {
+      host = new URL(this.url).hostname.replace(/^www\./, '')
+    } catch {
+      // Not a valid absolute URL — fall back to showing it verbatim.
+    }
+    const icon = document.createElement('span')
+    icon.className = 'cm-link-chip-icon'
+    icon.setAttribute('aria-hidden', 'true')
+    el.appendChild(icon)
+    const text = document.createElement('span')
+    text.className = 'cm-link-chip-label'
+    text.textContent = this.label && this.label !== this.url ? this.label : host
+    el.appendChild(text)
+    return el
+  }
+}
+
 class FrontmatterWidget extends WidgetType {
   constructor(readonly raw: string) {
     super()
@@ -630,9 +664,22 @@ function buildDecorations(view: EditorView): DecorationSet {
           return undefined
         }
         if (name === 'Link') {
-          ranges.push(Decoration.mark({ class: 'cm-mdlink' }).range(start, end))
-          if (isRaw(start)) return undefined
+          if (isRaw(start)) {
+            ranges.push(Decoration.mark({ class: 'cm-mdlink' }).range(start, end))
+            return undefined
+          }
           const text = state.sliceDoc(start, end)
+          const m = text.match(/^\[([^\]]*)\]\((\S+)\)$/)
+          if (m && /^https?:\/\//i.test(m[2])) {
+            ranges.push(
+              Decoration.replace({ widget: new LinkChipWidget(m[1], m[2]), inclusive: false }).range(
+                start,
+                end
+              )
+            )
+            return false
+          }
+          ranges.push(Decoration.mark({ class: 'cm-mdlink' }).range(start, end))
           const close = text.indexOf('](')
           if (close > 0) {
             conceal(start, start + 1) // the opening bracket

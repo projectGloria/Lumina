@@ -42,7 +42,8 @@ const PATHS: Record<string, React.JSX.Element> = {
   hash: <path d="M6 9h13M5 15h13M10.5 4l-2 16M16.5 4l-2 16" />,
   refresh: <><path d="M20 12a8 8 0 10-2.3 5.6" /><path d="M20 6v5h-5" /></>,
   download: <path d="M12 4v11M7.5 11L12 15.5 16.5 11M5 19.5h14" />,
-  vault: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="12" cy="12" r="3.5" /><path d="M12 8.5V6M12 18v-2.5" /></>
+  vault: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="12" cy="12" r="3.5" /><path d="M12 8.5V6M12 18v-2.5" /></>,
+  pin: <><path d="M14.5 3.5l6 6-3.2 1.6-3.3 5.2-1.4-1.4-4 4-1-1 4-4-1.4-1.4 5.2-3.3L14.5 3.5z" /></>
 }
 
 export type IconName = keyof typeof PATHS

@@ -7,6 +7,14 @@ import { useSettings } from '../../store/settingsStore'
 import { toast, useUi } from '../../store/uiStore'
 import { useVault } from '../../store/vaultStore'
 
+type FontFamilyPreset = 'sans' | 'serif' | 'mono' | 'custom'
+
+const FONT_FAMILY_PRESETS: Record<Exclude<FontFamilyPreset, 'custom'>, string> = {
+  sans: 'ui-sans-serif, Segoe UI, Helvetica Neue, Arial, sans-serif',
+  serif: 'Iowan Old Style, Georgia, Cambria, serif',
+  mono: 'Cascadia Code, Consolas, ui-monospace, monospace'
+}
+
 const TABS: { id: string; label: string; icon: IconName }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'palette' },
   { id: 'editor', label: 'Editor', icon: 'edit' },
@@ -138,6 +146,20 @@ function EditorSettingsTab(): React.JSX.Element {
           onChange={(v) => set({ editorWidth: v })}
         />
 
+        <SegmentedRow
+          label="Body font family"
+          hint="Quick presets for the body font stack below."
+          value={
+            Object.entries(FONT_FAMILY_PRESETS).find(([, stack]) => stack === editor.fontFamily)?.[0] ??
+            'custom'
+          }
+          options={[
+            { value: 'sans', label: 'Sans' },
+            { value: 'serif', label: 'Serif' },
+            { value: 'mono', label: 'Mono' }
+          ]}
+          onChange={(v: Exclude<FontFamilyPreset, 'custom'>) => set({ fontFamily: FONT_FAMILY_PRESETS[v] })}
+        />
         <TextRow
           label="Body font"
           hint="A CSS font stack. Leave empty for the system default."
@@ -438,6 +460,40 @@ function ToggleRow({
           aria-label={label}
           onClick={() => onChange(!value)}
         />
+      </div>
+    </div>
+  )
+}
+
+function SegmentedRow<T extends string>({
+  label,
+  hint,
+  value,
+  options,
+  onChange
+}: {
+  label: string
+  hint?: string
+  value: string
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+}): React.JSX.Element {
+  return (
+    <div className="field-row">
+      <div>
+        <div className="field-label">{label}</div>
+        {hint ? <div className="field-hint">{hint}</div> : null}
+      </div>
+      <div className="field-control segmented">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            className={`segmented-btn${value === opt.value ? ' on' : ''}`}
+            onClick={() => onChange(opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
     </div>
   )

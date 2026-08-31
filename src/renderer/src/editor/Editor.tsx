@@ -8,7 +8,7 @@ import { useUi, type RevealRequest } from '../store/uiStore'
 import { aliasMap, knownPaths, useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 import { parseFrontmatter, resolveLink } from '@shared/markdown-parse'
-import { setActiveView } from './activeView'
+import { getActiveView, setActiveView } from './activeView'
 import { buildFormatKeymap, createExtensions, formatKeymapCompartment, settingsCompartment, settingsExtensions } from './extensions'
 import { revealLine } from './format'
 import { refreshPreview } from './livePreview'
@@ -99,7 +99,9 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
       const instance = view.current
       if (!instance) return
       view.current = null
-      setActiveView(null)
+      // Only clear the shared singleton if this was the pane it pointed at —
+      // with split view open, the other pane's editor may already be active.
+      if (getActiveView() === instance) setActiveView(null)
       instance.destroy()
     }
   }, [])

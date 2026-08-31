@@ -228,6 +228,12 @@ export function insertCodeFence(view: EditorView, from: number, to: number): voi
   insertBlock(view, from, to, text, 4)
 }
 
+/** Insert a fenced math block, cursor inside the fence. */
+export function insertMathBlock(view: EditorView, from: number, to: number): void {
+  const text = '$$\n\n$$\n'
+  insertBlock(view, from, to, text, 3)
+}
+
 /** Insert a horizontal rule. */
 export function insertDivider(view: EditorView, from: number, to: number): void {
   const text = '---\n'

@@ -154,7 +154,16 @@ export const COMMANDS: Command[] = [
     enabled: hasNote,
     run: () => {
       const path = activePath()
-      if (path) void useEditor.getState().save(path)
+      if (!path) return
+      const buffer = useEditor.getState().buffers[path]
+      const wasDirty = !!buffer && !buffer.loading && buffer.content !== buffer.saved
+      void useEditor
+        .getState()
+        .save(path)
+        .then(() => {
+          const after = useEditor.getState().buffers[path]
+          if (wasDirty && after && after.content === after.saved) toast('Saved')
+        })
     }
   },
   {
@@ -295,6 +304,31 @@ export const COMMANDS: Command[] = [
     }
   },
   {
+    id: 'view.splitRight',
+    title: 'Open note in split view',
+    section: 'View',
+    enabled: hasNote,
+    run: () => {
+      const path = activePath()
+      if (path) useWorkspace.getState().openSplit(path)
+    }
+  },
+  {
+    id: 'view.closeSplit',
+    title: 'Close split view',
+    section: 'View',
+    enabled: () => useWorkspace.getState().splitPath !== null,
+    run: () => useWorkspace.getState().closeSplit()
+  },
+  {
+    id: 'view.readMode',
+    title: 'Toggle edit / view mode',
+    section: 'View',
+    hotkey: 'Ctrl+Shift+E',
+    enabled: hasNote,
+    run: () => useUi.getState().toggleReadMode()
+  },
+  {
     id: 'view.livePreview',
     title: 'Toggle live preview',
     section: 'View',
@@ -302,6 +336,15 @@ export const COMMANDS: Command[] = [
       const on = useSettings.getState().settings.editor.livePreview
       useSettings.getState().patch({ editor: { livePreview: !on } })
       toast(on ? 'Live preview off, showing raw markdown' : 'Live preview on')
+    }
+  },
+  {
+    id: 'view.wordCount',
+    title: 'Toggle word count',
+    section: 'View',
+    run: () => {
+      const on = useSettings.getState().settings.editor.showWordCount
+      useSettings.getState().patch({ editor: { showWordCount: !on } })
     }
   },
   { id: 'panel.files', title: 'Show file list', section: 'View', run: () => useWorkspace.getState().setLeftPanel('files') },

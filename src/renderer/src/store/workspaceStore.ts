@@ -8,6 +8,14 @@ interface WorkspaceStore extends WorkspaceState {
   historyIndex: number
   hydrated: boolean
 
+  /** A second note shown side-by-side with the main pane. Session-only, not persisted. */
+  splitPath: string | null
+  /** Width in px of the primary (left) pane while split. */
+  splitWidth: number
+  openSplit: (path: string) => void
+  closeSplit: () => void
+  setSplitWidth: (w: number) => void
+
   hydrate: (state: WorkspaceState) => void
   openNote: (path: string, opts?: { newTab?: boolean; replace?: boolean }) => void
   closeTab: (index: number) => void
@@ -32,7 +40,7 @@ interface WorkspaceStore extends WorkspaceState {
   toggleFocusMode: () => void
 }
 
-const INITIAL: WorkspaceState = {
+export const WORKSPACE_INITIAL: WorkspaceState = {
   tabs: [],
   activeTab: 0,
   leftOpen: true,
@@ -107,10 +115,16 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
   }
 
   return {
-    ...INITIAL,
+    ...WORKSPACE_INITIAL,
     history: [],
     historyIndex: -1,
     hydrated: false,
+
+    splitPath: null,
+    splitWidth: 600,
+    openSplit: (path) => set({ splitPath: path }),
+    closeSplit: () => set({ splitPath: null }),
+    setSplitWidth: (w) => set({ splitWidth: Math.max(280, w) }),
 
     hydrate: (state) => {
       set({ ...state, hydrated: true })
@@ -184,6 +198,8 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
       const expanded = get().expanded.map((p) => rebaseDescendantPath(p, from, to))
       update({ tabs, expanded })
       set({ history: get().history.map((h) => rebaseDescendantPath(h, from, to)) })
+      const split = get().splitPath
+      if (split) set({ splitPath: rebaseDescendantPath(split, from, to) })
     },
 
     removePathFromTabs: (path) => {
@@ -199,6 +215,7 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
       }
       const history = get().history.filter((p) => !isPathAtOrBelow(p, path))
       set({ history, historyIndex: Math.min(get().historyIndex, history.length - 1) })
+      if (get().splitPath && isPathAtOrBelow(get().splitPath as string, path)) set({ splitPath: null })
     },
 
     /**

@@ -67,6 +67,8 @@ interface UiState {
   searchQuery: string
   /** Pending scroll target, cleared by the editor once it has been applied. */
   reveal: RevealRequest | null
+  /** Rendered, non-editable view of the active note instead of the CodeMirror editor. */
+  readMode: boolean
 
   openModal: (kind: ModalKind) => void
   closeModal: () => void
@@ -83,6 +85,7 @@ interface UiState {
   setSearchQuery: (q: string) => void
   requestReveal: (target: Omit<RevealRequest, 'nonce'>) => void
   clearReveal: (nonce: number) => void
+  toggleReadMode: () => void
 }
 
 let toastId = 0
@@ -98,6 +101,7 @@ export const useUi = create<UiState>((set, get) => ({
   tagFilter: null,
   searchQuery: '',
   reveal: null,
+  readMode: false,
 
   openModal: (kind) => set({ modal: kind, contextMenu: null }),
   closeModal: () => set({ modal: null }),
@@ -122,7 +126,9 @@ export const useUi = create<UiState>((set, get) => ({
   requestReveal: (target) => set({ reveal: { ...target, nonce: ++revealId } }),
   // Only the editor that actually handled this request clears it, so a reveal
   // aimed at a note still loading is not thrown away by another one mounting.
-  clearReveal: (nonce) => set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s))
+  clearReveal: (nonce) => set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s)),
+
+  toggleReadMode: () => set((s) => ({ readMode: !s.readMode }))
 }))
 
 /** Convenience for non-component code. */

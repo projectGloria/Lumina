@@ -11,6 +11,22 @@ export interface VaultInfo {
   lastOpened: number
 }
 
+/* --------------------------------------------------------------- profiles */
+
+export interface Profile {
+  id: string
+  name: string
+  /** Absolute path on disk, or null until the user picks/creates a vault for this profile. */
+  vaultPath: string | null
+  /**
+   * `scrypt` hash and salt, `hex:hex`, or null when the profile has no passlock.
+   * This gates the app's UI only — it does not encrypt anything on disk.
+   */
+  passwordHash: string | null
+  /** Avatar background color, since there's no image upload. */
+  color: string
+}
+
 export interface FileNode {
   kind: 'file'
   /** Vault-relative path with forward slashes, e.g. `Projects/Gloria.md`. */
@@ -20,6 +36,7 @@ export interface FileNode {
   /** Display title: frontmatter `title`, else the basename without extension. */
   title: string
   mtime: number
+  createdAt: number
   size: number
 }
 
@@ -64,6 +81,8 @@ export interface NoteIndexEntry {
   /** Other names this note answers to, from frontmatter `aliases`. */
   aliases: string[]
   mtime: number
+  /** File creation time, ms since epoch. */
+  createdAt: number
   wordCount: number
   headings: Heading[]
   tags: string[]
@@ -124,6 +143,8 @@ export interface EditorSettings {
   livePreview: boolean
   /** Insert `- ` / `1. ` continuation on Enter inside a list. */
   smartLists: boolean
+  /** Show a live word/character count under the editor. */
+  showWordCount: boolean
 }
 
 export interface DailyNoteSettings {
@@ -149,6 +170,12 @@ export interface Settings {
   starred: string[]
   /** Show the graph simulation at reduced quality on large vaults. */
   graphPerformanceMode: boolean
+  /** Vault-relative path -> icon name, for files/folders the user picked a custom icon for. */
+  iconOverrides: Record<string, string>
+  /** Files and folders pinned to the top of the file explorer. */
+  pinned: string[]
+  /** How the file explorer orders siblings. */
+  sortOrder: 'name' | 'modified' | 'created'
 }
 
 /* -------------------------------------------------------------- workspace */
@@ -183,6 +210,13 @@ export interface SearchHit {
   title: string
   score: number
   matches: { line: number; text: string; from: number; to: number }[]
+}
+
+export interface SearchOptions {
+  /** Match only note titles/filenames, not body content. */
+  titleOnly?: boolean
+  /** Restrict results to this vault-relative folder (and its subfolders). */
+  folder?: string
 }
 
 /* --------------------------------------------------------------- fs events */

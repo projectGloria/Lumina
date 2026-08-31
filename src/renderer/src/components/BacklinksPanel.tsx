@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { LinkRef } from '@shared/types'
+import { Icon } from './Icon'
 import { PanelHeader } from './FileTree'
 import { createFromLink, openNote } from '../lib/actions'
 import { titleOf, useVault } from '../store/vaultStore'
@@ -31,6 +32,23 @@ export default function BacklinksPanel(): React.JSX.Element {
     return entry.links.filter((l) => !l.to && l.kind === 'link')
   }, [path, index])
 
+  /** Outgoing links that do resolve, grouped by target note. */
+  const outgoing = useMemo(() => {
+    if (!path) return []
+    const entry = index.notes[path]
+    if (!entry) return []
+    const byTarget = new Map<string, LinkRef[]>()
+    for (const link of entry.links) {
+      if (!link.to) continue
+      const list = byTarget.get(link.to)
+      if (list) list.push(link)
+      else byTarget.set(link.to, [link])
+    }
+    return [...byTarget.entries()].sort((a, b) => titleOf(a[0]).localeCompare(titleOf(b[0])))
+  }, [path, index])
+  const outgoingTotal = outgoing.reduce((sum, [, links]) => sum + links.length, 0)
+  const [outgoingOpen, setOutgoingOpen] = useState(false)
+
   const total = grouped.reduce((sum, [, links]) => sum + links.length, 0)
 
   if (!path) {
@@ -46,6 +64,36 @@ export default function BacklinksPanel(): React.JSX.Element {
     <>
       <PanelHeader title={`Backlinks${total ? ` · ${total}` : ''}`} />
       <div className="panel-scroll">
+        {outgoingTotal ? (
+          <div className="backlink-group">
+            <button
+              className="backlink-source truncate outgoing-toggle"
+              onClick={() => setOutgoingOpen((v) => !v)}
+            >
+              <Icon name={outgoingOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+              <span>Links out · {outgoingTotal}</span>
+            </button>
+            {outgoingOpen
+              ? outgoing.map(([target, links]) => (
+                  <div key={target} className="backlink-group">
+                    <button className="backlink-source truncate" onClick={() => openNote(target)}>
+                      {titleOf(target)}
+                    </button>
+                    {links.map((link, i) => (
+                      <button
+                        key={`${link.line}-${i}`}
+                        className="backlink-context"
+                        onClick={() => openNote(path, { line: link.line })}
+                      >
+                        {link.context || '…'}
+                      </button>
+                    ))}
+                  </div>
+                ))
+              : null}
+          </div>
+        ) : null}
+
         {grouped.length ? (
           grouped.map(([source, links]) => (
             <div key={source} className="backlink-group">

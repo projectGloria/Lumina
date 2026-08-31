@@ -160,7 +160,7 @@ export function linkClickHandlers(handlers: ClickHandlers): Extension {
     mousedown(event, view) {
       if (event.button !== 0) return false
       const el = (event.target as HTMLElement | null)?.closest(
-        '.cm-wikilink, .cm-mdlink, .cm-tag'
+        '.cm-wikilink, .cm-mdlink, .cm-tag, .cm-link-chip'
       )
       if (!el) return false
 

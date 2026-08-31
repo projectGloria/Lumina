@@ -46,6 +46,10 @@ export default function TabBar(): React.JSX.Element | null {
                   { label: 'Close', onSelect: () => close(i) },
                   { label: 'Close others', onSelect: () => closeOthers(i) },
                   { separator: true, label: 'sep1' },
+                  {
+                    label: 'Open in split view',
+                    onSelect: () => useWorkspace.getState().openSplit(tab.path)
+                  },
                   { label: 'Rename', onSelect: () => promptRename(tab.path) },
                   {
                     label: 'Show in file explorer',

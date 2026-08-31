@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SearchHit } from '@shared/types'
+import { dirname } from '@shared/markdown-parse'
 import { Icon } from './Icon'
 import { PanelHeader } from './FileTree'
 import { openNote } from '../lib/actions'
@@ -11,8 +12,12 @@ export default function SearchPanel(): React.JSX.Element {
   const setQuery = useUi((s) => s.setSearchQuery)
   const [hits, setHits] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
+  const [titleOnly, setTitleOnly] = useState(false)
+  const [scoped, setScoped] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const leftPanel = useWorkspace((s) => s.leftPanel)
+  const activeNotePath = useWorkspace((s) => s.tabs[s.activeTab]?.path)
+  const currentFolder = activeNotePath ? dirname(activeNotePath) : ''
 
   useEffect(() => {
     if (leftPanel === 'search') input.current?.focus()
@@ -30,7 +35,10 @@ export default function SearchPanel(): React.JSX.Element {
     // Debounced so a fast typist does not queue a search per keystroke.
     const timer = setTimeout(() => {
       void window.lumina.search
-        .query(q)
+        .query(q, {
+          titleOnly,
+          folder: scoped && currentFolder ? currentFolder : undefined
+        })
         .then((results) => {
           if (!cancelled) setHits(results)
         })
@@ -45,7 +53,7 @@ export default function SearchPanel(): React.JSX.Element {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [query])
+  }, [query, titleOnly, scoped, currentFolder])
 
   const totalMatches = hits.reduce((sum, h) => sum + Math.max(1, h.matches.length), 0)
 
@@ -72,6 +80,24 @@ export default function SearchPanel(): React.JSX.Element {
           placeholder="Search notes…"
           onChange={(e) => setQuery(e.target.value)}
         />
+      </div>
+
+      <div className="search-filters">
+        <button
+          className={`search-filter${titleOnly ? ' on' : ''}`}
+          title="Match note titles only"
+          onClick={() => setTitleOnly((v) => !v)}
+        >
+          Titles only
+        </button>
+        <button
+          className={`search-filter${scoped ? ' on' : ''}`}
+          title={currentFolder ? `Scope to ${currentFolder}` : 'Open a note to scope to its folder'}
+          disabled={!currentFolder}
+          onClick={() => setScoped((v) => !v)}
+        >
+          This folder
+        </button>
       </div>
 
       {query.trim() ? (
@@ -107,9 +133,17 @@ export default function SearchPanel(): React.JSX.Element {
           </div>
         ))}
         {!query.trim() ? (
-          <p className="panel-empty">
-            Search every note in the vault. Wrap a phrase in quotes to match it exactly.
-          </p>
+          <div className="empty-state empty-state-panel">
+            <Icon name="search" size={22} />
+            <h2>Search your vault</h2>
+            <p>Wrap a phrase in quotes to match it exactly.</p>
+          </div>
+        ) : !searching && !hits.length ? (
+          <div className="empty-state empty-state-panel">
+            <Icon name="search" size={22} />
+            <h2>No matches</h2>
+            <p>Nothing in this vault matches “{query.trim()}”.</p>
+          </div>
         ) : null}
       </div>
     </>

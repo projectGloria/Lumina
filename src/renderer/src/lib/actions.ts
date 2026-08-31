@@ -168,6 +168,8 @@ export function promptRename(path: string): void {
       useEditor.getState().rename(path, res.data)
       useWorkspace.getState().renamePathInTabs(path, res.data)
       renameStarredPaths(path, res.data)
+      renameIconOverrides(path, res.data)
+      renamePinnedPaths(path, res.data)
     }
   })
 }
@@ -189,6 +191,8 @@ export async function movePath(path: string, targetFolder: string): Promise<void
   useEditor.getState().rename(path, res.data)
   useWorkspace.getState().renamePathInTabs(path, res.data)
   renameStarredPaths(path, res.data)
+  renameIconOverrides(path, res.data)
+  renamePinnedPaths(path, res.data)
 }
 
 /* ------------------------------------------------------------ deleting */
@@ -209,6 +213,8 @@ export function confirmDelete(path: string): void {
       useEditor.getState().close(path)
       useWorkspace.getState().removePathFromTabs(path)
       removeStarredPaths(path)
+      removeIconOverrides(path)
+      removePinnedPaths(path)
     }
   })
 }
@@ -294,6 +300,61 @@ export function removeStarredPaths(parent: string): void {
   const { settings, patch } = useSettings.getState()
   const starred = settings.starred.filter((path) => !isPathAtOrBelow(path, parent))
   if (starred.length !== settings.starred.length) patch({ starred })
+}
+
+/* --------------------------------------------------------------- pinning */
+
+export function togglePin(path: string): void {
+  const { settings, patch } = useSettings.getState()
+  const pinned = settings.pinned.includes(path)
+    ? settings.pinned.filter((p) => p !== path)
+    : [...settings.pinned, path]
+  patch({ pinned })
+}
+
+export function isPinned(path: string): boolean {
+  return useSettings.getState().settings.pinned.includes(path)
+}
+
+export function renamePinnedPaths(from: string, to: string): void {
+  const { settings, patch } = useSettings.getState()
+  const pinned = settings.pinned.map((path) => rebaseDescendantPath(path, from, to))
+  if (pinned.some((path, i) => path !== settings.pinned[i])) patch({ pinned })
+}
+
+export function removePinnedPaths(parent: string): void {
+  const { settings, patch } = useSettings.getState()
+  const pinned = settings.pinned.filter((path) => !isPathAtOrBelow(path, parent))
+  if (pinned.length !== settings.pinned.length) patch({ pinned })
+}
+
+/* -------------------------------------------------------- icon overrides */
+
+export function setIconOverride(path: string, icon: string | null): void {
+  const { settings, patch } = useSettings.getState()
+  const iconOverrides = { ...settings.iconOverrides }
+  if (icon) iconOverrides[path] = icon
+  else delete iconOverrides[path]
+  patch({ iconOverrides })
+}
+
+export function renameIconOverrides(from: string, to: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.iconOverrides).map(
+    ([path, icon]) => [rebaseDescendantPath(path, from, to), icon] as const
+  )
+  const iconOverrides = Object.fromEntries(entries)
+  patch({ iconOverrides })
+}
+
+export function removeIconOverrides(parent: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.iconOverrides).filter(
+    ([path]) => !isPathAtOrBelow(path, parent)
+  )
+  if (entries.length !== Object.keys(settings.iconOverrides).length) {
+    patch({ iconOverrides: Object.fromEntries(entries) })
+  }
 }
 
 /* --------------------------------------------------------------- vault */

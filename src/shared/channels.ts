@@ -54,6 +54,17 @@ export const CH = {
   appFlush: 'app:flush',
   appFlushed: 'app:flushed',
 
+  // profiles
+  profileList: 'profile:list',
+  profileCreate: 'profile:create',
+  profileRename: 'profile:rename',
+  profileDelete: 'profile:delete',
+  profileSetVault: 'profile:setVault',
+  profileSetPassword: 'profile:setPassword',
+  profileUnlock: 'profile:unlock',
+  profileSwitch: 'profile:switch',
+  profileSignOut: 'profile:signOut',
+
   // misc
   attachmentSave: 'attachment:save',
   exportPdf: 'export:pdf',

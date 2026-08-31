@@ -4,7 +4,9 @@ import type {
   FileOpenRequest,
   FolderNode,
   OpResult,
+  Profile,
   SearchHit,
+  SearchOptions,
   Settings,
   ThemeFile,
   TreeNode,
@@ -93,9 +95,26 @@ const api = {
   },
 
   search: {
-    query: (q: string): Promise<SearchHit[]> => ipcRenderer.invoke(CH.searchQuery, q, 'full'),
+    query: (q: string, opts?: SearchOptions): Promise<SearchHit[]> =>
+      ipcRenderer.invoke(CH.searchQuery, q, 'full', opts),
     titles: (q: string): Promise<{ path: string; title: string }[]> =>
       ipcRenderer.invoke(CH.searchQuery, q, 'titles')
+  },
+
+  profiles: {
+    list: (): Promise<{ profiles: Profile[]; activeProfileId: string | null }> =>
+      ipcRenderer.invoke(CH.profileList),
+    create: (name: string): Promise<Profile> => ipcRenderer.invoke(CH.profileCreate, name),
+    rename: (id: string, name: string): Promise<void> => ipcRenderer.invoke(CH.profileRename, id, name),
+    remove: (id: string): Promise<void> => ipcRenderer.invoke(CH.profileDelete, id),
+    setVault: (id: string, vaultPath: string): Promise<void> =>
+      ipcRenderer.invoke(CH.profileSetVault, id, vaultPath),
+    setPassword: (id: string, password: string | null): Promise<void> =>
+      ipcRenderer.invoke(CH.profileSetPassword, id, password),
+    unlock: (id: string, password: string): Promise<boolean> =>
+      ipcRenderer.invoke(CH.profileUnlock, id, password),
+    switch: (id: string): Promise<boolean> => ipcRenderer.invoke(CH.profileSwitch, id),
+    signOut: (): Promise<void> => ipcRenderer.invoke(CH.profileSignOut)
   },
 
   settings: {

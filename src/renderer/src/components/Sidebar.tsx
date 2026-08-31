@@ -1,6 +1,7 @@
 import type { LeftPanel } from '@shared/types'
 import { Icon, type IconName } from './Icon'
 import FileTree from './FileTree'
+import ProfileIndicator from './ProfileIndicator'
 import SearchPanel from './SearchPanel'
 import StarredPane from './StarredPane'
 import TagPane from './TagPane'
@@ -39,6 +40,7 @@ export default function Sidebar(): React.JSX.Element {
 
         <div className="rail-spacer" />
 
+        <ProfileIndicator />
         <button
           className="icon-btn rail-btn"
           title={vault ? `Vault: ${vault.name} — click to switch` : 'Open a vault'}

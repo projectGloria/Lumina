@@ -137,16 +137,22 @@ function currentTokens(): string {
     .join('\n    ')
 }
 
-export function renderToHtml(markdownSource: string, path: string): string {
-  const { data, body } = parseFrontmatter(markdownSource)
-  const title = (typeof data.title === 'string' && data.title) || titleOf(path)
+/** The rendered, decorated HTML body for a note — shared by the read-mode view and export. */
+export function renderNoteFragment(markdownSource: string, path: string): string {
+  const { body } = parseFrontmatter(markdownSource)
   const parsed = marked.parse(body, {
     async: false,
     gfm: true,
     breaks: false,
     renderer: exportRenderer
   })
-  const html = decorate(parsed, path)
+  return decorate(parsed, path)
+}
+
+export function renderToHtml(markdownSource: string, path: string): string {
+  const { data } = parseFrontmatter(markdownSource)
+  const title = (typeof data.title === 'string' && data.title) || titleOf(path)
+  const html = renderNoteFragment(markdownSource, path)
 
   return `<!doctype html>
 <html lang="en">

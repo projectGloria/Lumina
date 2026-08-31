@@ -1,22 +1,93 @@
 import Editor from '../editor/Editor'
+import ReadView from '../editor/ReadView'
+import Resizer from './Resizer'
 import TabBar from './TabBar'
 import { Icon } from './Icon'
+import { countWords } from '@shared/markdown-parse'
+import { promptNewNote } from '../lib/actions'
 import { getCommand, hotkeyFor, runCommand } from '../lib/commands'
 import { acceleratorChips } from '../lib/hotkeys'
+import { useEditor } from '../store/editorStore'
+import { useSettings } from '../store/settingsStore'
+import { useUi } from '../store/uiStore'
+import { titleOf } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 
 export default function Workspace(): React.JSX.Element {
+  const splitPath = useWorkspace((s) => s.splitPath)
+  const splitWidth = useWorkspace((s) => s.splitWidth)
+  const setSplitWidth = useWorkspace((s) => s.setSplitWidth)
+
+  if (!splitPath) return <PrimaryPane />
+
+  return (
+    <div className="split-body">
+      <div style={{ width: splitWidth, minWidth: 280, display: 'flex', flexDirection: 'column' }}>
+        <PrimaryPane />
+      </div>
+      <Resizer side="left" width={splitWidth} onResize={setSplitWidth} />
+      <SplitPane path={splitPath} />
+    </div>
+  )
+}
+
+function PrimaryPane(): React.JSX.Element {
   const tabs = useWorkspace((s) => s.tabs)
   const activeTab = useWorkspace((s) => s.activeTab)
   const path = tabs[activeTab]?.path
+  const readMode = useUi((s) => s.readMode)
 
   return (
     <main className="pane-main">
       <TabBar />
       {/* No `key`: one editor instance serves every tab, so switching tabs
-          swaps state rather than rebuilding and losing the undo history. */}
-      {path ? <Editor path={path} /> : <NoNoteOpen />}
+          swaps state rather than rebuilding and losing the undo history. Kept
+          mounted (just hidden) in read mode so its undo history and scroll
+          position survive the round trip back to editing. */}
+      {path ? (
+        <>
+          <div style={{ display: readMode ? 'none' : 'contents' }}>
+            <Editor path={path} />
+          </div>
+          {readMode ? <ReadView path={path} /> : null}
+        </>
+      ) : (
+        <NoNoteOpen />
+      )}
+      {path ? <WordCountBar path={path} /> : null}
     </main>
+  )
+}
+
+/** The second, split-view pane — a single note, no tabs of its own. */
+function SplitPane({ path }: { path: string }): React.JSX.Element {
+  const closeSplit = useWorkspace((s) => s.closeSplit)
+
+  return (
+    <main className="pane-main split-pane">
+      <div className="split-pane-header">
+        <span className="split-pane-title truncate">{titleOf(path)}</span>
+        <button className="icon-btn" title="Close split view" onClick={closeSplit}>
+          <Icon name="close" size={13} />
+        </button>
+      </div>
+      <Editor path={path} />
+      <WordCountBar path={path} />
+    </main>
+  )
+}
+
+function WordCountBar({ path }: { path: string }): React.JSX.Element | null {
+  const show = useSettings((s) => s.settings.editor.showWordCount)
+  const content = useEditor((s) => s.buffers[path]?.content)
+
+  if (!show || content === undefined) return null
+
+  const words = countWords(content)
+  return (
+    <div className="word-count-bar">
+      {words} word{words === 1 ? '' : 's'} · {content.length} character{content.length === 1 ? '' : 's'}
+    </div>
   )
 }
 
@@ -30,7 +101,13 @@ function NoNoteOpen(): React.JSX.Element {
   ]
 
   return (
-    <div className="empty-state welcome-pane">
+    <div
+      className="empty-state welcome-pane"
+      onDoubleClick={(e) => {
+        if (e.target !== e.currentTarget) return
+        promptNewNote('')
+      }}
+    >
       <Icon name="book" size={30} />
       <h2>Nothing open</h2>
       <p>Pick a note from the sidebar, or start from here.</p>

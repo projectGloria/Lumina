@@ -1,5 +1,5 @@
 import MiniSearch from 'minisearch'
-import type { SearchHit } from '@shared/types'
+import type { SearchHit, SearchOptions } from '@shared/types'
 import { readNote } from './vault'
 
 interface Doc {
@@ -91,7 +91,7 @@ async function lineMatches(path: string, terms: string[], phrase: string | null)
   return out
 }
 
-export async function search(query: string, limit = 60): Promise<SearchHit[]> {
+export async function search(query: string, limit = 60, opts: SearchOptions = {}): Promise<SearchHit[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
 
@@ -100,8 +100,16 @@ export async function search(query: string, limit = 60): Promise<SearchHit[]> {
   const phrase = quoted ? quoted[1] : null
   const terms = (phrase ?? trimmed).split(/\s+/).filter(Boolean)
 
-  const raw = mini.search(phrase ?? trimmed, phrase ? { combineWith: 'AND', prefix: false } : {})
-  const top = raw.slice(0, limit)
+  const searchOpts = phrase
+    ? { combineWith: 'AND' as const, prefix: false }
+    : opts.titleOnly
+      ? { fields: ['title'] }
+      : {}
+  const raw = mini.search(phrase ?? trimmed, searchOpts)
+  const scoped = opts.folder
+    ? raw.filter((r) => (r.id as string).startsWith(`${opts.folder}/`))
+    : raw
+  const top = scoped.slice(0, limit)
 
   const hits = await Promise.all(
     top.map(async (r) => ({
