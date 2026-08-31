@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { Icon } from './Icon'
-import { confirmDelete, promptRename } from '../lib/actions'
+import { closeOtherTabs, closeTab, confirmDelete, promptRename } from '../lib/actions'
 import { runCommand } from '../lib/commands'
 import { useEditor } from '../store/editorStore'
 import { useUi } from '../store/uiStore'
@@ -11,8 +11,8 @@ export default function TabBar(): React.JSX.Element | null {
   const tabs = useWorkspace((s) => s.tabs)
   const activeTab = useWorkspace((s) => s.activeTab)
   const activate = useWorkspace((s) => s.activateTab)
-  const close = useWorkspace((s) => s.closeTab)
-  const closeOthers = useWorkspace((s) => s.closeOthers)
+  const close = (i: number): void => void closeTab(i)
+  const closeOthers = (i: number): void => void closeOtherTabs(i)
   const moveTab = useWorkspace((s) => s.moveTab)
   const dragFrom = useRef<number | null>(null)
 

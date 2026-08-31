@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { LinkRef } from '@shared/types'
 import { PanelHeader } from './FileTree'
-import { openNote } from '../lib/actions'
+import { createFromLink, openNote } from '../lib/actions'
 import { titleOf, useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 
@@ -77,7 +77,7 @@ export default function BacklinksPanel(): React.JSX.Element {
                 key={`${link.target}-${i}`}
                 className="backlink-context unresolved"
                 title="Create this note"
-                onClick={() => void import('../lib/actions').then((m) => m.createFromLink(link.target, path))}
+                onClick={() => void createFromLink(link.target, path)}
               >
                 {link.target}
               </button>

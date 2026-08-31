@@ -177,6 +177,9 @@ class FrontmatterWidget extends WidgetType {
     return other.raw === this.raw
   }
   toDOM(view: EditorView): HTMLElement {
+    const outer = document.createElement('div')
+    outer.className = 'cm-properties-outer'
+
     const wrap = document.createElement('div')
     wrap.className = 'cm-properties'
 
@@ -224,7 +227,19 @@ class FrontmatterWidget extends WidgetType {
       view.focus()
     })
 
-    return wrap
+    outer.appendChild(wrap)
+
+    if (import.meta.env.DEV) {
+      const margin = getComputedStyle(outer).marginBottom
+      if (margin !== '0px') {
+        console.warn(
+          `FrontmatterWidget outer element has a nonzero margin (${margin}); ` +
+            'CodeMirror height map excludes margins and clicks will land on the wrong line.'
+        )
+      }
+    }
+
+    return outer
   }
   ignoreEvent(): boolean {
     return false
@@ -285,6 +300,17 @@ class TableWidget extends WidgetType {
       view.dispatch({ selection: { anchor: view.posAtDOM(wrap) } })
       view.focus()
     })
+
+    if (import.meta.env.DEV) {
+      const margin = getComputedStyle(wrap).marginBottom
+      if (margin !== '0px') {
+        console.warn(
+          `TableWidget root element has a nonzero margin (${margin}); ` +
+            'CodeMirror height map excludes margins and clicks will land on the wrong line.'
+        )
+      }
+    }
+
     return wrap
   }
   ignoreEvent(): boolean {

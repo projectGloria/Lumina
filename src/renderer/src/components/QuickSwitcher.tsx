@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import Picker, { type PickerItem } from './Picker'
 import { createNote, openNote } from '../lib/actions'
 import { fuzzyMatch } from '../lib/fuzzy'
@@ -9,14 +9,18 @@ import { useWorkspace } from '../store/workspaceStore'
 
 export default function QuickSwitcher(): React.JSX.Element {
   const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
+  const queryIsStale = deferredQuery !== query
   const close = useUi((s) => s.closeModal)
   const notes = useVault((s) => s.index.notes)
   const history = useWorkspace((s) => s.history)
 
   const items = useMemo<PickerItem[]>(() => {
+    // Never let Enter choose a result calculated for the previous query.
+    if (queryIsStale) return []
     const entries = Object.values(notes)
 
-    if (!query.trim()) {
+    if (!deferredQuery.trim()) {
       // With no query, offer where you have actually been, most recent first.
       const recent = [...new Set([...history].reverse())].filter((p) => notes[p]).slice(0, 12)
       const rest = entries
@@ -28,9 +32,9 @@ export default function QuickSwitcher(): React.JSX.Element {
 
     const scored = entries
       .map((entry) => {
-        const onTitle = fuzzyMatch(query, entry.title)
+        const onTitle = fuzzyMatch(deferredQuery, entry.title)
         if (onTitle) return { entry, score: onTitle.score + 40, indices: onTitle.indices }
-        const onPath = fuzzyMatch(query, entry.path)
+        const onPath = fuzzyMatch(deferredQuery, entry.path)
         if (onPath) return { entry, score: onPath.score, indices: [] }
         return null
       })
@@ -40,17 +44,17 @@ export default function QuickSwitcher(): React.JSX.Element {
 
     const results = scored.map(({ entry, indices }) => toItem(entry, indices))
 
-    const exact = entries.some((e) => e.title.toLowerCase() === query.trim().toLowerCase())
+    const exact = entries.some((e) => e.title.toLowerCase() === deferredQuery.trim().toLowerCase())
     if (!exact) {
       results.push({
         id: '__create__',
-        label: `Create "${query.trim()}"`,
+        label: `Create "${deferredQuery.trim()}"`,
         detail: 'New note',
-        onSelect: () => void createNote('', query.trim())
+        onSelect: () => void createNote('', deferredQuery.trim())
       })
     }
     return results
-  }, [query, notes, history])
+  }, [deferredQuery, queryIsStale, notes, history])
 
   return (
     <Picker

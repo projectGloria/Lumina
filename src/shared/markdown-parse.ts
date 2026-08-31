@@ -25,8 +25,15 @@ export function dirname(p: string): string {
   return i === -1 ? '' : n.slice(0, i)
 }
 
+/**
+ * Drop a note extension, whichever of the three we accept it is.
+ *
+ * This has to agree with `isMarkdownPath`: stripping only `.md` would leave a
+ * `.markdown` note showing its extension as a title and, worse, would stop any
+ * wikilink from ever resolving to it.
+ */
 export function stripExtension(p: string): string {
-  return p.replace(/\.md$/i, '')
+  return p.replace(/\.(?:md|markdown|mdx)$/i, '')
 }
 
 export function joinPath(dir: string, name: string): string {
@@ -326,6 +333,14 @@ export function resolveLink(
     if (hit) return hit
   }
 
+  // A target that spells out its extension means that file and no other, so
+  // `[[Note.mdx]]` cannot land on `Note.md` in a vault holding both.
+  if (isMarkdownPath(t)) {
+    const tLower = t.toLowerCase()
+    const literal = allPaths.find((p) => p.toLowerCase() === tLower)
+    if (literal) return literal
+  }
+
   let exact: string | null = null
   let sameFolder: string | null = null
   let shallowest: string | null = null
@@ -433,4 +448,18 @@ export function parseNote(path: string, content: string, mtime = 0): NoteIndexEn
     frontmatter: fm.data,
     excerpt: plain.slice(0, 220)
   }
+}
+/** Extensions Lumina treats as editable Markdown notes. */
+export function isMarkdownPath(value: string): boolean {
+  return /\.(?:md|markdown|mdx)$/i.test(value)
+}
+
+/** True when `path` names `parent` or one of its descendants. */
+export function isPathAtOrBelow(path: string, parent: string): boolean {
+  return path === parent || path.startsWith(`${parent}/`)
+}
+
+/** Rebase a path when a note or an entire folder moves. */
+export function rebaseDescendantPath(path: string, from: string, to: string): string {
+  return path === from ? to : path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : path
 }

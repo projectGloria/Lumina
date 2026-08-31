@@ -1,10 +1,9 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
-import { normalizePath } from '@shared/markdown-parse'
+import { isMarkdownPath, normalizePath } from '@shared/markdown-parse'
 
 /** Folders never shown in the file tree, indexed, or watched. */
 export const IGNORED_DIRS = new Set(['.lumina', '.git', '.obsidian', 'node_modules', '.trash'])
-
-export const MARKDOWN_EXT = new Set(['.md', '.markdown', '.mdx'])
 
 /** Where a vault keeps everything Lumina knows about it. All of it rebuildable. */
 export const luminaDir = (vault: string): string => path.join(vault, '.lumina')
@@ -29,13 +28,51 @@ export function safeJoin(vaultRoot: string, relative: string): string | null {
   return abs
 }
 
+/**
+ * Resolve a vault path and verify its real filesystem location.
+ *
+ * `safeJoin` prevents `..` traversal, but an in-vault symlink can still point
+ * elsewhere. Existing targets are checked with `realpath`; for a new target,
+ * its nearest existing parent is checked before creation.
+ */
+export async function safeVaultPath(
+  vaultRoot: string,
+  relative: string,
+  allowMissing = false
+): Promise<string | null> {
+  const abs = safeJoin(vaultRoot, relative)
+  if (!abs) return null
+
+  let realRoot: string
+  try {
+    realRoot = await fs.realpath(path.resolve(vaultRoot))
+  } catch {
+    return null
+  }
+
+  let existing = abs
+  for (;;) {
+    try {
+      const real = await fs.realpath(existing)
+      if (!allowMissing && existing !== abs) return null
+      return contains(realRoot, real) ? abs : null
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return null
+      if (!allowMissing) return null
+      const parent = path.dirname(existing)
+      if (parent === existing) return null
+      existing = parent
+    }
+  }
+}
+
 /** Absolute path back to vault-relative, forward-slash form. */
 export function toRelative(vaultRoot: string, absolute: string): string {
   return normalizePath(path.relative(path.resolve(vaultRoot), absolute))
 }
 
 export function isMarkdown(p: string): boolean {
-  return MARKDOWN_EXT.has(path.extname(p).toLowerCase())
+  return isMarkdownPath(p)
 }
 
 /** True when any path segment is an ignored or hidden folder. */

@@ -9,14 +9,15 @@ folder of `.md` files chosen by the user; nothing is stored anywhere else.
 ## Commands
 
 ```
-npm run dev                       # run the app with hot reload
-npm test                          # all tests
+npm run dev                        # run the app with hot reload
+npm test                           # all tests
 npx vitest run tests/paths.test.ts # one file
 npx vitest run -t "resolveLink"    # one describe/it by name
-npm run typecheck                 # both tsconfigs (node + web)
-npm run build                     # bundle main, preload, renderer into out/
-npm run build:dir                 # package to release/win-unpacked (no installer)
-npm run build:win                 # NSIS installer + portable exe
+npm run typecheck                  # both tsconfigs (node + web)
+npm run build                      # bundle main, preload, renderer into out/
+npm run build:dir                  # package to release/win-unpacked (no installer)
+npm run build:win                  # NSIS installer + portable exe
+npm run release                    # build:win, then verify:release
 ```
 
 `npm run typecheck` covers two separate projects — `tsconfig.node.json`
@@ -28,18 +29,24 @@ else is wrong.
 Tests run in vitest's `node` environment: they cover `src/shared`,
 `src/main/paths.ts`, `src/main/openFile.ts` and the starter vault, and there is
 no jsdom, so React components and CodeMirror have no test harness.
-`tests/open-file.test.ts` builds a real directory tree under `os.tmpdir()`,
-because which vault a note belongs to is entirely a question about what is on
-disk. Keep `openFile.ts` free of `electron` imports or it stops being testable —
-that is why `luminaDir` lives in `paths.ts` rather than `settings.ts`. Note that
-`tests/starter-vault.test.ts` asserts that every wikilink in `src/main/starter.ts`
-resolves and every tag is one the notes meant — editing the starter notes can
-turn the suite red for reasons that have nothing to do with the parser.
+`tests/open-file.test.ts` and the `safeVaultPath` cases in `tests/paths.test.ts`
+build real directory trees (and symlinks) under `os.tmpdir()`, because which
+vault a note belongs to, and whether a path escapes one, are questions about
+what is on disk. Keep `openFile.ts` free of `electron` imports or it stops being
+testable — that is why `luminaDir` lives in `paths.ts` rather than `settings.ts`.
+Note that `tests/starter-vault.test.ts` asserts that every wikilink in
+`src/main/starter.ts` resolves and every tag is one the notes meant — editing the
+starter notes can turn the suite red for reasons that have nothing to do with the
+parser.
 
 The `@shared/*` and `@/*` aliases are declared in four places —
 `electron.vite.config.ts` (once per bundle), `tsconfig.node.json`,
 `tsconfig.web.json` and `vitest.config.ts`. A new alias has to be added to all
 of them or something (usually the tests, usually last) breaks.
+
+`RELEASE.md` covers the signed Windows release; `npm run verify:release`
+(`scripts/verify-release.ps1`, pwsh) refuses unsigned artifacts unless
+`LUMINA_ALLOW_UNSIGNED=1`, which is for local diagnostics only.
 
 ### Running the app against a vault without clicking through the dialog
 
@@ -76,18 +83,31 @@ structure out of a note — wikilinks, tags, headings, frontmatter, aliases —
 belongs here, not in a component. Resolution order is deliberate: exact path,
 then same-folder basename, then shallowest basename, then alias.
 
+It also owns the path predicates both sides need: `isMarkdownPath` (never test
+`endsWith('.md')` — `.markdown` and `.mdx` are notes too), `isPathAtOrBelow` and
+`rebaseDescendantPath` (a folder rename must move `Old/Nested/a.md` without
+touching the sibling `Old backup/a.md`).
+
 The one sanctioned exception is `lib/render.ts`, which uses `marked` to turn a
 note into standalone HTML for the export commands. It still calls `resolveLink`
-for wikilink targets; `marked` never decides what a link means.
+for wikilink targets; `marked` never decides what a link means. Its custom
+`Renderer` escapes raw HTML and drops any URL scheme that is not http(s),
+`mailto`, or a `data:image/*` — exported HTML carries a strict CSP meta tag, and
+loosening either is how a note becomes a script.
 
 **2. The renderer never touches `fs`.** Every path crosses a typed IPC channel
 declared in `src/shared/channels.ts`, handled in `src/main/ipc.ts`, and exposed
 through `src/preload/index.ts` — a new capability means editing all three, plus
-`src/shared/types.ts` if it carries a new payload shape. `safeJoin` in
-`src/main/paths.ts` rejects any path resolving outside the vault root, and it is
-the only way a relative path becomes an absolute one. `contextIsolation` on,
+`src/shared/types.ts` if it carries a new payload shape. `contextIsolation` on,
 `nodeIntegration` off, `sandbox` on. Vault images load over a custom `lumina://`
 scheme (`src/main/protocol.ts`) rather than widening the CSP to `file:`.
+
+`src/main/paths.ts` has two guards and they are not interchangeable. `safeJoin`
+is sync and only rejects `..` traversal; `safeVaultPath` is async, additionally
+`realpath`s the result so an in-vault symlink cannot point outside, and takes
+`allowMissing` for a path about to be created (which then checks the nearest
+existing parent). **Anything that opens a real file — indexer, protocol handler,
+vault writes — must use `safeVaultPath`.**
 
 Paths in the renderer, the index and every IPC payload are **vault-relative and
 `/`-separated**; only `src/main` deals in absolute OS paths. `safeJoin` tolerates
@@ -117,6 +137,26 @@ Put a block decoration in the view plugin and CodeMirror disables the plugin
 with no visible error; the editor still looks *almost* right because the
 `HighlightStyle` in `cmTheme.ts` keeps colouring things. If markers stop hiding,
 suspect this before anything else.
+
+A block widget's root DOM element must never carry a CSS `margin`. CodeMirror's
+height map (`posAtCoords` -> `elementAtHeight`) is built from
+`getBoundingClientRect().height`, which excludes margins, while the drawn caret
+comes from real DOM rects (`coordsAtPos`) — a margin on a widget silently
+desyncs the two, so clicks land one or more lines off from where the caret is
+actually drawn. Use `padding` (and an extra wrapper element if the margin was
+faking space around a border, as `FrontmatterWidget` does) instead. Both
+`FrontmatterWidget` and `TableWidget` assert this in dev via
+`getComputedStyle(...).marginBottom` and `console.warn` if it is nonzero — keep
+that guard on any new block widget.
+
+Separately, `styles/markdown.css` has several rules written against a single
+class (`.cm-line`, `.cm-scroller`) that lose to CodeMirror's base theme, which
+compiles to two classes (`.ͼ1 .cm-line`) — `.cm-line { padding: 0 }` and
+`.cm-scroller { line-height: inherit }` currently have no effect. Do not fix
+this by simply prefixing `.cm-editor`: raising `.cm-line`'s specificity enough
+to apply `display: inline-block` was measured to add a *new* line-box drift
+(an inline-block's border box excludes line-box leading), the same class of bug
+as the margin issue above.
 
 Two related traps in the same file:
 
@@ -153,6 +193,8 @@ A cold start opens the vault while the page is still loading, which is earlier
 than React can subscribe. `pushFileRequest` therefore parks requests until the
 renderer drains them via `files.takeOpenRequests()` on mount — the same
 pull-on-mount shape as `vault.current()`. Sending the event alone would lose it.
+The two are drained in separate `try` blocks in `App.tsx`, so a failed vault
+restore does not swallow the requested note.
 
 Notes arriving this way open in their **own** tab (`newTab` unless already
 open); the in-app default replaces the active tab, which would throw away
@@ -170,10 +212,13 @@ Autosave is debounced, so at any instant the last few hundred milliseconds of
 typing exist only in the renderer. Both quit paths therefore hand off to
 `flushRenderer` (`ipc.ts`) and *wait*: the window's `close` handler (the X
 button, which destroys the renderer) and `before-quit` (Cmd+Q, which skips the
-close handler entirely). Each is guarded against re-entry and both are safe to
-run twice, since saving a clean buffer does nothing. The 3s timeout means a
-wedged renderer delays the quit rather than preventing it. If you add a new way
-to quit, route it through one of those two.
+close handler entirely). The renderer's `onFlush` awaits three debounced things
+together — `useEditor.saveAll()`, `flushSettingsPersistence()` and
+`flushWorkspacePersistence()` — so a theme tweak or a resized panel survives the
+same way an unsaved sentence does. Each path is guarded against re-entry and both
+are safe to run twice, since saving a clean buffer does nothing. The 3s timeout
+means a wedged renderer delays the quit rather than preventing it. If you add a
+new way to quit, route it through one of those two.
 
 ### Commands are data
 
@@ -182,7 +227,8 @@ command palette, the global hotkey handler in `App.tsx`, and the hotkey rebinder
 in settings. Add an action there, not as a bare click handler, or it will be
 missing from the palette and unbindable. Operations spanning more than one store
 live in `lib/actions.ts` so the sidebar, a broken link and the palette all create
-a note the same way.
+a note the same way — and so that a rename or delete updates buffers, tabs *and*
+starred paths together (`renameStarredPaths` / `removeStarredPaths`).
 
 Editor-section commands are also bound in CodeMirror's own keymap
 (`editor/extensions.ts`). The global handler in `App.tsx` deliberately yields to
@@ -215,16 +261,34 @@ the outgoing vault's edits must land while it is still current), and `receive()`
 in `App.tsx` calls `useEditor.reset()` whenever the payload names a different
 vault. Skip either half and `open()` short-circuits on the stale buffer, showing
 one vault's note under another's path — and autosave then writes it there.
+`reset()` also bumps a module-level `vaultGeneration`; every in-flight `open`
+and `reload` captures it and discards its result if it changed, so a slow read
+from the old vault cannot land in the new one. Concurrent `save()` calls for one
+path are serialized through the `saves` map — never write around it.
 
 Files are the source of truth. `<vault>/.lumina/cache.json` is a disposable
 mtime-keyed speedup for the index and the serialized search index — bump
 `CACHE_VERSION` in `indexer.ts` whenever `NoteIndexEntry` gains a field, or stale
 entries will be read back missing it.
 
+`getIndex()` in `indexer.ts` is **async** and every caller must await it. The
+snapshot rebuild yields to the event loop every 500 notes so filesystem events
+are not blocked on a large vault; that means the notes map can change mid-pass,
+which is what the `revision` counter detects — a snapshot built over a changed
+map is left dirty and rebuilt rather than declared clean.
+
 Writes are atomic (temp file, then rename) and deletes go to the recycle bin.
-Paths the app writes are suppressed in the watcher for `SELF_WRITE_GRACE_MS`
-(`vault.ts`, 1.5s) so autosave does not come back as an external edit; a
-genuinely external edit reloads a clean buffer and is refused on a dirty one.
+JSON state writes in `settings.ts` are queued per file (and app-state
+read-modify-writes queued globally), so two rapid saves cannot interleave into a
+truncated `workspace.json`. `Settings.hotkeys` is the one field that is not
+actually per-vault storage: `loadSettings`/`saveSettings` split it out to
+`lumina.json` (app-level) transparently so a rebind follows you between
+vaults, while every other field stays in the vault's `settings.json`. The
+renderer never sees this split — `Settings.hotkeys` still just reads and
+writes normally through `settings:get`/`settings:set`. Paths the app writes are suppressed in the watcher
+for `SELF_WRITE_GRACE_MS` (`vault.ts`, 1.5s) so autosave does not come back as an
+external edit; a genuinely external edit reloads a clean buffer and is refused on
+a dirty one.
 
 ## Working on the editor
 
@@ -237,11 +301,3 @@ the rule with it.
 
 Settings-dependent extensions go through `settingsCompartment` so preferences
 can change without reloading the note.
-
-## Other agent configs
-
-A Codex config (`~/.codex/config.toml`) and a Gemini CLI config
-(`~/.gemini/settings.json`) exist on this machine. To bring over MCP servers,
-slash commands, subagents, skills or instructions, reply `/import` to see what
-is importable, then `/import --yes=<digest>` to apply it. If `/import` is not
-available here, run `claude import` from a terminal.

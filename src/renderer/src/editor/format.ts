@@ -187,6 +187,59 @@ export function insertText(view: EditorView, text: string): void {
   view.focus()
 }
 
+/**
+ * Replace `[from, to)` with a block and land the cursor at `cursorOffset`
+ * into the inserted text. Shared by the slash-command block inserts and the
+ * command palette, so both create a table, callout, fence or divider the
+ * same way.
+ *
+ * A block always starts on its own line: if the replaced range does not
+ * already begin at a line start, a leading newline is inserted first so the
+ * block never runs on from trailing text on the same line.
+ */
+function insertBlock(view: EditorView, from: number, to: number, text: string, cursorOffset: number): void {
+  const { state } = view
+  const atLineStart = from === state.doc.lineAt(from).from
+  const prefix = atLineStart ? '' : '\n'
+  const insert = `${prefix}${text}`
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: { anchor: from + prefix.length + cursorOffset },
+    scrollIntoView: true
+  })
+  view.focus()
+}
+
+/** Insert a 2x2 GFM table skeleton, cursor in the first cell. */
+export function insertTable(view: EditorView, from: number, to: number): void {
+  const text = '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n'
+  insertBlock(view, from, to, text, text.indexOf('| ') + 2)
+}
+
+/** Insert an Obsidian-style callout, cursor after the title. */
+export function insertCallout(view: EditorView, from: number, to: number): void {
+  const text = '> [!note] Title\n> '
+  insertBlock(view, from, to, text, '> [!note] Title'.length)
+}
+
+/** Insert a fenced code block, cursor inside the fence. */
+export function insertCodeFence(view: EditorView, from: number, to: number): void {
+  const text = '```\n\n```\n'
+  insertBlock(view, from, to, text, 4)
+}
+
+/** Insert a horizontal rule. */
+export function insertDivider(view: EditorView, from: number, to: number): void {
+  const text = '---\n'
+  insertBlock(view, from, to, text, text.length)
+}
+
+/** Insert today's date. */
+export function insertDate(view: EditorView, from: number, to: number): void {
+  const text = new Date().toISOString().slice(0, 10)
+  insertBlock(view, from, to, text, text.length)
+}
+
 /** Move the cursor to a line and centre it, used by search and outline. */
 export function revealLine(view: EditorView, line: number): void {
   const target = Math.max(1, Math.min(view.state.doc.lines, line + 1))

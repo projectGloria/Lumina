@@ -4,11 +4,43 @@ import {
   extractHeadings,
   extractLinks,
   extractTags,
+  isMarkdownPath,
+  isPathAtOrBelow,
   maskCode,
   parseFrontmatter,
   parseNote,
-  resolveLink
+  rebaseDescendantPath,
+  resolveLink,
+  stripExtension,
+  titleFromPath
 } from '@shared/markdown-parse'
+
+describe('isMarkdownPath', () => {
+  it('recognizes every supported note extension case-insensitively', () => {
+    expect(isMarkdownPath('Note.md')).toBe(true)
+    expect(isMarkdownPath('Note.MARKDOWN')).toBe(true)
+    expect(isMarkdownPath('Note.mdx')).toBe(true)
+    expect(isMarkdownPath('Note.txt')).toBe(false)
+    expect(isMarkdownPath('markdown')).toBe(false)
+  })
+})
+
+describe('descendant path helpers', () => {
+  it('distinguishes descendants from similarly prefixed siblings', () => {
+    expect(isPathAtOrBelow('Old/Nested/note.md', 'Old')).toBe(true)
+    expect(isPathAtOrBelow('Old', 'Old')).toBe(true)
+    expect(isPathAtOrBelow('Old backup/note.md', 'Old')).toBe(false)
+  })
+
+  it('rebases a folder and all descendants without touching siblings', () => {
+    expect(rebaseDescendantPath('Old/Nested/note.mdx', 'Old', 'New')).toBe(
+      'New/Nested/note.mdx'
+    )
+    expect(rebaseDescendantPath('Old backup/note.md', 'Old', 'New')).toBe(
+      'Old backup/note.md'
+    )
+  })
+})
 
 describe('maskCode', () => {
   it('blanks fenced blocks while preserving offsets', () => {
@@ -157,6 +189,36 @@ describe('resolveLink', () => {
       { path: 'Welcome.md', title: 'Welcome', aliases: ['Gloria'] }
     ])
     expect(resolveLink('Gloria', 'Welcome.md', paths, aliases)).toBe('Projects/Gloria.md')
+  })
+
+  it('resolves a bare target to a .markdown or .mdx note', () => {
+    const mixed = ['Notes/Legacy.markdown', 'Notes/Docs.mdx']
+    expect(resolveLink('Legacy', 'Welcome.md', mixed)).toBe('Notes/Legacy.markdown')
+    expect(resolveLink('Docs', 'Welcome.md', mixed)).toBe('Notes/Docs.mdx')
+  })
+
+  it('honours a spelled-out extension when two notes share a stem', () => {
+    const twins = ['Note.md', 'Note.mdx']
+    expect(resolveLink('Note.mdx', 'Other.md', twins)).toBe('Note.mdx')
+    expect(resolveLink('Note.md', 'Other.md', twins)).toBe('Note.md')
+  })
+})
+
+describe('stripExtension', () => {
+  it('drops every extension isMarkdownPath accepts', () => {
+    expect(stripExtension('Note.md')).toBe('Note')
+    expect(stripExtension('Note.markdown')).toBe('Note')
+    expect(stripExtension('Note.MDX')).toBe('Note')
+  })
+
+  it('leaves other extensions and bare names alone', () => {
+    expect(stripExtension('diagram.png')).toBe('diagram.png')
+    expect(stripExtension('Note')).toBe('Note')
+    expect(stripExtension('markdown')).toBe('markdown')
+  })
+
+  it('gives a .markdown note a title without its extension', () => {
+    expect(titleFromPath('Notes/Legacy.markdown')).toBe('Legacy')
   })
 })
 

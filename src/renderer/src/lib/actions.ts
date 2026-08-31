@@ -5,7 +5,15 @@
  * created the same way whether it came from the sidebar, a broken link, or the
  * command palette.
  */
-import { basename, dirname, joinPath, stripExtension } from '@shared/markdown-parse'
+import {
+  basename,
+  dirname,
+  isMarkdownPath,
+  isPathAtOrBelow,
+  joinPath,
+  rebaseDescendantPath,
+  stripExtension
+} from '@shared/markdown-parse'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
@@ -21,22 +29,61 @@ export interface OpenOptions {
   line?: number
 }
 
-/** Requested reveal target, picked up by the editor once the note is loaded. */
-export let pendingReveal: { path: string; anchor?: string; line?: number } | null = null
-
-export function consumeReveal(path: string): { anchor?: string; line?: number } | null {
-  if (!pendingReveal || pendingReveal.path !== path) return null
-  const { anchor, line } = pendingReveal
-  pendingReveal = null
-  return { anchor, line }
-}
-
 export function openNote(path: string, opts: OpenOptions = {}): void {
   if (opts.anchor !== undefined || opts.line !== undefined) {
-    pendingReveal = { path, anchor: opts.anchor, line: opts.line }
+    // Held in the ui store rather than a module variable so the editor can
+    // react to it. A note that is already the active tab does not remount, so
+    // a reveal read only on mount would be dropped — which is what made
+    // clicking a search hit inside the open note do nothing at all.
+    useUi.getState().requestReveal({ path, anchor: opts.anchor, line: opts.line })
   }
+  // Opening a note usually replaces the active tab, so clicking through the
+  // file tree displaces one note per click. Diffing the tabs rather than
+  // re-deriving which case `openNote` took keeps the two from drifting apart.
+  const before = useWorkspace.getState().tabs.map((tab) => tab.path)
   useWorkspace.getState().openNote(path, opts)
   void useEditor.getState().open(path)
+
+  const after = new Set(useWorkspace.getState().tabs.map((tab) => tab.path))
+  for (const displaced of before) {
+    if (!after.has(displaced)) void releaseNote(displaced)
+  }
+}
+
+/* -------------------------------------------------------------- tabs */
+
+/**
+ * Close a tab and let go of the note behind it.
+ *
+ * `workspaceStore` only knows about tabs, so closing one used to leave the
+ * buffer — the whole text of the note — in memory for the rest of the session.
+ * Releasing it has to wait for the debounced autosave, or closing a tab
+ * seconds after typing would drop those keystrokes on the floor.
+ */
+export async function closeTab(index: number): Promise<void> {
+  const path = useWorkspace.getState().tabs[index]?.path
+  useWorkspace.getState().closeTab(index)
+  if (path) await releaseNote(path)
+}
+
+/** Close every tab but one, releasing the notes that are no longer open. */
+export async function closeOtherTabs(index: number): Promise<void> {
+  const before = useWorkspace.getState().tabs.map((tab) => tab.path)
+  useWorkspace.getState().closeOthers(index)
+  await Promise.all(before.map((path) => releaseNote(path)))
+}
+
+/**
+ * Drop a note's buffer once no tab shows it any more.
+ *
+ * The same note can sit in two tabs, so the check is against what is left
+ * rather than against the tab that just went away.
+ */
+async function releaseNote(path: string): Promise<void> {
+  if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
+  await useEditor.getState().save(path)
+  if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
+  useEditor.getState().close(path)
 }
 
 /* ------------------------------------------------------------ creating */
@@ -102,7 +149,7 @@ export function promptNewFolder(parent = ''): void {
 /* ------------------------------------------------------------ renaming */
 
 export function promptRename(path: string): void {
-  const isFolder = !path.endsWith('.md')
+  const isFolder = !isMarkdownPath(path)
   const name = basename(path)
   useUi.getState().showPrompt({
     title: isFolder ? 'Rename folder' : 'Rename note',
@@ -114,11 +161,13 @@ export function promptRename(path: string): void {
       const next = value.trim()
       if (!next) return 'Give it a name'
       if (next === name) return
-      const target = joinPath(dirname(path), isFolder || next.endsWith('.md') ? next : `${next}.md`)
+      await useEditor.getState().saveAll()
+      const target = joinPath(dirname(path), isFolder || isMarkdownPath(next) ? next : `${next}.md`)
       const res = await window.lumina.notes.rename(path, target)
       if (!res.ok || !res.data) return res.error ?? 'Could not rename'
       useEditor.getState().rename(path, res.data)
       useWorkspace.getState().renamePathInTabs(path, res.data)
+      renameStarredPaths(path, res.data)
     }
   })
 }
@@ -131,6 +180,7 @@ export async function movePath(path: string, targetFolder: string): Promise<void
     toast('A folder cannot be moved inside itself', 'error')
     return
   }
+  await useEditor.getState().saveAll()
   const res = await window.lumina.notes.rename(path, target)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not move', 'error')
@@ -138,12 +188,13 @@ export async function movePath(path: string, targetFolder: string): Promise<void
   }
   useEditor.getState().rename(path, res.data)
   useWorkspace.getState().renamePathInTabs(path, res.data)
+  renameStarredPaths(path, res.data)
 }
 
 /* ------------------------------------------------------------ deleting */
 
 export function confirmDelete(path: string): void {
-  const isFolder = !path.endsWith('.md')
+  const isFolder = !isMarkdownPath(path)
   useUi.getState().showConfirm({
     title: `Delete ${isFolder ? 'folder' : 'note'}?`,
     body: `"${basename(path)}" goes to the recycle bin. You can restore it from there.`,
@@ -157,6 +208,7 @@ export function confirmDelete(path: string): void {
       }
       useEditor.getState().close(path)
       useWorkspace.getState().removePathFromTabs(path)
+      removeStarredPaths(path)
     }
   })
 }
@@ -232,19 +284,40 @@ export function isStarred(path: string): boolean {
   return useSettings.getState().settings.starred.includes(path)
 }
 
+export function renameStarredPaths(from: string, to: string): void {
+  const { settings, patch } = useSettings.getState()
+  const starred = settings.starred.map((path) => rebaseDescendantPath(path, from, to))
+  if (starred.some((path, i) => path !== settings.starred[i])) patch({ starred })
+}
+
+export function removeStarredPaths(parent: string): void {
+  const { settings, patch } = useSettings.getState()
+  const starred = settings.starred.filter((path) => !isPathAtOrBelow(path, parent))
+  if (starred.length !== settings.starred.length) patch({ starred })
+}
+
 /* --------------------------------------------------------------- vault */
 
 export async function pickVault(): Promise<void> {
   useVault.getState().setLoading(true)
-  const payload = await window.lumina.vault.pick()
-  if (!payload) useVault.getState().setLoading(false)
+  try {
+    const payload = await window.lumina.vault.pick()
+    if (!payload) useVault.getState().setLoading(false)
+  } catch (err) {
+    useVault.getState().setLoading(false)
+    toast(`Could not open the vault: ${(err as Error).message}`, 'error')
+  }
 }
 
 export async function openVaultPath(dir: string): Promise<void> {
   useVault.getState().setLoading(true)
-  const payload = await window.lumina.vault.open(dir)
-  if (!payload) {
+  try {
+    const payload = await window.lumina.vault.open(dir)
+    if (payload) return
     useVault.getState().setLoading(false)
     toast('That folder is no longer there', 'error')
+  } catch (err) {
+    useVault.getState().setLoading(false)
+    toast(`Could not open the vault: ${(err as Error).message}`, 'error')
   }
 }

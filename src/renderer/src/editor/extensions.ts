@@ -1,5 +1,11 @@
 /** Assembles the CodeMirror extension set for one open note. */
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete'
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+  completionStatus
+} from '@codemirror/autocomplete'
 import {
   defaultKeymap,
   history,
@@ -12,7 +18,7 @@ import { markdown, markdownLanguage, insertNewlineContinueMarkup } from '@codemi
 import { languages } from '@codemirror/language-data'
 import { bracketMatching, indentOnInput } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { Compartment, EditorState, Prec, type Extension } from '@codemirror/state'
 import {
   drawSelection,
   dropCursor,
@@ -20,26 +26,26 @@ import {
   highlightSpecialChars,
   keymap,
   lineNumbers,
-  rectangularSelection
+  rectangularSelection,
+  type KeyBinding
 } from '@codemirror/view'
 import type { EditorSettings } from '@shared/types'
 import { luminaEditorTheme } from './cmTheme'
-import {
-  insertLink,
-  insertWikilink,
-  toggleBullet,
-  toggleHeading,
-  toggleNumbered,
-  toggleQuote,
-  toggleTask,
-  toggleWrap
-} from './format'
 import { livePreviewExtension } from './livePreview'
 import { luminaMarkdownExtensions } from './markdownExtensions'
 import { linkClickHandlers, tagCompletion, wikilinkCompletion, type ClickHandlers } from './wikilink'
+import { slashCompletion } from './slashCommands'
+import { COMMANDS, hotkeyFor, runCommand } from '../lib/commands'
+import { translateAccelerator } from '../lib/hotkeys'
 
 /** Reconfigured in place when settings change, so the note is never reloaded. */
 export const settingsCompartment = new Compartment()
+
+/**
+ * Reconfigured whenever `settings.hotkeys` changes, so a rebound Editor-section
+ * command takes effect in the editor without reloading the note.
+ */
+export const formatKeymapCompartment = new Compartment()
 
 export interface EditorOptions {
   path: string
@@ -54,6 +60,19 @@ export function settingsExtensions(path: string, settings: EditorSettings): Exte
   return [
     livePreviewExtension(path, settings.livePreview),
     settings.showLineNumbers ? lineNumbers() : [],
+    // Sits here rather than in the static set so toggling the preference takes
+    // effect on the open note. It is ahead of `standardKeymap` in the array, so
+    // list continuation still wins over the default Enter.
+    settings.smartLists
+      ? keymap.of([
+          {
+            key: 'Enter',
+            // Yield to an open completion popup (e.g. accepting a wikilink) —
+            // otherwise Enter always continues the list markup instead.
+            run: (v) => (completionStatus(v.state) === 'active' ? false : insertNewlineContinueMarkup(v))
+          }
+        ])
+      : [],
     EditorView.contentAttributes.of({
       spellcheck: settings.spellcheck ? 'true' : 'false',
       // Give screen readers something better than "text box".
@@ -62,39 +81,47 @@ export function settingsExtensions(path: string, settings: EditorSettings): Exte
   ]
 }
 
-export function createExtensions(opts: EditorOptions): Extension[] {
-  const { settings } = opts
-
-  const formatKeymap = keymap.of([
-    { key: 'Mod-b', run: (v) => toggleWrap(v, '**') },
-    { key: 'Mod-i', run: (v) => toggleWrap(v, '*') },
-    { key: 'Mod-Shift-h', run: (v) => toggleWrap(v, '==') },
-    { key: 'Mod-Shift-x', run: (v) => toggleWrap(v, '~~') },
-    { key: 'Mod-e', run: (v) => toggleWrap(v, '`') },
-    { key: 'Mod-k', run: insertLink },
-    { key: 'Mod-Shift-k', run: insertWikilink },
-    { key: 'Mod-Enter', run: toggleTask },
-    { key: 'Mod-Shift-q', run: toggleQuote },
-    { key: 'Mod-Shift-8', run: toggleBullet },
-    { key: 'Mod-Shift-7', run: toggleNumbered },
-    { key: 'Mod-1', run: (v) => toggleHeading(v, 1) },
-    { key: 'Mod-2', run: (v) => toggleHeading(v, 2) },
-    { key: 'Mod-3', run: (v) => toggleHeading(v, 3) },
-    { key: 'Mod-4', run: (v) => toggleHeading(v, 4) },
-    {
-      key: 'Mod-s',
+/**
+ * The editor's own keymap, derived from the `Editor`-section entries in the
+ * command registry rather than a second hardcoded list — this is what makes
+ * rebinding a format command in Settings > Hotkeys actually take effect while
+ * typing, and it is reconfigured whenever `settings.hotkeys` changes.
+ *
+ * `Mod-s` and `Tab` stay outside the registry: save needs this editor
+ * instance's own `onSave` closure, and Tab-to-indent isn't a palette command.
+ */
+export function buildFormatKeymap(onSave: () => void): Extension {
+  const bindings: KeyBinding[] = []
+  for (const command of COMMANDS) {
+    if (command.section !== 'Editor') continue
+    const key = translateAccelerator(hotkeyFor(command))
+    if (!key) continue
+    bindings.push({
+      key,
       run: () => {
-        opts.onSave()
+        runCommand(command.id)
         return true
       }
-    },
-    // Tab indents the list you are in rather than inserting a literal tab.
-    { key: 'Tab', run: indentMore, shift: indentLess }
-  ])
+    })
+  }
 
-  const listKeymap = settings.smartLists
-    ? keymap.of([{ key: 'Enter', run: insertNewlineContinueMarkup }])
-    : []
+  bindings.push({
+    key: 'Mod-s',
+    run: () => {
+      onSave()
+      return true
+    }
+  })
+  // Tab indents the list you are in rather than inserting a literal tab.
+  bindings.push({ key: 'Tab', run: indentMore, shift: indentLess })
+
+  // Beats CodeMirror's own built-ins (e.g. searchKeymap's Mod-d) regardless of
+  // extension order, so a rebound or newly-added Editor command always wins.
+  return Prec.highest(keymap.of(bindings))
+}
+
+export function createExtensions(opts: EditorOptions): Extension[] {
+  const { settings } = opts
 
   return [
     history(),
@@ -117,7 +144,7 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     }),
 
     autocompletion({
-      override: [wikilinkCompletion, tagCompletion],
+      override: [wikilinkCompletion, tagCompletion, slashCompletion],
       activateOnTyping: true,
       icons: false,
       closeOnBlur: true,
@@ -125,12 +152,10 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     }),
 
     settingsCompartment.of(settingsExtensions(opts.path, settings)),
+    formatKeymapCompartment.of(buildFormatKeymap(opts.onSave)),
     linkClickHandlers(opts.handlers),
     luminaEditorTheme,
 
-    // Ours first so Mod-b and friends win over the defaults.
-    formatKeymap,
-    listKeymap,
     keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap]),
     keymap.of(standardKeymap),
     keymap.of(defaultKeymap),

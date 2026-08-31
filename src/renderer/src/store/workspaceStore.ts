@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { LeftPanel, RightPanel, TabState, WorkspaceState } from '@shared/types'
+import { isPathAtOrBelow, rebaseDescendantPath } from '@shared/markdown-parse'
 
 interface WorkspaceStore extends WorkspaceState {
   /** Navigation history across all tabs, for Alt+Left / Alt+Right. */
@@ -16,6 +17,7 @@ interface WorkspaceStore extends WorkspaceState {
   nextTab: (delta: number) => void
   renamePathInTabs: (from: string, to: string) => void
   removePathFromTabs: (path: string) => void
+  setTabCursor: (path: string, cursor: number) => void
   back: () => void
   forward: () => void
 
@@ -44,26 +46,49 @@ const INITIAL: WorkspaceState = {
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
+let pendingWorkspace: WorkspaceState | null = null
+let persistChain: Promise<void> = Promise.resolve()
+
+function workspaceSnapshot(state: WorkspaceStore): WorkspaceState {
+  return {
+    tabs: state.tabs,
+    activeTab: state.activeTab,
+    leftOpen: state.leftOpen,
+    rightOpen: state.rightOpen,
+    leftWidth: state.leftWidth,
+    rightWidth: state.rightWidth,
+    leftPanel: state.leftPanel,
+    rightPanel: state.rightPanel,
+    expanded: state.expanded,
+    focusMode: state.focusMode
+  }
+}
 
 /** Save the layout back to `.lumina/workspace.json`, coalesced. */
 function persist(state: WorkspaceStore): void {
   if (!state.hydrated) return
+  pendingWorkspace = workspaceSnapshot(state)
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
-    void window.lumina.workspace.set({
-      tabs: state.tabs,
-      activeTab: state.activeTab,
-      leftOpen: state.leftOpen,
-      rightOpen: state.rightOpen,
-      leftWidth: state.leftWidth,
-      rightWidth: state.rightWidth,
-      leftPanel: state.leftPanel,
-      rightPanel: state.rightPanel,
-      expanded: state.expanded,
-      focusMode: state.focusMode
-    })
+    void flushWorkspacePersistence().catch(() => {})
   }, 500)
+}
+
+/** Persist the latest debounced layout before a vault switch or quit. */
+export async function flushWorkspacePersistence(): Promise<void> {
+  if (persistTimer) {
+    clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  const pending = pendingWorkspace
+  pendingWorkspace = null
+  if (pending) {
+    persistChain = persistChain
+      .catch(() => {})
+      .then(() => window.lumina.workspace.set(pending).then(() => {}))
+  }
+  await persistChain
 }
 
 export const useWorkspace = create<WorkspaceStore>((set, get) => {
@@ -155,16 +180,39 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
     },
 
     renamePathInTabs: (from, to) => {
-      const tabs = get().tabs.map((t) => (t.path === from ? { ...t, path: to } : t))
-      update({ tabs })
-      set({ history: get().history.map((h) => (h === from ? to : h)) })
+      const tabs = get().tabs.map((t) => ({ ...t, path: rebaseDescendantPath(t.path, from, to) }))
+      const expanded = get().expanded.map((p) => rebaseDescendantPath(p, from, to))
+      update({ tabs, expanded })
+      set({ history: get().history.map((h) => rebaseDescendantPath(h, from, to)) })
     },
 
     removePathFromTabs: (path) => {
       const { tabs, activeTab } = get()
-      if (!tabs.some((t) => t.path === path)) return
-      const next = tabs.filter((t) => t.path !== path)
-      update({ tabs: next, activeTab: Math.min(activeTab, Math.max(0, next.length - 1)) })
+      const next = tabs.filter((t) => !isPathAtOrBelow(t.path, path))
+      const expanded = get().expanded.filter((p) => !isPathAtOrBelow(p, path))
+      if (next.length !== tabs.length || expanded.length !== get().expanded.length) {
+        update({
+          tabs: next,
+          expanded,
+          activeTab: Math.min(activeTab, Math.max(0, next.length - 1))
+        })
+      }
+      const history = get().history.filter((p) => !isPathAtOrBelow(p, path))
+      set({ history, historyIndex: Math.min(get().historyIndex, history.length - 1) })
+    },
+
+    /**
+     * Remember where the caret was in a note, so reopening it lands there.
+     *
+     * Written when a tab is left and when the app flushes, not on every
+     * keystroke — this persists to `workspace.json` and the caret moves
+     * constantly. The equality check keeps a switch between two untouched tabs
+     * from queueing a write that changes nothing.
+     */
+    setTabCursor: (path, cursor) => {
+      const { tabs } = get()
+      if (!tabs.some((tab) => tab.path === path && tab.cursor !== cursor)) return
+      update({ tabs: tabs.map((tab) => (tab.path === path ? { ...tab, cursor } : tab)) })
     },
 
     back: () => {

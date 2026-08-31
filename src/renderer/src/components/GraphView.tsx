@@ -363,6 +363,15 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
           dragged.current = null
           panning.current = null
         }}
+        onPointerCancel={() => {
+          if (dragged.current) {
+            dragged.current.fx = null
+            dragged.current.fy = null
+            sim.current?.alphaTarget(0)
+          }
+          dragged.current = null
+          panning.current = null
+        }}
         onPointerLeave={() => {
           hovered.current = null
           setHoverLabel(null)
@@ -370,6 +379,7 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
           draw()
         }}
         onWheel={(e) => {
+          e.preventDefault()
           const rect = canvas.current!.getBoundingClientRect()
           const mx = e.clientX - rect.left
           const my = e.clientY - rect.top

@@ -15,14 +15,16 @@ import TitleBar from './components/TitleBar'
 import Toasts from './components/Toasts'
 import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
-import { openNote } from './lib/actions'
+import { getActiveView } from './editor/activeView'
+import { captureActiveSession } from './editor/session'
+import { openNote, removeStarredPaths } from './lib/actions'
 import { COMMANDS, hotkeyFor } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
 import { useEditor } from './store/editorStore'
-import { useSettings } from './store/settingsStore'
-import { useUi } from './store/uiStore'
+import { flushSettingsPersistence, useSettings } from './store/settingsStore'
+import { toast, useUi } from './store/uiStore'
 import { useVault } from './store/vaultStore'
-import { useWorkspace } from './store/workspaceStore'
+import { activePath, flushWorkspacePersistence, useWorkspace } from './store/workspaceStore'
 
 export default function App(): React.JSX.Element {
   const vault = useVault((s) => s.vault)
@@ -42,12 +44,22 @@ export default function App(): React.JSX.Element {
         useEditor.getState().reset()
       }
 
-      useSettings.getState().hydrate(payload.settings, payload.theme, payload.snippets)
-      useWorkspace.getState().hydrate(payload.workspace)
+      const starred = payload.settings.starred.filter((path) => !!payload.index.notes[path])
+      useSettings
+        .getState()
+        .hydrate({ ...payload.settings, starred }, payload.theme, payload.snippets)
+      if (starred.length !== payload.settings.starred.length) {
+        useSettings.getState().patch({ starred })
+      }
+      const activeTabPath = payload.workspace.tabs[payload.workspace.activeTab]?.path
+      const tabs = payload.workspace.tabs.filter((tab) => !!payload.index.notes[tab.path])
+      const activeTab = Math.max(0, tabs.findIndex((tab) => tab.path === activeTabPath))
+      const workspace = { ...payload.workspace, tabs, activeTab }
+      useWorkspace.getState().hydrate(workspace)
       useVault.getState().setVault(payload.vault, payload.tree, payload.index)
 
       // Load the note that was open last time so the app resumes where it was.
-      const active = payload.workspace.tabs[payload.workspace.activeTab]
+      const active = workspace.tabs[workspace.activeTab]
       if (active) void useEditor.getState().open(active.path)
     }
 
@@ -69,7 +81,11 @@ export default function App(): React.JSX.Element {
           `${path} is not inside a vault Lumina knows about. Opening its folder ` +
           `as a vault lets Lumina index the notes beside it.`,
         confirmLabel: 'Open folder',
-        onConfirm: () => void window.lumina.files.adoptVault(ask.file)
+        onConfirm: () => {
+          void window.lumina.files.adoptVault(ask.file).catch((err) => {
+            toast(`Could not open the folder: ${(err as Error).message}`, 'error')
+          })
+        }
       })
     }
 
@@ -81,9 +97,10 @@ export default function App(): React.JSX.Element {
         useVault.getState().setIndex(index)
         for (const change of changes) {
           if (change.type === 'change') void useEditor.getState().externalChange(change.path)
-          else if (change.type === 'unlink') {
+          else if (change.type === 'unlink' || change.type === 'unlinkDir') {
             useEditor.getState().close(change.path)
             useWorkspace.getState().removePathFromTabs(change.path)
+            removeStarredPaths(change.path)
           }
         }
       }),
@@ -93,9 +110,14 @@ export default function App(): React.JSX.Element {
       // The app is quitting and the main process is waiting on us. Autosave is
       // debounced, so the last few keystrokes live only here until this runs.
       window.lumina.app.onFlush(() => {
-        void useEditor
-          .getState()
-          .saveAll()
+        // Synchronous, and before the workspace flush below, so the caret in
+        // the note on screen is part of what gets written out.
+        captureActiveSession(activePath(), getActiveView())
+        void Promise.all([
+          useEditor.getState().saveAll(),
+          flushSettingsPersistence(),
+          flushWorkspacePersistence()
+        ])
           .finally(() => window.lumina.app.flushed())
       }),
 
@@ -105,10 +127,22 @@ export default function App(): React.JSX.Element {
 
     // A vault may already be open by the time React mounts, and a note passed
     // on the command line may already have been resolved against it.
-    void window.lumina.vault.current().then((payload) => {
-      if (payload) receive(payload)
-      return window.lumina.files.takeOpenRequests()
-    }).then((requests) => requests?.forEach(openRequested))
+    void (async () => {
+      try {
+        const payload = await window.lumina.vault.current()
+        if (payload) receive(payload)
+      } catch (err) {
+        toast(`Could not restore the vault: ${(err as Error).message}`, 'error')
+      }
+
+      // File requests must still drain when restoring the previous vault fails.
+      try {
+        const requests = await window.lumina.files.takeOpenRequests()
+        requests.forEach(openRequested)
+      } catch (err) {
+        toast(`Could not open the requested note: ${(err as Error).message}`, 'error')
+      }
+    })()
 
     return () => unsubscribers.forEach((off) => off())
   }, [])

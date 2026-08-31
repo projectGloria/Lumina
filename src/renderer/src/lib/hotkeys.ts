@@ -60,6 +60,35 @@ export function matchesAccelerator(e: KeyboardEvent, accel: string): boolean {
   return e.code.toLowerCase() === `key${parsed.key}` || e.code.toLowerCase() === parsed.key
 }
 
+const CM_KEY_NAMES: Record<string, string> = {
+  enter: 'Enter',
+  escape: 'Escape',
+  tab: 'Tab',
+  backspace: 'Backspace',
+  delete: 'Delete',
+  arrowleft: 'ArrowLeft',
+  arrowright: 'ArrowRight',
+  arrowup: 'ArrowUp',
+  arrowdown: 'ArrowDown'
+}
+
+/**
+ * Translate an accelerator like `Ctrl+Shift+H` into a CodeMirror keymap key
+ * like `Mod-Shift-h`, so the editor's own keymap can be built from the same
+ * `Command` registry instead of a second, hardcoded list.
+ */
+export function translateAccelerator(accel: string): string | null {
+  const parsed = parseAccelerator(accel)
+  if (!parsed) return null
+
+  const parts: string[] = []
+  if (parsed.ctrl || parsed.meta) parts.push('Mod')
+  if (parsed.alt) parts.push('Alt')
+  if (parsed.shift) parts.push('Shift')
+  parts.push(CM_KEY_NAMES[parsed.key] ?? parsed.key)
+  return parts.join('-')
+}
+
 const DISPLAY: Record<string, string> = {
   ctrl: 'Ctrl',
   control: 'Ctrl',

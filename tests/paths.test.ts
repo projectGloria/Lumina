@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -7,6 +9,7 @@ import {
   isIgnored,
   isMarkdown,
   safeJoin,
+  safeVaultPath,
   samePath,
   toRelative,
   vaultContaining
@@ -43,6 +46,35 @@ describe('safeJoin', () => {
   })
 })
 
+describe('safeVaultPath', () => {
+  it('accepts in-vault files and new paths under real directories', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-safe-path-'))
+    try {
+      await fs.mkdir(path.join(root, 'Notes'))
+      await fs.writeFile(path.join(root, 'Notes', 'Today.md'), 'safe')
+      expect(await safeVaultPath(root, 'Notes/Today.md')).toBe(path.join(root, 'Notes', 'Today.md'))
+      expect(await safeVaultPath(root, 'Notes/New.md', true)).toBe(path.join(root, 'Notes', 'New.md'))
+      expect(await safeVaultPath(root, 'Notes/New.md')).toBeNull()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a symlink that escapes the vault', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-vault-'))
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-outside-'))
+    try {
+      await fs.writeFile(path.join(outside, 'secret.md'), 'outside')
+      await fs.symlink(outside, path.join(root, 'escape'), process.platform === 'win32' ? 'junction' : 'dir')
+      expect(await safeVaultPath(root, 'escape/secret.md')).toBeNull()
+      expect(await safeVaultPath(root, 'escape/new.md', true)).toBeNull()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+      await fs.rm(outside, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('toRelative', () => {
   it('returns forward-slash vault-relative paths', () => {
     expect(toRelative(VAULT, path.join(VAULT, 'a', 'b.md'))).toBe('a/b.md')
@@ -67,6 +99,7 @@ describe('isMarkdown', () => {
   it('recognises the markdown extensions and nothing else', () => {
     expect(isMarkdown('a.md')).toBe(true)
     expect(isMarkdown('a.MARKDOWN')).toBe(true)
+    expect(isMarkdown('a.mdx')).toBe(true)
     expect(isMarkdown('a.png')).toBe(false)
     expect(isMarkdown('a')).toBe(false)
   })

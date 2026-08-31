@@ -267,6 +267,20 @@ function Stat({ label, value }: { label: string; value: string }): React.JSX.Ele
 
 /* ----------------------------------------------------------------- hotkeys */
 
+// CodeMirror's own default/search keymaps bind these regardless of what is in
+// COMMANDS, so the clash check above can't see them. A rebound Editor command
+// always wins in the editor (its keymap is `Prec.highest`), but the built-in
+// still fires everywhere else the accelerator would otherwise apply — worth a
+// heads-up rather than a silent surprise.
+const CM_BUILTIN_HOTKEYS: Record<string, string> = {
+  'Ctrl+Z': 'CodeMirror: undo',
+  'Ctrl+Shift+Z': 'CodeMirror: redo',
+  'Ctrl+Y': 'CodeMirror: redo',
+  'Ctrl+F': 'CodeMirror: find',
+  'Ctrl+A': 'CodeMirror: select all',
+  'Shift+Alt+Down': 'CodeMirror: duplicate line down'
+}
+
 function HotkeysTab(): React.JSX.Element {
   const overrides = useSettings((s) => s.settings.hotkeys)
   const patch = useSettings((s) => s.patch)
@@ -292,6 +306,8 @@ function HotkeysTab(): React.JSX.Element {
         return
       }
       patch({ hotkeys: { ...overrides, [recording]: accel } })
+      const builtin = CM_BUILTIN_HOTKEYS[accel]
+      if (builtin) toast(`Note: ${accel} is also bound to ${builtin} outside the editor`)
       setRecording(null)
     }
     window.addEventListener('keydown', onKey, true)

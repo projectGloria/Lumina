@@ -43,7 +43,8 @@
  * wider than the measure. Keeping the content box full width and pushing the
  * text inward with symmetric padding is not subject to that, and it has the
  * better side effect: the line-number gutter sits beside the content edge
- * instead of stranded at the far left of a wide pane.
+ * instead of stranded at the far left of a wide pane. The padding itself
+ * lives on `.cm-line` below, not here — see that rule for why.
  *
  * The selector carries two classes so it outranks the base theme regardless of
  * how the stylesheets end up ordered.
@@ -53,18 +54,26 @@
   width: 100%;
   max-width: none;
   margin: 0;
-  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
-  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding: 0;
   caret-color: var(--lum-accent);
 }
 
+/*
+ * The centering padding lives here rather than on `.cm-content` because
+ * CodeMirror's selection-drawing code (`rectanglesForRange` in
+ * @codemirror/view) reads `.cm-line`'s own left/right padding to decide where
+ * a full-line selection rectangle stops — it ignores `.cm-content`'s padding
+ * entirely. Padding `.cm-content` instead left the selection highlight
+ * spanning the full editor width, edge to edge, well past the centered text.
+ */
 .cm-line {
-  padding: 0;
+  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
 }
 
-.cm-cursor,
-.cm-dropCursor {
-  border-left: 2px solid var(--lum-accent);
+.cm-editor .cm-cursor,
+.cm-editor .cm-dropCursor {
+  border-left: 1.5px solid var(--lum-accent) !important;
 }
 
 .cm-selectionBackground,
@@ -340,11 +349,23 @@
  * Frontmatter, shown as metadata rather than prose. Clicking anywhere on it
  * puts the caret back in the raw block, so nothing here is a dead end.
  */
+.cm-properties-outer {
+  /*
+   * Block-replace widgets (`block: true` in livePreview.ts) render as
+   * siblings of `.cm-line`, not inside one, so they no longer inherit the
+   * centering inset now that it lives on `.cm-line` rather than
+   * `.cm-content` (see the comment above `.cm-line` for why it moved).
+   */
+  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding-bottom: var(--lum-space-5);
+  box-sizing: border-box;
+}
+
 .cm-properties {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin: 0 0 var(--lum-space-5);
   padding: var(--lum-space-3) 0 var(--lum-space-4);
   border-bottom: 1px solid var(--lum-border);
   font-family: var(--lum-font-ui);
@@ -355,7 +376,10 @@
 
 .cm-properties.is-empty {
   padding: 0;
-  margin-bottom: var(--lum-space-4);
+}
+
+.cm-properties-outer:has(.cm-properties.is-empty) {
+  padding-bottom: var(--lum-space-4);
 }
 
 .cm-property {
@@ -399,7 +423,12 @@
 /* --------------------------------------------------------------- tables */
 
 .cm-table-wrap {
-  margin: var(--lum-space-3) 0 var(--lum-space-4);
+  /* See the comment on `.cm-properties-outer` above: block-replace widgets
+   * need their own centering inset now that `.cm-content` no longer has one. */
+  padding: var(--lum-space-3)
+    max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2)
+    var(--lum-space-4);
+  box-sizing: border-box;
   overflow-x: auto;
   cursor: text;
 }

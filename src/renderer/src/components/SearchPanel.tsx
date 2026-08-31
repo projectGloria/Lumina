@@ -26,20 +26,25 @@ export default function SearchPanel(): React.JSX.Element {
       return
     }
     setSearching(true)
+    let cancelled = false
     // Debounced so a fast typist does not queue a search per keystroke.
     const timer = setTimeout(() => {
-      let cancelled = false
-      void window.lumina.search.query(q).then((results) => {
-        if (!cancelled) {
-          setHits(results)
-          setSearching(false)
-        }
-      })
-      return () => {
-        cancelled = true
-      }
+      void window.lumina.search
+        .query(q)
+        .then((results) => {
+          if (!cancelled) setHits(results)
+        })
+        .catch(() => {
+          if (!cancelled) setHits([])
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false)
+        })
     }, 160)
-    return () => clearTimeout(timer)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [query])
 
   const totalMatches = hits.reduce((sum, h) => sum + Math.max(1, h.matches.length), 0)

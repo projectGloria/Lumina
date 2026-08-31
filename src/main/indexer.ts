@@ -1,10 +1,10 @@
 import fs from 'node:fs/promises'
 import type { LinkRef, NoteIndexEntry, VaultIndex } from '@shared/types'
 import { emptyIndex } from '@shared/types'
-import { buildAliasMap, parseNote, resolveLink } from '@shared/markdown-parse'
-import { safeJoin } from './paths'
+import { buildAliasMap, isPathAtOrBelow, parseNote, resolveLink } from '@shared/markdown-parse'
+import { safeVaultPath } from './paths'
 import { cacheFile, readJson, writeJson } from './settings'
-import { listNotes, requireRoot } from './vault'
+import { getRoot, listNotes, requireRoot } from './vault'
 import { loadSearch, removeDoc, resetSearch, serializeSearch, upsertDoc } from './search'
 
 const CACHE_VERSION = 3
@@ -22,9 +22,21 @@ const notes = new Map<string, NoteIndexEntry>()
 let snapshot: VaultIndex = emptyIndex()
 
 let dirty = false
+let revision = 0
+let rebuilding: Promise<void> | null = null
 
-export function getIndex(): VaultIndex {
-  if (dirty) rebuildSnapshot()
+function markDirty(): void {
+  revision++
+  dirty = true
+}
+
+export async function getIndex(): Promise<VaultIndex> {
+  while (dirty) {
+    rebuilding ??= rebuildSnapshot().finally(() => {
+      rebuilding = null
+    })
+    await rebuilding
+  }
   return snapshot
 }
 
@@ -37,12 +49,18 @@ export function getIndex(): VaultIndex {
  * this runs whole rather than incrementally. It is a pure in-memory pass over
  * already-parsed entries, cheap enough to do on every change.
  */
-function rebuildSnapshot(): void {
+async function rebuildSnapshot(): Promise<void> {
+  const startingRevision = revision
   const paths = [...notes.keys()]
   const aliases = buildAliasMap(notes.values())
   const next: VaultIndex = emptyIndex()
 
+  let count = 0
   for (const [notePath, entry] of notes) {
+    if (++count % 500 === 0) {
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+
     const links: LinkRef[] = entry.links.map((l) => ({
       ...l,
       to: resolveLink(l.target, notePath, paths, aliases)
@@ -67,13 +85,16 @@ function rebuildSnapshot(): void {
   }
 
   snapshot = next
-  dirty = false
+  // `setImmediate` above lets filesystem events run during a large rebuild.
+  // If one changed the notes map, loop through a fresh rebuild rather than
+  // declaring an inconsistent snapshot clean.
+  dirty = revision !== startingRevision
 }
 
 /* ------------------------------------------------------------- maintenance */
 
 async function statMtime(rel: string): Promise<number | null> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel)
   if (!abs) return null
   try {
     return (await fs.stat(abs)).mtimeMs
@@ -84,14 +105,14 @@ async function statMtime(rel: string): Promise<number | null> {
 
 /** Read, parse and index one note. Returns false if it could not be read. */
 export async function indexNote(rel: string): Promise<boolean> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel)
   if (!abs) return false
   try {
     const [content, stat] = await Promise.all([fs.readFile(abs, 'utf8'), fs.stat(abs)])
     const entry = parseNote(rel, content, stat.mtimeMs)
     notes.set(rel, entry)
     upsertDoc(rel, entry.title, entry.tags, content)
-    dirty = true
+    markDirty()
     return true
   } catch {
     return false
@@ -101,8 +122,27 @@ export async function indexNote(rel: string): Promise<boolean> {
 export function forgetNote(rel: string): void {
   if (notes.delete(rel)) {
     removeDoc(rel)
-    dirty = true
+    markDirty()
   }
+}
+
+/**
+ * Forget a folder and everything under it.
+ *
+ * A folder deleted outside the app can arrive as a lone `unlinkDir` with no
+ * `unlink` for the notes inside it, which would otherwise leave them in the
+ * index: ghosts in the switcher and backlinks pointing at files that are gone.
+ */
+export function forgetNotesUnder(rel: string): boolean {
+  let changed = false
+  for (const notePath of [...notes.keys()]) {
+    if (!isPathAtOrBelow(notePath, rel)) continue
+    notes.delete(notePath)
+    removeDoc(notePath)
+    changed = true
+  }
+  if (changed) markDirty()
+  return changed
 }
 
 /* ------------------------------------------------------------------ build */
@@ -123,6 +163,7 @@ export async function buildIndex(): Promise<BuildStats> {
   const vault = requireRoot()
 
   notes.clear()
+  markDirty()
   resetSearch()
 
   const cache = await readJson<CacheShape>(cacheFile(vault), {
@@ -144,6 +185,7 @@ export async function buildIndex(): Promise<BuildStats> {
       const mtime = await statMtime(rel)
       if (mtime !== null && Math.abs(mtime - cached.mtime) < 1) {
         notes.set(rel, cached)
+        markDirty()
         reused++
         continue
       }
@@ -158,8 +200,8 @@ export async function buildIndex(): Promise<BuildStats> {
     }
   }
 
-  dirty = true
-  rebuildSnapshot()
+  markDirty()
+  await getIndex()
 
   return { total: paths.length, parsed, reused, ms: Date.now() - started }
 }
@@ -175,8 +217,18 @@ export function scheduleCacheSave(delay = 4000): void {
   }, delay)
 }
 
+/** Drop a pending save, for a vault being closed or the app shutting down. */
+export function cancelCacheSave(): void {
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = null
+}
+
 export async function saveCache(): Promise<void> {
-  const vault = requireRoot()
+  // A timer can outlive the vault it was scheduled for; there is nothing to
+  // write then, and `requireRoot` would throw into an unhandled rejection.
+  const vault = getRoot()
+  if (!vault) return
+
   const payload: CacheShape = {
     version: CACHE_VERSION,
     notes: Object.fromEntries(notes),

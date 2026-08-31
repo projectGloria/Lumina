@@ -15,7 +15,18 @@ export default function Welcome(): React.JSX.Element {
   const [recent, setRecent] = useState<VaultInfo[]>([])
 
   useEffect(() => {
-    void window.lumina.vault.recent().then(setRecent)
+    let cancelled = false
+    void window.lumina.vault
+      .recent()
+      .then((vaults) => {
+        if (!cancelled) setRecent(vaults)
+      })
+      .catch(() => {
+        if (!cancelled) setRecent([])
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (

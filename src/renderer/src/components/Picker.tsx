@@ -46,7 +46,7 @@ export default function Picker({
 
   useEffect(() => {
     setCursor(0)
-  }, [query])
+  }, [items])
 
   useLayoutEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>('[data-cursor="true"]')

@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url'
 import { net, protocol } from 'electron'
-import { safeJoin } from './paths'
+import { safeVaultPath } from './paths'
 import { getRoot } from './vault'
 
 /**
@@ -37,7 +37,7 @@ export function handleProtocol(): void {
     if (!root) return new Response('No vault open', { status: 404 })
 
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '')
-    const abs = safeJoin(root, rel)
+    const abs = await safeVaultPath(root, rel)
     if (!abs) return new Response('Forbidden', { status: 403 })
 
     try {

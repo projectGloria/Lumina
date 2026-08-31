@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { shell } from 'electron'
-import { snippetsDir } from './settings'
+import { ensureLuminaDir, snippetsDir } from './settings'
 
 export interface Snippet {
   /** File name including `.css`, used as the stable id. */
@@ -11,12 +11,16 @@ export interface Snippet {
 }
 
 let watcher: FSWatcher | null = null
+let reloadTimer: NodeJS.Timeout | null = null
 
 /** Read every `.css` file in the vault snippets folder. */
 export async function readSnippets(vault: string): Promise<Snippet[]> {
   const dir = snippetsDir(vault)
   try {
-    const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith('.css')).sort()
+    const files = (await fs.readdir(dir, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && !entry.isSymbolicLink() && entry.name.toLowerCase().endsWith('.css'))
+      .map((entry) => entry.name)
+      .sort()
     return await Promise.all(
       files.map(async (name) => ({
         name,
@@ -36,12 +40,10 @@ export function startSnippetWatcher(vault: string, onChange: (s: Snippet[]) => v
   void stopSnippetWatcher()
 
   const dir = snippetsDir(vault)
-  let timer: NodeJS.Timeout | null = null
-
   const reload = (): void => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
+    if (reloadTimer) clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(() => {
+      reloadTimer = null
       void readSnippets(vault).then(onChange)
     }, 100)
   }
@@ -56,6 +58,10 @@ export function startSnippetWatcher(vault: string, onChange: (s: Snippet[]) => v
 }
 
 export async function stopSnippetWatcher(): Promise<void> {
+  if (reloadTimer) {
+    clearTimeout(reloadTimer)
+    reloadTimer = null
+  }
   if (watcher) {
     const w = watcher
     watcher = null
@@ -65,6 +71,6 @@ export async function stopSnippetWatcher(): Promise<void> {
 
 export async function openSnippetsFolder(vault: string): Promise<void> {
   const dir = snippetsDir(vault)
-  await fs.mkdir(dir, { recursive: true })
+  await ensureLuminaDir(vault)
   await shell.openPath(dir)
 }

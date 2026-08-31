@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import React, { useMemo, useState } from 'react'
+import { Virtuoso } from 'react-virtuoso'
 import type { TreeNode } from '@shared/types'
 import { dirname } from '@shared/markdown-parse'
 import { Icon } from './Icon'
@@ -18,10 +19,57 @@ import { toast, useUi } from '../store/uiStore'
 import { titleOf, useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 
+interface FlatNode {
+  node: TreeNode
+  depth: number
+}
+
+function flattenTree(nodes: TreeNode[], expanded: string[], depth = 0): FlatNode[] {
+  const result: FlatNode[] = []
+  for (const node of nodes) {
+    result.push({ node, depth })
+    if (node.kind === 'folder' && expanded.includes(node.path)) {
+      result.push(...flattenTree(node.children, expanded, depth + 1))
+    }
+  }
+  return result
+}
+
+const Scroller = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement>>((props, ref) => {
+  return (
+    <div
+      {...props}
+      ref={ref}
+      className={`panel-scroll tree ${props.className || ''}`}
+      onContextMenu={(e) => {
+        if (e.target !== e.currentTarget) return
+        e.preventDefault()
+        useUi.getState().showContextMenu({
+          x: e.clientX,
+          y: e.clientY,
+          items: [
+            { label: 'New note', onSelect: () => promptNewNote('') },
+            { label: 'New folder', onSelect: () => promptNewFolder('') }
+          ]
+        })
+      }}
+      onDragOver={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault()
+      }}
+      onDrop={(e) => {
+        const path = e.dataTransfer.getData('text/lumina-path')
+        if (path && dirname(path) !== '') void movePath(path, '')
+      }}
+    />
+  )
+})
+Scroller.displayName = 'Scroller'
+
 export default function FileTree(): React.JSX.Element {
   const tree = useVault((s) => s.tree)
   const tagFilter = useUi((s) => s.tagFilter)
   const index = useVault((s) => s.index)
+  const expanded = useWorkspace((s) => s.expanded)
 
   // A tag filter turns the tree into a flat, filtered list; nesting would only
   // get in the way when you are looking at one topic.
@@ -30,6 +78,10 @@ export default function FileTree(): React.JSX.Element {
     const paths = new Set(index.tags[tagFilter] ?? [])
     return [...paths].sort((a, b) => titleOf(a).localeCompare(titleOf(b)))
   }, [tagFilter, index])
+
+  const flatTree = useMemo(() => {
+    return flattenTree(tree, expanded)
+  }, [tree, expanded])
 
   return (
     <>
@@ -57,40 +109,29 @@ export default function FileTree(): React.JSX.Element {
         }
       />
 
-      <div
-        className="panel-scroll tree"
-        onContextMenu={(e) => {
-          if (e.target !== e.currentTarget) return
-          e.preventDefault()
-          useUi.getState().showContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            items: [
-              { label: 'New note', onSelect: () => promptNewNote('') },
-              { label: 'New folder', onSelect: () => promptNewFolder('') }
-            ]
-          })
-        }}
-        onDragOver={(e) => {
-          if (e.target === e.currentTarget) e.preventDefault()
-        }}
-        onDrop={(e) => {
-          const path = e.dataTransfer.getData('text/lumina-path')
-          if (path && dirname(path) !== '') void movePath(path, '')
-        }}
-      >
-        {filtered ? (
-          filtered.length ? (
-            filtered.map((path) => <FileRow key={path} path={path} depth={0} />)
-          ) : (
-            <p className="panel-empty">No notes tagged #{tagFilter}</p>
-          )
-        ) : tree.length ? (
-          tree.map((node) => <TreeRow key={node.path} node={node} depth={0} />)
+      {filtered ? (
+        filtered.length ? (
+          <Virtuoso
+            style={{ flex: 1 }}
+            components={{ Scroller }}
+            data={filtered}
+            itemContent={(_i, path) => <FileRow key={path} path={path} depth={0} />}
+          />
         ) : (
-          <p className="panel-empty">This vault is empty. Create your first note.</p>
-        )}
-      </div>
+          <div className="panel-scroll tree"><p className="panel-empty">No notes tagged #{tagFilter}</p></div>
+        )
+      ) : flatTree.length ? (
+        <Virtuoso
+          style={{ flex: 1 }}
+          components={{ Scroller }}
+          data={flatTree}
+          itemContent={(_i, { node, depth }) => (
+            <TreeRow key={node.path} node={node} depth={depth} />
+          )}
+        />
+      ) : (
+        <div className="panel-scroll tree"><p className="panel-empty">This vault is empty. Create your first note.</p></div>
+      )}
     </>
   )
 }
@@ -127,9 +168,8 @@ function FolderRow({
   const [dropping, setDropping] = useState(false)
 
   return (
-    <>
-      <div
-        className={`tree-row folder${dropping ? ' is-dropping' : ''}`}
+    <div
+      className={`tree-row folder${dropping ? ' is-dropping' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => toggle(node.path)}
         draggable
@@ -171,12 +211,6 @@ function FolderRow({
         <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={13} />
         <span className="tree-label truncate">{node.name}</span>
       </div>
-      {expanded
-        ? node.children.map((child) => (
-            <TreeRow key={child.path} node={child} depth={depth + 1} />
-          ))
-        : null}
-    </>
   )
 }
 

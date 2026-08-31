@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { isMarkdownPath } from '@shared/markdown-parse'
 
 /**
  * Notes written into a brand-new vault.
@@ -73,7 +74,8 @@ tags: [lumina, reference]
 | Keys | Action |
 | --- | --- |
 | Ctrl+N | New note |
-| Ctrl+D | Open today's daily note |
+| Ctrl+Alt+D | Open today's daily note |
+| Ctrl+D | Duplicate line (in the editor) |
 | Ctrl+S | Save now (Lumina also autosaves) |
 | Ctrl+W | Close tab |
 | F2 | Rename the current note |
@@ -193,7 +195,7 @@ export async function isEmptyVault(dir: string): Promise<boolean> {
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true })
     return !entries.some(
-      (e) => (e.isFile() && e.name.toLowerCase().endsWith('.md')) || (e.isDirectory() && !e.name.startsWith('.'))
+      (e) => (e.isFile() && isMarkdownPath(e.name)) || (e.isDirectory() && !e.name.startsWith('.'))
     )
   } catch {
     return false

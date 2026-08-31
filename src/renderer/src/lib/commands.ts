@@ -7,8 +7,10 @@
  * seam a plugin API would extend, which is why commands are plain data rather
  * than scattered click handlers.
  */
+import { copyLineDown } from '@codemirror/commands'
 import { dirname } from '@shared/markdown-parse'
 import {
+  closeTab,
   confirmDelete,
   createNote,
   isStarred,
@@ -117,10 +119,7 @@ export const COMMANDS: Command[] = [
     section: 'Navigation',
     hotkey: 'Ctrl+W',
     enabled: hasNote,
-    run: () => {
-      const { activeTab, closeTab } = useWorkspace.getState()
-      closeTab(activeTab)
-    }
+    run: () => void closeTab(useWorkspace.getState().activeTab)
   },
 
   /* ------------------------------------------------------------ notes */
@@ -144,7 +143,7 @@ export const COMMANDS: Command[] = [
     id: 'note.daily',
     title: "Open today's daily note",
     section: 'Notes',
-    hotkey: 'Ctrl+D',
+    hotkey: 'Ctrl+Alt+D',
     run: () => void openDailyNote()
   },
   {
@@ -244,6 +243,16 @@ export const COMMANDS: Command[] = [
   { id: 'format.h1', title: 'Heading 1', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 1)) },
   { id: 'format.h2', title: 'Heading 2', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 2)) },
   { id: 'format.h3', title: 'Heading 3', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 3)) },
+  {
+    id: 'editor.duplicateLine',
+    title: 'Duplicate line',
+    section: 'Editor',
+    hotkey: 'Ctrl+D',
+    enabled: hasNote,
+    run: withView((v) => {
+      copyLineDown(v)
+    })
+  },
 
   /* ------------------------------------------------------------- view */
   {
@@ -364,11 +373,15 @@ async function exportNote(kind: 'html' | 'pdf'): Promise<void> {
 
   const html = renderToHtml(buffer.content, path)
   const title = titleOf(path)
-  const res =
-    kind === 'html'
-      ? await window.lumina.files.exportHtml(title, html)
-      : await window.lumina.files.exportPdf(title, html)
+  try {
+    const res =
+      kind === 'html'
+        ? await window.lumina.files.exportHtml(title, html)
+        : await window.lumina.files.exportPdf(title, html)
 
-  if (res.ok) toast(`Exported ${title}`)
-  else if (res.error) toast(res.error, 'error')
+    if (res.ok) toast(`Exported ${title}`)
+    else if (res.error) toast(res.error, 'error')
+  } catch (err) {
+    toast(`Could not export ${title}: ${(err as Error).message}`, 'error')
+  }
 }

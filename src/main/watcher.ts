@@ -42,7 +42,6 @@ export function startWatcher(vault: string, onChange: ChangeHandler): void {
     ignoreInitial: true,
     persistent: true,
     followSymlinks: false,
-    depth: 12,
     ignored: (p: string) => {
       const rel = toRelative(root, p)
       return rel !== '' && (rel.startsWith('..') || isIgnored(rel))

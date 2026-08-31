@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import type { TreeNode, VaultIndex, VaultInfo } from '@shared/types'
 import { emptyIndex } from '@shared/types'
-import { buildAliasMap, dirname, joinPath, normalizePath, stripExtension } from '@shared/markdown-parse'
+import {
+  buildAliasMap,
+  dirname,
+  isMarkdownPath,
+  joinPath,
+  normalizePath,
+  stripExtension
+} from '@shared/markdown-parse'
 
 interface VaultState {
   vault: VaultInfo | null
@@ -68,7 +75,7 @@ export function aliasMap(): ReadonlyMap<string, string> {
  */
 export function pathForNewNote(target: string, fromPath: string | null): string {
   const t = normalizePath(target)
-  if (t.includes('/')) return t.endsWith('.md') ? t : `${t}.md`
+  if (t.includes('/')) return isMarkdownPath(t) ? t : `${t}.md`
   const folder = fromPath ? dirname(fromPath) : ''
-  return joinPath(folder, t.endsWith('.md') ? t : `${t}.md`)
+  return joinPath(folder, isMarkdownPath(t) ? t : `${t}.md`)
 }

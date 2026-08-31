@@ -125,13 +125,35 @@ function resolveMode(settings: Settings): 'light' | 'dark' {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+let pendingSave: { settings: Settings; theme: ThemeFile } | null = null
+let saveChain: Promise<void> = Promise.resolve()
+
 function persist(settings: Settings, theme: ThemeFile): void {
+  pendingSave = { settings, theme }
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
-    void window.lumina.settings.set(settings)
-    void window.lumina.theme.set(theme)
+    void flushSettingsPersistence().catch(() => {})
   }, 250)
+}
+
+/** Persist the latest debounced settings before a vault switch or quit. */
+export async function flushSettingsPersistence(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  const pending = pendingSave
+  pendingSave = null
+  if (pending) {
+    saveChain = saveChain.catch(() => {}).then(async () => {
+      await Promise.all([
+        window.lumina.settings.set(pending.settings),
+        window.lumina.theme.set(pending.theme)
+      ])
+    })
+  }
+  await saveChain
 }
 
 export const useSettings = create<SettingsState>((set, get) => {

@@ -34,10 +34,15 @@ export function PromptDialog(): React.JSX.Element | null {
   const submit = async (): Promise<void> => {
     if (busy) return
     setBusy(true)
-    const result = await prompt.onSubmit(value)
-    setBusy(false)
-    if (typeof result === 'string' && result) setError(result)
-    else hide()
+    try {
+      const result = await prompt.onSubmit(value)
+      if (typeof result === 'string' && result) setError(result)
+      else hide()
+    } catch (err) {
+      setError((err as Error).message || 'The operation failed')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (

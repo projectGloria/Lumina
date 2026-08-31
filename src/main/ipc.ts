@@ -2,10 +2,13 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { CH } from '@shared/channels'
+import { isMarkdownPath } from '@shared/markdown-parse'
 import type { FileOpenRequest, Settings, ThemeFile, VaultChange, WorkspaceState } from '@shared/types'
 import {
   buildIndex,
+  cancelCacheSave,
   forgetNote,
+  forgetNotesUnder,
   getIndex,
   indexNote,
   scheduleCacheSave
@@ -117,7 +120,7 @@ async function vaultPayload(vault: string) {
     workspace,
     tree,
     snippets,
-    index: getIndex()
+    index: await getIndex()
   }
 }
 
@@ -193,19 +196,25 @@ async function applyChanges(changes: VaultChange[]): Promise<void> {
     } else if (change.type === 'unlink') {
       forgetNote(change.path)
       structural = true
+    } else if (change.type === 'unlinkDir') {
+      // Some platforms report a deleted tree as one `unlinkDir` and no
+      // `unlink` for the notes inside it, so drop them here rather than
+      // leaving the index describing files that are gone.
+      forgetNotesUnder(change.path)
+      structural = true
     } else {
       structural = true
     }
   }
 
   const tree = structural ? await readTree() : null
-  send(CH.vaultChanged, { changes, tree, index: getIndex() })
+  send(CH.vaultChanged, { changes, tree, index: await getIndex() })
   scheduleCacheSave()
 }
 
 /** Re-read the tree and push it, after an operation we performed ourselves. */
 async function pushTree(): Promise<void> {
-  send(CH.vaultChanged, { changes: [], tree: await readTree(), index: getIndex() })
+  send(CH.vaultChanged, { changes: [], tree: await readTree(), index: await getIndex() })
   scheduleCacheSave()
 }
 
@@ -271,7 +280,7 @@ export function registerIpc(): void {
     const res = await writeNote(rel, content)
     if (res.ok) {
       await indexNote(rel)
-      send(CH.indexUpdated, getIndex())
+      send(CH.indexUpdated, await getIndex())
       scheduleCacheSave()
     }
     return res
@@ -298,7 +307,7 @@ export function registerIpc(): void {
       forgetNote(from)
       await indexNote(res.data)
       // A folder rename moves many notes at once; a rebuild is simplest.
-      if (!from.endsWith('.md')) await buildIndex()
+      if (!isMarkdownPath(from)) await buildIndex()
       await pushTree()
     }
     return res
@@ -308,7 +317,7 @@ export function registerIpc(): void {
     const res = await deletePath(rel)
     if (res.ok) {
       forgetNote(rel)
-      if (!rel.endsWith('.md')) await buildIndex()
+      if (!isMarkdownPath(rel)) await buildIndex()
       await pushTree()
     }
     return res
@@ -317,7 +326,7 @@ export function registerIpc(): void {
   ipcMain.handle(CH.noteExists, (_e, rel: string) => noteExists(rel))
 
   /* index + search ------------------------------------------------------ */
-  ipcMain.handle(CH.indexGet, () => getIndex())
+  ipcMain.handle(CH.indexGet, async () => await getIndex())
   ipcMain.handle(CH.searchQuery, (_e, q: string, mode: 'full' | 'titles' = 'full') =>
     mode === 'titles' ? searchTitles(q) : search(q)
   )
@@ -418,5 +427,6 @@ export function registerIpc(): void {
 }
 
 export async function teardown(): Promise<void> {
+  cancelCacheSave()
   await Promise.all([stopWatcher(), stopSnippetWatcher()])
 }

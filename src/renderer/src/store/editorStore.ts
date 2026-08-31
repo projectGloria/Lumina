@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isPathAtOrBelow, rebaseDescendantPath } from '@shared/markdown-parse'
 import { useSettings } from './settingsStore'
 import { toast } from './uiStore'
 
@@ -28,6 +29,9 @@ interface EditorState {
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+const saves = new Map<string, Promise<void>>()
+const loads = new Map<string, symbol>()
+let vaultGeneration = 0
 
 function cancelAutosave(path: string): void {
   const t = timers.get(path)
@@ -42,11 +46,21 @@ export const useEditor = create<EditorState>((set, get) => ({
   saving: [],
 
   open: async (path) => {
-    if (get().buffers[path] && !get().buffers[path].loading) return
+    if (get().buffers[path] && !get().buffers[path].loading && !get().buffers[path].error) return
+    const generation = vaultGeneration
+    const request = Symbol(path)
+    loads.set(path, request)
     set((s) => ({
       buffers: { ...s.buffers, [path]: { content: '', saved: '', mtime: 0, loading: true } }
     }))
-    const res = await window.lumina.notes.read(path)
+    let res
+    try {
+      res = await window.lumina.notes.read(path)
+    } catch (err) {
+      res = { ok: false as const, error: (err as Error).message }
+    }
+    if (generation !== vaultGeneration || loads.get(path) !== request) return
+    loads.delete(path)
     set((s) => ({
       buffers: {
         ...s.buffers,
@@ -58,7 +72,17 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   reload: async (path) => {
-    const res = await window.lumina.notes.read(path)
+    const generation = vaultGeneration
+    const request = Symbol(path)
+    loads.set(path, request)
+    let res
+    try {
+      res = await window.lumina.notes.read(path)
+    } catch (err) {
+      res = { ok: false as const, error: (err as Error).message }
+    }
+    if (generation !== vaultGeneration || loads.get(path) !== request) return
+    loads.delete(path)
     if (!res.ok || !res.data) return
     set((s) => ({
       buffers: {
@@ -86,24 +110,48 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   save: async (path) => {
     cancelAutosave(path)
+    const existingSave = saves.get(path)
+    if (existingSave) {
+      await existingSave
+      return get().save(path)
+    }
+
     const buffer = get().buffers[path]
     if (!buffer || buffer.loading || buffer.content === buffer.saved) return
 
     const content = buffer.content
-    set((s) => ({ saving: s.saving.includes(path) ? s.saving : [...s.saving, path] }))
-    const res = await window.lumina.notes.write(path, content)
-    set((s) => ({ saving: s.saving.filter((p) => p !== path) }))
+    const operation = (async (): Promise<void> => {
+      set((s) => ({ saving: s.saving.includes(path) ? s.saving : [...s.saving, path] }))
+      try {
+        const res = await window.lumina.notes.write(path, content)
+        if (!res.ok) {
+          toast(`Could not save ${path}: ${res.error ?? 'unknown error'}`, 'error')
+          return
+        }
+        // Only mark clean up to what we actually wrote; later keystrokes stay dirty.
+        set((s) => {
+          const current = s.buffers[path]
+          if (!current) return s
+          return {
+            buffers: {
+              ...s.buffers,
+              [path]: { ...current, saved: content, mtime: res.mtime }
+            }
+          }
+        })
+      } catch (err) {
+        toast(`Could not save ${path}: ${(err as Error).message}`, 'error')
+      } finally {
+        set((s) => ({ saving: s.saving.filter((p) => p !== path) }))
+      }
+    })()
 
-    if (!res.ok) {
-      toast(`Could not save ${path}: ${res.error ?? 'unknown error'}`, 'error')
-      return
+    saves.set(path, operation)
+    try {
+      await operation
+    } finally {
+      if (saves.get(path) === operation) saves.delete(path)
     }
-    // Only mark clean up to what we actually wrote; later keystrokes stay dirty.
-    set((s) => {
-      const current = s.buffers[path]
-      if (!current) return s
-      return { buffers: { ...s.buffers, [path]: { ...current, saved: content, mtime: res.mtime } } }
-    })
   },
 
   saveAll: async () => {
@@ -122,29 +170,54 @@ export const useEditor = create<EditorState>((set, get) => ({
    * then write the old vault's text into the new vault's file.
    */
   reset: () => {
+    vaultGeneration++
+    loads.clear()
     for (const timer of timers.values()) clearTimeout(timer)
     timers.clear()
+    saves.clear()
     set({ buffers: {}, saving: [] })
   },
 
   close: (path) => {
-    cancelAutosave(path)
+    for (const loadPath of [...loads.keys()]) {
+      if (isPathAtOrBelow(loadPath, path)) loads.delete(loadPath)
+    }
+    for (const timerPath of [...timers.keys()]) {
+      if (isPathAtOrBelow(timerPath, path)) cancelAutosave(timerPath)
+    }
     set((s) => {
       const buffers = { ...s.buffers }
-      delete buffers[path]
+      for (const bufferPath of Object.keys(buffers)) {
+        if (isPathAtOrBelow(bufferPath, path)) delete buffers[bufferPath]
+      }
       return { buffers }
     })
   },
 
   rename: (from, to) => {
+    const pendingSaves: string[] = []
+    const pendingLoads: string[] = []
     set((s) => {
-      const buffer = s.buffers[from]
-      if (!buffer) return s
-      const buffers = { ...s.buffers }
-      delete buffers[from]
-      buffers[to] = buffer
+      const buffers: Record<string, Buffer> = {}
+      for (const [bufferPath, buffer] of Object.entries(s.buffers)) {
+        const nextPath = rebaseDescendantPath(bufferPath, from, to)
+        buffers[nextPath] = buffer
+        if (nextPath !== bufferPath && buffer.loading) pendingLoads.push(nextPath)
+      }
       return { buffers }
     })
+    for (const loadPath of [...loads.keys()]) {
+      if (isPathAtOrBelow(loadPath, from)) loads.delete(loadPath)
+    }
+    for (const [timerPath, timer] of [...timers]) {
+      if (!isPathAtOrBelow(timerPath, from)) continue
+      clearTimeout(timer)
+      timers.delete(timerPath)
+      pendingSaves.push(rebaseDescendantPath(timerPath, from, to))
+    }
+    // The disk rename already happened, so pending edits must target new paths.
+    for (const path of pendingSaves) void get().save(path)
+    for (const path of pendingLoads) void get().open(path)
   },
 
   /**

@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { shell } from 'electron'
 import type { FolderNode, OpResult, TreeNode, WriteResult } from '@shared/types'
-import { basename, normalizePath, stripExtension } from '@shared/markdown-parse'
-import { isIgnored, isMarkdown, safeJoin, toRelative } from './paths'
+import { basename, isMarkdownPath, normalizePath, stripExtension } from '@shared/markdown-parse'
+import { isIgnored, isMarkdown, safeVaultPath, samePath, toRelative } from './paths'
 import { ensureLuminaDir } from './settings'
 
 /** Absolute path of the vault currently open, or null before one is chosen. */
@@ -64,17 +65,23 @@ export async function readTree(): Promise<TreeNode[]> {
     }
 
     const nodes: TreeNode[] = []
+    const folderPromises: Promise<void>[] = []
+
     for (const entry of entries) {
       const rel = normalizePath(relDir ? `${relDir}/${entry.name}` : entry.name)
-      if (isIgnored(rel)) continue
+      if (isIgnored(rel) || entry.isSymbolicLink()) continue
 
       if (entry.isDirectory()) {
-        nodes.push({
-          kind: 'folder',
-          path: rel,
-          name: entry.name,
-          children: await walk(rel)
-        } satisfies FolderNode)
+        folderPromises.push(
+          walk(rel).then((children) => {
+            nodes.push({
+              kind: 'folder',
+              path: rel,
+              name: entry.name,
+              children
+            } satisfies FolderNode)
+          })
+        )
       } else if (isMarkdown(entry.name)) {
         let stat
         try {
@@ -92,6 +99,8 @@ export async function readTree(): Promise<TreeNode[]> {
         })
       }
     }
+
+    await Promise.all(folderPromises)
 
     return nodes.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1
@@ -118,7 +127,7 @@ export async function listNotes(): Promise<string[]> {
 /* ----------------------------------------------------------------- notes */
 
 export async function readNote(rel: string): Promise<OpResult<{ content: string; mtime: number }>> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel)
   if (!abs) return { ok: false, error: 'Path is outside the vault' }
   try {
     const [content, stat] = await Promise.all([fs.readFile(abs, 'utf8'), fs.stat(abs)])
@@ -133,14 +142,14 @@ export async function readNote(rel: string): Promise<OpResult<{ content: string;
  * A crash mid-save leaves the previous version intact rather than a half file.
  */
 export async function writeNote(rel: string, content: string): Promise<WriteResult> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel, true)
   if (!abs) return { ok: false, mtime: 0, error: 'Path is outside the vault' }
 
-  const tmp = `${abs}.lumina-tmp`
+  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}.${randomUUID()}.lumina-tmp`)
   try {
     await fs.mkdir(path.dirname(abs), { recursive: true })
     markSelfWrite(abs)
-    await fs.writeFile(tmp, content, 'utf8')
+    await fs.writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' })
     await fs.rename(tmp, abs)
     const stat = await fs.stat(abs)
     markSelfWrite(abs)
@@ -161,7 +170,7 @@ async function exists(abs: string): Promise<boolean> {
 }
 
 export async function noteExists(rel: string): Promise<boolean> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel)
   return abs ? exists(abs) : false
 }
 
@@ -180,7 +189,7 @@ async function uniquePath(abs: string): Promise<string> {
 
 export async function createNote(rel: string, content = ''): Promise<OpResult<string>> {
   const vault = requireRoot()
-  const wanted = safeJoin(vault, rel.endsWith('.md') ? rel : `${rel}.md`)
+  const wanted = await safeVaultPath(vault, isMarkdownPath(rel) ? rel : `${rel}.md`, true)
   if (!wanted) return { ok: false, error: 'Path is outside the vault' }
 
   try {
@@ -196,7 +205,7 @@ export async function createNote(rel: string, content = ''): Promise<OpResult<st
 
 export async function createFolder(rel: string): Promise<OpResult<string>> {
   const vault = requireRoot()
-  const abs = safeJoin(vault, rel)
+  const abs = await safeVaultPath(vault, rel, true)
   if (!abs) return { ok: false, error: 'Path is outside the vault' }
   try {
     await fs.mkdir(abs, { recursive: true })
@@ -209,13 +218,20 @@ export async function createFolder(rel: string): Promise<OpResult<string>> {
 /** Rename or move a file or folder. Returns the new vault-relative path. */
 export async function renamePath(from: string, to: string): Promise<OpResult<string>> {
   const vault = requireRoot()
-  const absFrom = safeJoin(vault, from)
-  const absTo = safeJoin(vault, to)
+  const absFrom = await safeVaultPath(vault, from)
+  const absTo = await safeVaultPath(vault, to, true)
   if (!absFrom || !absTo) return { ok: false, error: 'Path is outside the vault' }
   if (absFrom === absTo) return { ok: true, data: normalizePath(to) }
 
+  // `Note.md` -> `note.md` is a real rename, but on Windows the target already
+  // "exists" because it is the same file. Skip the collision check for that
+  // case or changing a name's capitalisation becomes impossible.
+  const caseOnly = samePath(absFrom, absTo)
+
   try {
-    if (await exists(absTo)) return { ok: false, error: `"${basename(to)}" already exists` }
+    if (!caseOnly && (await exists(absTo))) {
+      return { ok: false, error: `"${basename(to)}" already exists` }
+    }
     await fs.mkdir(path.dirname(absTo), { recursive: true })
     markSelfWrite(absFrom)
     markSelfWrite(absTo)
@@ -228,7 +244,8 @@ export async function renamePath(from: string, to: string): Promise<OpResult<str
 
 /** Send to the OS recycle bin rather than deleting outright. */
 export async function deletePath(rel: string): Promise<OpResult> {
-  const abs = safeJoin(requireRoot(), rel)
+  if (!rel) return { ok: false, error: 'The vault root cannot be deleted' }
+  const abs = await safeVaultPath(requireRoot(), rel)
   if (!abs) return { ok: false, error: 'Path is outside the vault' }
   try {
     markSelfWrite(abs)
@@ -240,7 +257,7 @@ export async function deletePath(rel: string): Promise<OpResult> {
 }
 
 export async function revealInExplorer(rel: string): Promise<void> {
-  const abs = safeJoin(requireRoot(), rel)
+  const abs = await safeVaultPath(requireRoot(), rel)
   if (abs) shell.showItemInFolder(abs)
 }
 
@@ -253,7 +270,7 @@ export async function saveAttachment(
   data: ArrayBuffer
 ): Promise<OpResult<string>> {
   const vault = requireRoot()
-  const target = safeJoin(vault, `${folder}/${path.basename(name)}`)
+  const target = await safeVaultPath(vault, `${folder}/${path.basename(name)}`, true)
   if (!target) return { ok: false, error: 'Path is outside the vault' }
   try {
     await fs.mkdir(path.dirname(target), { recursive: true })

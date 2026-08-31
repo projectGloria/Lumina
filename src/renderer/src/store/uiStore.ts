@@ -40,6 +40,20 @@ export interface ConfirmState {
   onConfirm: () => void
 }
 
+/**
+ * A heading or line the editor should scroll to once the note is in view.
+ *
+ * `nonce` makes two requests for the same place distinguishable, so clicking
+ * the same search hit twice scrolls back to it rather than being ignored as an
+ * unchanged value.
+ */
+export interface RevealRequest {
+  path: string
+  anchor?: string
+  line?: number
+  nonce: number
+}
+
 interface UiState {
   modal: ModalKind
   settingsTab: string
@@ -51,6 +65,8 @@ interface UiState {
   tagFilter: string | null
   /** Search query shared between the search panel and its results. */
   searchQuery: string
+  /** Pending scroll target, cleared by the editor once it has been applied. */
+  reveal: RevealRequest | null
 
   openModal: (kind: ModalKind) => void
   closeModal: () => void
@@ -65,9 +81,12 @@ interface UiState {
   dismissToast: (id: number) => void
   setTagFilter: (tag: string | null) => void
   setSearchQuery: (q: string) => void
+  requestReveal: (target: Omit<RevealRequest, 'nonce'>) => void
+  clearReveal: (nonce: number) => void
 }
 
 let toastId = 0
+let revealId = 0
 
 export const useUi = create<UiState>((set, get) => ({
   modal: null,
@@ -78,6 +97,7 @@ export const useUi = create<UiState>((set, get) => ({
   toasts: [],
   tagFilter: null,
   searchQuery: '',
+  reveal: null,
 
   openModal: (kind) => set({ modal: kind, contextMenu: null }),
   closeModal: () => set({ modal: null }),
@@ -97,7 +117,12 @@ export const useUi = create<UiState>((set, get) => ({
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   setTagFilter: (tag) => set({ tagFilter: tag }),
-  setSearchQuery: (q) => set({ searchQuery: q })
+  setSearchQuery: (q) => set({ searchQuery: q }),
+
+  requestReveal: (target) => set({ reveal: { ...target, nonce: ++revealId } }),
+  // Only the editor that actually handled this request clears it, so a reveal
+  // aimed at a note still loading is not thrown away by another one mounting.
+  clearReveal: (nonce) => set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s))
 }))
 
 /** Convenience for non-component code. */

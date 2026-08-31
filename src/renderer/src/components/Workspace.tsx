@@ -13,7 +13,9 @@ export default function Workspace(): React.JSX.Element {
   return (
     <main className="pane-main">
       <TabBar />
-      {path ? <Editor key={path} path={path} /> : <NoNoteOpen />}
+      {/* No `key`: one editor instance serves every tab, so switching tabs
+          swaps state rather than rebuilding and losing the undo history. */}
+      {path ? <Editor path={path} /> : <NoNoteOpen />}
     </main>
   )
 }
