@@ -1,4 +1,7 @@
 /** Types shared across the main process, preload bridge and renderer. */
+import type { CustomSlashCommand } from './slashItems'
+
+export type { CustomSlashCommand }
 
 /* ------------------------------------------------------------------ vault */
 
@@ -124,6 +127,15 @@ export interface ThemeFile {
   dark: TokenOverrides
 }
 
+/** A named, portable snapshot that can be switched without losing alternatives. */
+export interface SettingsPreset {
+  id: string
+  name: string
+  createdAt: number
+  settings: Settings
+  theme: ThemeFile
+}
+
 export interface EditorSettings {
   fontSize: number
   lineHeight: number
@@ -145,6 +157,11 @@ export interface EditorSettings {
   smartLists: boolean
   /** Show a live word/character count under the editor. */
   showWordCount: boolean
+  /**
+   * Fetch page titles and thumbnails for link banners. Off by default: with it
+   * off Lumina makes no network requests at all.
+   */
+  linkPreviews: boolean
 }
 
 export interface DailyNoteSettings {
@@ -153,6 +170,23 @@ export interface DailyNoteSettings {
   format: string
   /** Vault-relative template path, or '' for none. */
   template: string
+}
+
+export interface QuickNoteSettings {
+  /**
+   * Electron accelerator for the OS-wide shortcut, or '' to turn it off.
+   * Electron cannot tell left modifiers from right ones, so `Control+Shift+Space`
+   * answers to either Ctrl and either Shift.
+   */
+  accelerator: string
+  /** Vault-relative folder quick notes are created in. */
+  folder: string
+  /** Start Lumina with the OS, into the tray, so the shortcut works from boot. */
+  startAtLogin: boolean
+  /** Closing the window hides it to the tray instead of quitting. */
+  closeToTray: boolean
+  /** Build the window while idling in the tray, trading memory for a faster first note. */
+  preloadWindow: boolean
 }
 
 export interface Settings {
@@ -165,6 +199,13 @@ export interface Settings {
   templateFolder: string
   /** Command id -> accelerator, overriding the built-in default. */
   hotkeys: Record<string, string>
+  /**
+   * The user's own `/` snippets. App-level on disk, like `hotkeys` — see
+   * `loadSettings`/`saveSettings` in `main/settings.ts`.
+   */
+  slashCommands: CustomSlashCommand[]
+  /** The OS-wide quick note. App-level on disk, like `hotkeys`. */
+  quickNote: QuickNoteSettings
   /** Snippet file name -> enabled. */
   snippets: Record<string, boolean>
   starred: string[]
@@ -172,18 +213,36 @@ export interface Settings {
   graphPerformanceMode: boolean
   /** Vault-relative path -> icon name, for files/folders the user picked a custom icon for. */
   iconOverrides: Record<string, string>
+  /** Vault-relative path -> CSS color, tinting a file/folder's icon in the explorer. */
+  colorOverrides: Record<string, string>
+  /**
+   * Vault-relative path -> vault-relative image path (under `.lumina/icons`), for
+   * files/folders the user gave an uploaded image icon. Takes priority over
+   * `iconOverrides` when both are set.
+   */
+  customIcons: Record<string, string>
   /** Files and folders pinned to the top of the file explorer. */
   pinned: string[]
   /** How the file explorer orders siblings. */
   sortOrder: 'name' | 'modified' | 'created'
+  /** Show extensions such as `.md` beside note titles in the file explorer. */
+  showFileTypes: boolean
 }
 
 /* -------------------------------------------------------------- workspace */
+
+export type NoteMode = 'edit' | 'read'
 
 export interface TabState {
   path: string
   /** Scroll/cursor position to restore, as a document offset. */
   cursor?: number
+  /**
+   * Whether this tab shows the editor or the rendered note. Absent means
+   * 'edit', so a `workspace.json` written before this existed still opens
+   * the way it used to.
+   */
+  mode?: NoteMode
 }
 
 export type LeftPanel = 'files' | 'search' | 'tags' | 'starred'

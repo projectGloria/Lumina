@@ -56,6 +56,9 @@ export default function ContextMenu(): React.JSX.Element | null {
               item.onSelect?.()
             }}
           >
+            {item.swatch ? (
+              <span className="context-menu-swatch" style={{ background: item.swatch }} />
+            ) : null}
             {item.label}
           </button>
         )

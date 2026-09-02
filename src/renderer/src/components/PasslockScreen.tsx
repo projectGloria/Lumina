@@ -33,31 +33,35 @@ export default function PasslockScreen(): React.JSX.Element {
   }
 
   return (
-    <div className="welcome">
-      <div className="welcome-card">
+    <div className="welcome profile-screen">
+      <div className="welcome-card profile-card profile-lock-card">
         <ProfileAvatar profile={profile} size={48} />
         <h1>{profile.name}</h1>
         <p className="welcome-lede">Enter the password to unlock this profile.</p>
 
-        <div className="profile-create-row">
-          <input
-            type="password"
-            autoFocus
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void submit()
-            }}
-          />
-          <button className="btn btn-primary" disabled={!password || busy} onClick={() => void submit()}>
+        <div className="profile-lock-form">
+          <label className="profile-lock-label" htmlFor="profile-password">Password</label>
+          <div className="profile-password-field">
+            <Icon name="lock" size={15} />
+            <input
+              id="profile-password"
+              type="password"
+              autoFocus
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void submit()
+              }}
+            />
+          </div>
+          <button className="btn btn-primary profile-lock-submit" disabled={!password || busy} onClick={() => void submit()}>
             {busy ? 'Checking…' : 'Unlock'}
           </button>
         </div>
         {error ? <p className="profile-error">{error}</p> : null}
 
-        <button className="welcome-recent-item profile-back" onClick={cancelUnlock}>
-          <Icon name="back" size={14} />
+        <button className="profile-back" onClick={cancelUnlock}>
           <span>Choose a different profile</span>
         </button>
       </div>

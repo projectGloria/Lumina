@@ -35,6 +35,7 @@ import { luminaEditorTheme } from './cmTheme'
 import { editorContextMenu } from './contextMenu'
 import { linkPasteExtension } from './linkPaste'
 import { livePreviewExtension } from './livePreview'
+import { scrollOverflowExtension } from './scrollOverflow'
 import { luminaMarkdownExtensions } from './markdownExtensions'
 import { setActiveView } from './activeView'
 import { linkClickHandlers, tagCompletion, wikilinkCompletion, type ClickHandlers } from './wikilink'
@@ -91,8 +92,9 @@ export function settingsExtensions(path: string, settings: EditorSettings): Exte
  * rebinding a format command in Settings > Hotkeys actually take effect while
  * typing, and it is reconfigured whenever `settings.hotkeys` changes.
  *
- * `Mod-s` and `Tab` stay outside the registry: save needs this editor
- * instance's own `onSave` closure, and Tab-to-indent isn't a palette command.
+ * Save uses this editor instance's own `onSave` closure, but still derives its
+ * key from the registry so a user override works while typing. Tab-to-indent
+ * remains a local editor behavior rather than a palette command.
  */
 export function buildFormatKeymap(onSave: () => void): Extension {
   const bindings: KeyBinding[] = []
@@ -109,13 +111,17 @@ export function buildFormatKeymap(onSave: () => void): Extension {
     })
   }
 
-  bindings.push({
-    key: 'Mod-s',
-    run: () => {
-      onSave()
-      return true
-    }
-  })
+  const save = COMMANDS.find((command) => command.id === 'note.save')
+  const saveKey = save ? translateAccelerator(hotkeyFor(save)) : null
+  if (saveKey) {
+    bindings.push({
+      key: saveKey,
+      run: () => {
+        onSave()
+        return true
+      }
+    })
+  }
   // Tab indents the list you are in rather than inserting a literal tab.
   bindings.push({ key: 'Tab', run: indentMore, shift: indentLess })
 
@@ -148,7 +154,7 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     }),
 
     autocompletion({
-      override: [wikilinkCompletion, tagCompletion, slashCompletion],
+      override: [wikilinkCompletion, tagCompletion, slashCompletion(opts.path)],
       activateOnTyping: true,
       icons: false,
       closeOnBlur: true,
@@ -162,6 +168,7 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     attachmentDropExtension(),
     linkPasteExtension(),
     luminaEditorTheme,
+    scrollOverflowExtension,
 
     keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap]),
     keymap.of(standardKeymap),

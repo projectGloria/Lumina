@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { createFromLink, openNote } from '../lib/actions'
+import { createFromLink, openNote, saveNoteWithFeedback } from '../lib/actions'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { useUi, type RevealRequest } from '../store/uiStore'
@@ -82,6 +82,9 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
   const hotkeys = useSettings((s) => s.settings.hotkeys)
   const index = useVault((s) => s.index)
   const reveal = useUi((s) => s.reveal)
+  const iconOverrides = useSettings((s) => s.settings.iconOverrides)
+  const colorOverrides = useSettings((s) => s.settings.colorOverrides)
+  const customIcons = useSettings((s) => s.settings.customIcons)
 
   // Load the note the first time this path appears.
   useEffect(() => {
@@ -129,7 +132,7 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
           path,
           settings: useSettings.getState().settings.editor,
           onChange: (content) => setContent(path, content),
-          onSave: () => void save(path),
+          onSave: () => void saveNoteWithFeedback(path),
           handlers: {
             openNote: (target, opts) => {
               const resolved = resolveLink(target, path, knownPaths(), aliasMap())
@@ -197,6 +200,10 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
     instance.dispatch({
       effects: settingsCompartment.reconfigure(settingsExtensions(path, editorSettings))
     })
+    // Typography is CSS-driven. CodeMirror caches line metrics, so explicitly
+    // measure after a live font-size or line-height change instead of waiting
+    // for a scroll or edit to make the new value visible.
+    instance.requestMeasure()
   }, [editorSettings, path])
 
   /* ------------------------------------------------------ hotkey rebinds */
@@ -204,7 +211,9 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
     const instance = view.current
     if (!instance) return
     instance.dispatch({
-      effects: formatKeymapCompartment.reconfigure(buildFormatKeymap(() => void save(path)))
+      effects: formatKeymapCompartment.reconfigure(
+        buildFormatKeymap(() => void saveNoteWithFeedback(path))
+      )
     })
   }, [hotkeys, path, save])
 
@@ -212,6 +221,11 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
   useEffect(() => {
     view.current?.dispatch({ effects: refreshPreview.of(null) })
   }, [index])
+
+  /* ------------------- redraw wikilink icons when the tree's ones change */
+  useEffect(() => {
+    view.current?.dispatch({ effects: refreshPreview.of(null) })
+  }, [iconOverrides, colorOverrides, customIcons])
 
   /* --------------------------------------------- scroll to a search result */
   // The note may already be the active tab, in which case nothing remounts and

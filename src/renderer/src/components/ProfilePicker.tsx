@@ -24,8 +24,8 @@ export default function ProfilePicker(): React.JSX.Element {
   }
 
   return (
-    <div className="welcome">
-      <div className="welcome-card">
+    <div className="welcome profile-screen">
+      <div className="welcome-card profile-card">
         <div className="welcome-mark">
           <Icon name="book" size={26} />
         </div>
@@ -40,9 +40,15 @@ export default function ProfilePicker(): React.JSX.Element {
           <div className="profile-list">
             {profiles.map((p) => (
               <button key={p.id} className="profile-list-item" onClick={() => select(p.id)}>
-                <ProfileAvatar profile={p} size={32} />
-                <span className="profile-list-name truncate">{p.name}</span>
-                {p.passwordHash ? <Icon name="focus" size={13} className="tree-icon" /> : null}
+                <ProfileAvatar profile={p} size={38} />
+                <span className="profile-list-copy">
+                  <span className="profile-list-name truncate">{p.name}</span>
+                  <span className="profile-list-meta">
+                    {p.passwordHash ? 'Password protected' : p.vaultPath ? 'Ready to open' : 'No vault selected'}
+                  </span>
+                </span>
+                {p.passwordHash ? <Icon name="lock" size={14} className="profile-list-lock" /> : null}
+                <Icon name="forward" size={15} className="profile-list-action" />
               </button>
             ))}
           </div>
@@ -66,7 +72,8 @@ export default function ProfilePicker(): React.JSX.Element {
             </button>
           </div>
         ) : (
-          <button className="btn btn-primary welcome-cta" onClick={() => setCreating(true)}>
+          <button className="btn btn-primary welcome-cta profile-new" onClick={() => setCreating(true)}>
+            <Icon name="plus" size={15} />
             New profile
           </button>
         )}

@@ -1,7 +1,6 @@
 import type { RightPanel } from '@shared/types'
 import BacklinksPanel from './BacklinksPanel'
 import GraphView from './GraphView'
-import { PanelHeader } from './FileTree'
 import { Icon, type IconName } from './Icon'
 import OutlinePanel from './OutlinePanel'
 import { useWorkspace } from '../store/workspaceStore'
@@ -26,9 +25,10 @@ export default function RightSidebar(): React.JSX.Element {
               role="tab"
               aria-selected={panel === tab.id}
               className={`right-tab${panel === tab.id ? ' is-active' : ''}`}
+              data-tooltip={`Open ${tab.label}`}
               onClick={() => setPanel(tab.id)}
             >
-              <Icon name={tab.icon} size={14} />
+              <Icon name={tab.icon} size={16} />
               <span>{tab.label}</span>
             </button>
           ))}
@@ -36,12 +36,7 @@ export default function RightSidebar(): React.JSX.Element {
 
         {panel === 'backlinks' ? <BacklinksPanel /> : null}
         {panel === 'outline' ? <OutlinePanel /> : null}
-        {panel === 'graph' ? (
-          <>
-            <PanelHeader title="Local graph" />
-            <GraphView scope="local" depth={2} />
-          </>
-        ) : null}
+        {panel === 'graph' ? <GraphView scope="local" depth={2} /> : null}
       </div>
     </aside>
   )

@@ -59,8 +59,7 @@ export default function SearchPanel(): React.JSX.Element {
 
   return (
     <>
-      <PanelHeader
-        title="Search"
+      <PanelHeader title="Search"
         actions={
           query ? (
             <button className="icon-btn" title="Clear" onClick={() => setQuery('')}>
@@ -85,14 +84,14 @@ export default function SearchPanel(): React.JSX.Element {
       <div className="search-filters">
         <button
           className={`search-filter${titleOnly ? ' on' : ''}`}
-          title="Match note titles only"
+          data-tooltip="Match note titles only"
           onClick={() => setTitleOnly((v) => !v)}
         >
           Titles only
         </button>
         <button
           className={`search-filter${scoped ? ' on' : ''}`}
-          title={currentFolder ? `Scope to ${currentFolder}` : 'Open a note to scope to its folder'}
+          data-tooltip={currentFolder ? `Scope to ${currentFolder}` : 'Open a note to scope to its folder'}
           disabled={!currentFolder}
           onClick={() => setScoped((v) => !v)}
         >
@@ -113,13 +112,14 @@ export default function SearchPanel(): React.JSX.Element {
       <div className="panel-scroll">
         {hits.map((hit) => (
           <div key={hit.path} className="search-hit">
-            <button className="search-hit-title truncate" onClick={() => openNote(hit.path)}>
+            <button className="search-hit-title truncate" data-tooltip="Open note" onClick={() => openNote(hit.path)}>
               {hit.title}
             </button>
             {hit.matches.map((m, i) => (
               <button
                 key={`${m.line}-${i}`}
                 className="search-hit-line"
+                data-tooltip="Go to match"
                 onClick={() => openNote(hit.path, { line: m.line })}
               >
                 <span className="search-hit-lineno">{m.line + 1}</span>

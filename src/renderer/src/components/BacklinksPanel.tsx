@@ -1,10 +1,36 @@
 import { useMemo, useState } from 'react'
 import type { LinkRef } from '@shared/types'
-import { Icon } from './Icon'
-import { PanelHeader } from './FileTree'
+import { Icon, type IconName } from './Icon'
+import { vaultUrl } from '../editor/resources'
 import { createFromLink, openNote } from '../lib/actions'
+import { useSettings } from '../store/settingsStore'
 import { titleOf, useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
+
+/** The same icon/color a note or folder was given in the file explorer, shown next to it here too. */
+function NoteBadge({ path }: { path: string }): React.JSX.Element {
+  const iconOverride = useSettings((s) => s.settings.iconOverrides[path]) as IconName | undefined
+  const colorOverride = useSettings((s) => s.settings.colorOverrides[path])
+  const customIcon = useSettings((s) => s.settings.customIcons[path])
+
+  return (
+    <>
+      {customIcon ? (
+        <img src={vaultUrl(customIcon)} className="backlink-icon-img" alt="" />
+      ) : iconOverride ? (
+        <Icon
+          name={iconOverride}
+          size={13}
+          className="backlink-icon"
+          style={colorOverride ? { color: colorOverride } : undefined}
+        />
+      ) : null}
+      <span style={colorOverride && !iconOverride && !customIcon ? { color: colorOverride } : undefined}>
+        {titleOf(path)}
+      </span>
+    </>
+  )
+}
 
 export default function BacklinksPanel(): React.JSX.Element {
   const tabs = useWorkspace((s) => s.tabs)
@@ -50,24 +76,23 @@ export default function BacklinksPanel(): React.JSX.Element {
   const [outgoingOpen, setOutgoingOpen] = useState(false)
 
   const total = grouped.reduce((sum, [, links]) => sum + links.length, 0)
+  // The two directions look identical once rendered — the same note title over
+  // the same kind of context line — so both lists carry a heading saying which
+  // way the link points. Incoming ones start open: they are what the panel is
+  // for, and they are the half you cannot see by reading the note itself.
+  const [backlinksOpen, setBacklinksOpen] = useState(true)
 
   if (!path) {
-    return (
-      <>
-        <PanelHeader title="Backlinks" />
-        <p className="panel-empty">Open a note to see what links to it.</p>
-      </>
-    )
+    return <p className="panel-empty">Open a note to see what links to it.</p>
   }
 
   return (
-    <>
-      <PanelHeader title={`Backlinks${total ? ` · ${total}` : ''}`} />
-      <div className="panel-scroll">
+    <div className="panel-scroll">
         {outgoingTotal ? (
           <div className="backlink-group">
             <button
-              className="backlink-source truncate outgoing-toggle"
+              className="backlink-source truncate backlink-section"
+              data-tooltip="Notes this note links to"
               onClick={() => setOutgoingOpen((v) => !v)}
             >
               <Icon name={outgoingOpen ? 'chevronDown' : 'chevronRight'} size={12} />
@@ -75,14 +100,15 @@ export default function BacklinksPanel(): React.JSX.Element {
             </button>
             {outgoingOpen
               ? outgoing.map(([target, links]) => (
-                  <div key={target} className="backlink-group">
-                    <button className="backlink-source truncate" onClick={() => openNote(target)}>
-                      {titleOf(target)}
+                  <div key={target} className="backlink-entry">
+                    <button className="backlink-source truncate" data-tooltip="Open note" onClick={() => openNote(target)}>
+                      <NoteBadge path={target} />
                     </button>
                     {links.map((link, i) => (
                       <button
                         key={`${link.line}-${i}`}
                         className="backlink-context"
+                        data-tooltip="Go to line"
                         onClick={() => openNote(path, { line: link.line })}
                       >
                         {link.context || '…'}
@@ -95,26 +121,48 @@ export default function BacklinksPanel(): React.JSX.Element {
         ) : null}
 
         {grouped.length ? (
-          grouped.map(([source, links]) => (
-            <div key={source} className="backlink-group">
-              <button className="backlink-source truncate" onClick={() => openNote(source)}>
-                {titleOf(source)}
-              </button>
-              {links.map((link, i) => (
-                <button
-                  key={`${link.line}-${i}`}
-                  className="backlink-context"
-                  onClick={() => openNote(source, { line: link.line })}
-                >
-                  {link.context || '…'}
-                </button>
-              ))}
-            </div>
-          ))
+          <div className="backlink-group">
+            <button
+              className="backlink-source truncate backlink-section"
+              data-tooltip="Notes that link to this note"
+              onClick={() => setBacklinksOpen((v) => !v)}
+            >
+              <Icon name={backlinksOpen ? 'chevronDown' : 'chevronRight'} size={12} />
+              <span>Linked mentions · {total}</span>
+            </button>
+            {backlinksOpen
+              ? grouped.map(([source, links]) => (
+                  <div key={source} className="backlink-entry">
+                    <button
+                      className="backlink-source truncate"
+                      data-tooltip="Open note"
+                      onClick={() => openNote(source)}
+                    >
+                      <NoteBadge path={source} />
+                    </button>
+                    {links.map((link, i) => (
+                      <button
+                        key={`${link.line}-${i}`}
+                        className="backlink-context"
+                        data-tooltip="Go to line"
+                        onClick={() => openNote(source, { line: link.line })}
+                      >
+                        {link.context || '…'}
+                      </button>
+                    ))}
+                  </div>
+                ))
+              : null}
+          </div>
         ) : (
-          <p className="panel-empty">
-            Nothing links here yet. Type <code>[[{titleOf(path)}]]</code> in another note.
-          </p>
+          <div className="backlink-empty">
+            <span className="backlink-empty-icon"><Icon name="link" size={16} /></span>
+            <div className="backlink-empty-copy">
+              <strong>No backlinks yet</strong>
+              <span>Reference this note elsewhere with</span>
+              <code title={`[[${titleOf(path)}]]`}>{`[[${titleOf(path)}]]`}</code>
+            </div>
+          </div>
         )}
 
         {unresolved.length ? (
@@ -124,7 +172,7 @@ export default function BacklinksPanel(): React.JSX.Element {
               <button
                 key={`${link.target}-${i}`}
                 className="backlink-context unresolved"
-                title="Create this note"
+                data-tooltip="Create this note"
                 onClick={() => void createFromLink(link.target, path)}
               >
                 {link.target}
@@ -132,7 +180,6 @@ export default function BacklinksPanel(): React.JSX.Element {
             ))}
           </div>
         ) : null}
-      </div>
-    </>
+    </div>
   )
 }

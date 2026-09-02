@@ -48,10 +48,12 @@ export default function ThemeEditor(): React.JSX.Element {
             </div>
           </div>
           <div className="field-control seg">
+            <button className="setting-default" onClick={() => patch({ themeMode: 'system' })}>Default</button>
             {(['light', 'dark', 'system'] as const).map((option) => (
               <button
                 key={option}
                 className={`seg-btn${settings.themeMode === option ? ' is-active' : ''}`}
+                data-tooltip={`Set theme to ${option}`}
                 onClick={() => patch({ themeMode: option })}
               >
                 {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'System'}
@@ -66,10 +68,12 @@ export default function ThemeEditor(): React.JSX.Element {
             <div className="field-hint">The palette your own colour edits sit on top of.</div>
           </div>
           <div className="field-control seg">
+            <button className="setting-default" onClick={() => setPreset('claude')}>Default</button>
             {PRESETS.map((preset) => (
               <button
                 key={preset.id}
                 className={`seg-btn${theme.preset === preset.id ? ' is-active' : ''}`}
+                data-tooltip={`Use ${preset.label} preset`}
                 onClick={() => setPreset(preset.id)}
               >
                 {preset.label}
@@ -82,7 +86,7 @@ export default function ThemeEditor(): React.JSX.Element {
       <section className="settings-section">
         <div className="settings-heading-row">
           <h3 className="settings-heading">Colours — {editing} mode</h3>
-          <button className="btn btn-ghost btn-small" onClick={resetTheme}>
+          <button className="btn btn-ghost btn-small" data-tooltip="Reset theme to defaults" onClick={resetTheme}>
             Reset all
           </button>
         </div>
@@ -118,6 +122,7 @@ export default function ThemeEditor(): React.JSX.Element {
           max={20}
           step={1}
           suffix="px"
+          defaultValue={10}
           onChange={(v) => setToken(editing, 'radius', `${v}px`)}
         />
       </section>
@@ -127,6 +132,7 @@ export default function ThemeEditor(): React.JSX.Element {
           <h3 className="settings-heading">CSS snippets</h3>
           <button
             className="btn btn-ghost btn-small"
+            data-tooltip="Open the snippets folder in your file manager"
             onClick={() => void window.lumina.snippets.openFolder()}
           >
             <Icon name="external" size={13} />
@@ -148,6 +154,10 @@ export default function ThemeEditor(): React.JSX.Element {
                   <div className="field-hint">{snippet.css.split('\n').length} lines</div>
                 </div>
                 <div className="field-control">
+                  <button
+                    className="setting-default"
+                    onClick={() => patch({ snippets: { ...settings.snippets, [snippet.name]: true } })}
+                  >Default</button>
                   <button
                     className={`switch${on ? ' on' : ''}`}
                     role="switch"
@@ -171,6 +181,7 @@ export default function ThemeEditor(): React.JSX.Element {
         <div className="settings-row-buttons">
           <button
             className="btn"
+            data-tooltip="Copy the current theme settings to your clipboard"
             onClick={() => {
               void navigator.clipboard.writeText(JSON.stringify(theme, null, 2))
               toast('Theme copied to the clipboard')
@@ -181,6 +192,7 @@ export default function ThemeEditor(): React.JSX.Element {
           </button>
           <button
             className="btn"
+            data-tooltip="Paste theme settings from your clipboard"
             onClick={() => {
               void navigator.clipboard.readText().then((text) => {
                 try {
@@ -257,7 +269,7 @@ function TokenRow({
       />
       <button
         className="icon-btn token-reset"
-        title={overridden ? 'Reset to the preset value' : 'Unchanged'}
+        data-tooltip={overridden ? 'Reset to the preset value' : 'Unchanged'}
         aria-label="Reset"
         disabled={!overridden}
         style={{ opacity: overridden ? 1 : 0.25 }}
@@ -280,6 +292,7 @@ export function SliderRow({
   max,
   step,
   suffix,
+  defaultValue,
   onChange
 }: {
   label: string
@@ -289,6 +302,7 @@ export function SliderRow({
   max: number
   step: number
   suffix?: string
+  defaultValue?: number
   onChange: (value: number) => void
 }): React.JSX.Element {
   return (
@@ -298,6 +312,16 @@ export function SliderRow({
         {hint ? <div className="field-hint">{hint}</div> : null}
       </div>
       <div className="field-control">
+        {defaultValue !== undefined ? (
+          <button
+            className="setting-default"
+            data-tooltip="Restore default"
+            aria-label={`Restore default ${label}`}
+            onClick={() => onChange(defaultValue)}
+          >
+            Default
+          </button>
+        ) : null}
         <input
           type="range"
           min={min}

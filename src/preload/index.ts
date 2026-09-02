@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CH } from '@shared/channels'
+import type { LinkMetadata } from '@shared/linkPreview'
 import type {
   FileOpenRequest,
   FolderNode,
@@ -8,6 +9,7 @@ import type {
   SearchHit,
   SearchOptions,
   Settings,
+  SettingsPreset,
   ThemeFile,
   TreeNode,
   VaultChange,
@@ -119,7 +121,15 @@ const api = {
 
   settings: {
     get: (): Promise<Settings | null> => ipcRenderer.invoke(CH.settingsGet),
-    set: (s: Settings): Promise<boolean> => ipcRenderer.invoke(CH.settingsSet, s)
+    set: (s: Settings): Promise<boolean> => ipcRenderer.invoke(CH.settingsSet, s),
+    fonts: (): Promise<string[]> => ipcRenderer.invoke(CH.fontsList),
+    profiles: (): Promise<SettingsPreset[]> => ipcRenderer.invoke(CH.settingsProfilesList),
+    saveProfile: (name: string, settings: Settings, theme: ThemeFile): Promise<SettingsPreset> =>
+      ipcRenderer.invoke(CH.settingsProfilesSave, name, settings, theme),
+    deleteProfile: (id: string): Promise<void> => ipcRenderer.invoke(CH.settingsProfilesDelete, id),
+    importProfile: (): Promise<SettingsPreset | null> => ipcRenderer.invoke(CH.settingsProfilesImport),
+    exportProfile: (profile: SettingsPreset): Promise<boolean> =>
+      ipcRenderer.invoke(CH.settingsProfilesExport, profile)
   },
 
   theme: {
@@ -136,6 +146,25 @@ const api = {
   workspace: {
     get: (): Promise<WorkspaceState | null> => ipcRenderer.invoke(CH.workspaceGet),
     set: (w: WorkspaceState): Promise<boolean> => ipcRenderer.invoke(CH.workspaceSet, w)
+  },
+
+  links: {
+    /**
+     * Page metadata for a link banner, or null when previews are off, the URL
+     * is not http(s), or the page said nothing about itself.
+     */
+     preview: (url: string): Promise<LinkMetadata | null> =>
+      ipcRenderer.invoke(CH.linkPreview, url)
+  },
+
+  quickNote: {
+    /** The OS-wide shortcut was pressed. */
+    onRequest: (cb: () => void) => on<void>(CH.quickNote, cb),
+    /** Presses that arrived while the page was still loading. Call once, on mount. */
+    takePending: (): Promise<number> => ipcRenderer.invoke(CH.quickNotePending),
+    /** Whether the accelerator could be bound after a settings change. */
+    onStatus: (cb: (s: { accelerator: string; registered: boolean }) => void) =>
+      on<{ accelerator: string; registered: boolean }>(CH.quickNoteStatus, cb)
   },
 
   files: {

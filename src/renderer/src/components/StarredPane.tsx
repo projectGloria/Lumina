@@ -1,4 +1,5 @@
 import { Icon } from './Icon'
+import PathIcon from './PathIcon'
 import { PanelHeader } from './FileTree'
 import { openNote, toggleStar } from '../lib/actions'
 import { useSettings } from '../store/settingsStore'
@@ -28,11 +29,12 @@ export default function StarredPane(): React.JSX.Element {
               style={{ paddingLeft: 10 }}
               onClick={(e) => openNote(path, { newTab: e.ctrlKey || e.metaKey })}
             >
+              <PathIcon path={path} size={14} className="tree-icon" />
               <span className="tree-label truncate">{titleOf(path)}</span>
               {dirname(path) ? <span className="tree-count truncate">{dirname(path)}</span> : null}
               <button
                 className="icon-btn tree-star-btn"
-                title="Remove from starred"
+                data-tooltip="Remove from starred"
                 onClick={(e) => {
                   e.stopPropagation()
                   toggleStar(path)

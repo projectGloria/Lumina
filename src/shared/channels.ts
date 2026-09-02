@@ -35,6 +35,12 @@ export const CH = {
   // settings, theme, snippets
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  fontsList: 'fonts:list',
+  settingsProfilesList: 'settingsProfiles:list',
+  settingsProfilesSave: 'settingsProfiles:save',
+  settingsProfilesDelete: 'settingsProfiles:delete',
+  settingsProfilesImport: 'settingsProfiles:import',
+  settingsProfilesExport: 'settingsProfiles:export',
   themeGet: 'theme:get',
   themeSet: 'theme:set',
   snippetsGet: 'snippets:get',
@@ -49,6 +55,14 @@ export const CH = {
   fileOpen: 'file:open',
   fileOpened: 'file:opened',
   filePending: 'file:pending',
+
+  // link banners
+  linkPreview: 'link:preview',
+
+  // the OS-wide quick note
+  quickNote: 'quickNote:requested',
+  quickNotePending: 'quickNote:pending',
+  quickNoteStatus: 'quickNote:status',
 
   // shutdown
   appFlush: 'app:flush',

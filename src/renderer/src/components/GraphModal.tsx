@@ -21,7 +21,7 @@ export default function GraphModal(): React.JSX.Element {
         <div className="modal-header">
           <h2 className="modal-title">Graph</h2>
           <span className="modal-hint">Scroll to zoom · drag to pan · click a note to open it</span>
-          <button className="icon-btn" onClick={close} aria-label="Close">
+          <button className="icon-btn" onClick={close} data-tooltip="Close" aria-label="Close">
             <Icon name="close" />
           </button>
         </div>

@@ -3,7 +3,7 @@ import type { Settings, ThemeFile, TokenOverrides } from '@shared/types'
 import type { Snippet } from '../../../preload'
 
 /** Mirrors DEFAULT_SETTINGS in the main process, for first paint before IPC. */
-const FALLBACK_SETTINGS: Settings = {
+export const FALLBACK_SETTINGS: Settings = {
   themeMode: 'system',
   editor: {
     fontSize: 16,
@@ -19,18 +19,30 @@ const FALLBACK_SETTINGS: Settings = {
     autosaveDelay: 400,
     livePreview: true,
     smartLists: true,
-    showWordCount: false
+    showWordCount: false,
+    linkPreviews: false
   },
   dailyNotes: { folder: 'Daily', format: 'YYYY-MM-DD', template: '' },
   attachmentFolder: 'attachments',
   templateFolder: 'Templates',
   hotkeys: {},
+  slashCommands: [],
+  quickNote: {
+    accelerator: 'Control+Shift+Space',
+    folder: 'Temporary',
+    startAtLogin: true,
+    closeToTray: true,
+    preloadWindow: false
+  },
   snippets: {},
   starred: [],
   graphPerformanceMode: false,
   iconOverrides: {},
+  colorOverrides: {},
+  customIcons: {},
   pinned: [],
-  sortOrder: 'name'
+  sortOrder: 'name',
+  showFileTypes: false
 }
 
 const FALLBACK_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }
@@ -101,6 +113,7 @@ interface SettingsState {
   resetTheme: () => void
   setPreset: (preset: string) => void
   importTheme: (theme: ThemeFile) => void
+  applyProfile: (settings: Settings, theme: ThemeFile) => void
   setSnippets: (snippets: Snippet[]) => void
   refreshMode: () => void
 }
@@ -202,6 +215,7 @@ export const useSettings = create<SettingsState>((set, get) => {
     setPreset: (preset) => commit(get().settings, { ...get().theme, preset }),
 
     importTheme: (theme) => commit(get().settings, theme),
+    applyProfile: (settings, theme) => commit(mergeDeep(FALLBACK_SETTINGS, settings), theme),
 
     setSnippets: (snippets) => {
       set({ snippets })
@@ -225,9 +239,9 @@ let snippetStyleEl: HTMLStyleElement | null = null
 /**
  * Push the whole appearance state onto the document.
  *
- * Order matters: the stylesheet defines defaults, then editor settings and
- * theme overrides land as inline variables on the root, then user snippets go
- * last in a stylesheet of their own so they can win.
+ * Order matters: the stylesheet defines defaults, theme overrides land as
+ * inline variables, explicit editor controls win over stale theme typography,
+ * then user snippets go last in their own stylesheet so they can win.
  */
 export function applyTheme(
   settings: Settings,
@@ -245,6 +259,13 @@ export function applyTheme(
     if (name.startsWith('--lum-')) root.style.removeProperty(name)
   }
 
+  for (const [token, value] of Object.entries(theme[mode] ?? {})) {
+    if (value) root.style.setProperty(`--lum-${token}`, value)
+  }
+
+  // Typography controls are explicit preferences, so they win over a theme
+  // file that happens to carry an older typography token. User CSS snippets
+  // still come last below and can intentionally override either one.
   const e = settings.editor
   root.style.setProperty('--lum-font-size', `${e.fontSize}px`)
   root.style.setProperty('--lum-line-height', String(e.lineHeight))
@@ -259,10 +280,6 @@ export function applyTheme(
   if (e.serifFamily) root.style.setProperty('--lum-font-serif', e.serifFamily)
   if (e.monoFamily) root.style.setProperty('--lum-font-mono', e.monoFamily)
   root.style.setProperty('--lum-font-heading', e.serifHeadings ? 'var(--lum-font-serif)' : 'var(--lum-font-editor)')
-
-  for (const [token, value] of Object.entries(theme[mode] ?? {})) {
-    if (value) root.style.setProperty(`--lum-${token}`, value)
-  }
 
   // Snippets, in a single stylesheet appended last.
   if (!snippetStyleEl) {

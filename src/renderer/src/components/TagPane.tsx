@@ -47,8 +47,7 @@ export default function TagPane(): React.JSX.Element {
 
   return (
     <>
-      <PanelHeader
-        title="Tags"
+      <PanelHeader title="Tags"
         actions={
           tagFilter ? (
             <button className="icon-btn" title="Clear filter" onClick={() => setTagFilter(null)}>
@@ -80,6 +79,7 @@ function TagRow({ node, depth }: { node: TagNode; depth: number }): React.JSX.El
     <>
       <div
         className={`tree-row tag-row${active ? ' is-active' : ''}`}
+        data-tooltip={`Filter by #${node.full}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => setTagFilter(active ? null : node.full)}
       >
@@ -87,6 +87,7 @@ function TagRow({ node, depth }: { node: TagNode; depth: number }): React.JSX.El
           <button
             className="tree-twisty"
             aria-label={expanded ? 'Collapse' : 'Expand'}
+            data-tooltip={expanded ? 'Collapse nested tags' : 'Expand nested tags'}
             onClick={(e) => {
               e.stopPropagation()
               setExpanded((v) => !v)

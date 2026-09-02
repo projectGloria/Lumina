@@ -3,6 +3,7 @@ import { Virtuoso } from 'react-virtuoso'
 import type { TreeNode } from '@shared/types'
 import { dirname } from '@shared/markdown-parse'
 import { Icon, type IconName } from './Icon'
+import PathIcon from './PathIcon'
 import type { Settings } from '@shared/types'
 import {
   confirmDelete,
@@ -12,9 +13,11 @@ import {
   promptNewFolder,
   promptNewNote,
   promptRename,
+  setColorOverride,
   setIconOverride,
   toggleStar,
-  togglePin
+  togglePin,
+  uploadCustomIcon
 } from '../lib/actions'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
@@ -68,7 +71,7 @@ const Scroller = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement
       ref={ref}
       className={`panel-scroll tree ${props.className || ''}`}
       onContextMenu={(e) => {
-        if (e.target !== e.currentTarget) return
+        if ((e.target as HTMLElement).closest('.tree-row')) return
         e.preventDefault()
         useUi.getState().showContextMenu({
           x: e.clientX,
@@ -80,7 +83,7 @@ const Scroller = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement
         })
       }}
       onDoubleClick={(e) => {
-        if (e.target !== e.currentTarget) return
+        if ((e.target as HTMLElement).closest('.tree-row')) return
         promptNewNote('')
       }}
       onDragOver={(e) => {
@@ -99,6 +102,7 @@ export default function FileTree(): React.JSX.Element {
   const tree = useVault((s) => s.tree)
   const tagFilter = useUi((s) => s.tagFilter)
   const index = useVault((s) => s.index)
+  const vault = useVault((s) => s.vault)
   const expanded = useWorkspace((s) => s.expanded)
   const pinned = useSettings((s) => s.settings.pinned)
   const sortOrder = useSettings((s) => s.settings.sortOrder)
@@ -118,7 +122,8 @@ export default function FileTree(): React.JSX.Element {
   return (
     <>
       <PanelHeader
-        title={tagFilter ? `#${tagFilter}` : 'Notes'}
+        title={tagFilter ? `#${tagFilter}` : (vault?.name ?? 'Vault')}
+        subtitle={tagFilter ? `${filtered?.length ?? 0} matches` : `${Object.keys(index.notes).length} files`}
         actions={
           tagFilter ? (
             <button
@@ -132,7 +137,7 @@ export default function FileTree(): React.JSX.Element {
             <>
               <button
                 className="icon-btn"
-                title="Sort by…"
+                data-tooltip="Sort by…"
                 onClick={(e) => {
                   const set = (v: Settings['sortOrder']): void => useSettings.getState().patch({ sortOrder: v })
                   useUi.getState().showContextMenu({
@@ -154,10 +159,10 @@ export default function FileTree(): React.JSX.Element {
               >
                 <Icon name="outline" size={15} />
               </button>
-              <button className="icon-btn" title="New note" onClick={() => promptNewNote('')}>
+              <button className="icon-btn panel-action-primary" data-tooltip="New note" onClick={() => promptNewNote('')}>
                 <Icon name="plus" size={15} />
               </button>
-              <button className="icon-btn" title="New folder" onClick={() => promptNewFolder('')}>
+              <button className="icon-btn" data-tooltip="New folder" onClick={() => promptNewFolder('')}>
                 <Icon name="folderPlus" size={15} />
               </button>
             </>
@@ -209,14 +214,19 @@ export default function FileTree(): React.JSX.Element {
 
 export function PanelHeader({
   title,
+  subtitle,
   actions
 }: {
   title: string
+  subtitle?: string
   actions?: React.ReactNode
 }): React.JSX.Element {
   return (
-    <div className="panel-header">
-      <span className="panel-title">{title}</span>
+    <div className={`panel-header${subtitle ? ' has-subtitle' : ''}`}>
+      <span className="panel-heading-copy">
+        <span className="panel-title">{title}</span>
+        {subtitle ? <span className="panel-caption">{subtitle}</span> : null}
+      </span>
       <span className="panel-actions">{actions}</span>
     </div>
   )
@@ -248,7 +258,64 @@ function showIconPicker(path: string, x: number, y: number, current: string | un
         onSelect: () => setIconOverride(path, name)
       })),
       { separator: true, label: 'sep' },
+      { label: 'Upload icon image…', onSelect: () => uploadCustomIcon(path) },
       { label: 'Reset to default', onSelect: () => setIconOverride(path, null) }
+    ]
+  })
+}
+
+/** Small built-in palette a file or folder's icon color can be set to. */
+const COLOR_CHOICES: { label: string; value: string }[] = [
+  { label: 'Red', value: '#e5484d' },
+  { label: 'Orange', value: '#f76b15' },
+  { label: 'Amber', value: '#ffb224' },
+  { label: 'Green', value: '#30a46c' },
+  { label: 'Teal', value: '#12a594' },
+  { label: 'Blue', value: '#3b82f6' },
+  { label: 'Purple', value: '#8b5cf6' },
+  { label: 'Pink', value: '#ec4899' },
+  { label: 'Gray', value: '#8b8d98' }
+]
+
+/** Opens a native color input off-screen and resolves with the chosen color, or null if cancelled. */
+function pickCustomColor(initial: string | undefined): Promise<string | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'color'
+    input.value = initial ?? '#8b8d98'
+    let settled = false
+    const finish = (value: string | null): void => {
+      if (settled) return
+      settled = true
+      resolve(value)
+      input.remove()
+    }
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    input.style.pointerEvents = 'none'
+    input.oninput = () => finish(input.value)
+    input.onblur = () => finish(null)
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+function showColorPicker(path: string, x: number, y: number, current: string | undefined): void {
+  useUi.getState().showContextMenu({
+    x,
+    y,
+    items: [
+      ...COLOR_CHOICES.map((c) => ({
+        label: c.value === current ? `${c.label} (current)` : c.label,
+        swatch: c.value,
+        onSelect: () => setColorOverride(path, c.value)
+      })),
+      { separator: true, label: 'sep' },
+      {
+        label: 'Custom…',
+        onSelect: () => void pickCustomColor(current).then((color) => color && setColorOverride(path, color))
+      },
+      { label: 'Reset to default', onSelect: () => setColorOverride(path, null) }
     ]
   })
 }
@@ -256,6 +323,13 @@ function showIconPicker(path: string, x: number, y: number, current: string | un
 function TreeRow({ node, depth }: { node: TreeNode; depth: number }): React.JSX.Element {
   if (node.kind === 'folder') return <FolderRow node={node} depth={depth} />
   return <FileRow path={node.path} depth={depth} />
+}
+
+function noteCount(nodes: TreeNode[]): number {
+  return nodes.reduce(
+    (total, node) => total + (node.kind === 'file' ? 1 : noteCount(node.children)),
+    0
+  )
 }
 
 function FolderRow({
@@ -270,14 +344,21 @@ function FolderRow({
   const iconOverride = useSettings((s) => s.settings.iconOverrides[node.path]) as
     | IconName
     | undefined
+  const colorOverride = useSettings((s) => s.settings.colorOverrides[node.path])
   const pinned = useSettings((s) => s.settings.pinned.includes(node.path))
   const [dropping, setDropping] = useState(false)
+  const notes = noteCount(node.children)
 
   return (
     <div
       className={`tree-row folder${dropping ? ' is-dropping' : ''}`}
-        style={{ paddingLeft: 8 + depth * 14 }}
+      data-depth={depth}
+        style={{ paddingLeft: 28 + depth * 18, color: colorOverride }}
         onClick={() => toggle(node.path)}
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          promptNewNote(node.path)
+        }}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData('text/lumina-path', node.path)
@@ -311,6 +392,10 @@ function FolderRow({
                 label: 'Change icon…',
                 onSelect: () => showIconPicker(node.path, e.clientX, e.clientY, iconOverride)
               },
+              {
+                label: 'Change color…',
+                onSelect: () => showColorPicker(node.path, e.clientX, e.clientY, colorOverride)
+              },
               { label: pinned ? 'Unpin folder' : 'Pin folder', onSelect: () => togglePin(node.path) },
               { label: 'Show in file explorer', onSelect: () => void window.lumina.vault.reveal(node.path) },
               { separator: true, label: 'sep2' },
@@ -319,10 +404,15 @@ function FolderRow({
           })
         }}
       >
-        <Icon name={expanded ? 'chevronDown' : 'chevronRight'} size={13} />
-        <Icon name={iconOverride ?? 'folder'} size={14} className="tree-icon" />
+        <Icon
+          name={expanded ? 'chevronDown' : 'chevronRight'}
+          size={14}
+          className="tree-chevron"
+        />
+        <PathIcon path={node.path} kind="folder" size={16} className="tree-icon" />
         <span className="tree-label truncate">{node.name}</span>
-        {pinned ? <Icon name="pin" size={11} className="tree-pin" /> : null}
+        <span className="tree-hover-count">{notes}</span>
+        {pinned ? <Icon name="pin" size={12} className="tree-pin" /> : null}
       </div>
   )
 }
@@ -333,6 +423,8 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
   const starred = useSettings((s) => s.settings.starred.includes(path))
   const pinned = useSettings((s) => s.settings.pinned.includes(path))
   const iconOverride = useSettings((s) => s.settings.iconOverrides[path]) as IconName | undefined
+  const colorOverride = useSettings((s) => s.settings.colorOverrides[path])
+  const showFileTypes = useSettings((s) => s.settings.showFileTypes)
   const dirty = useEditor((s) => {
     const b = s.buffers[path]
     return !!b && !b.loading && b.content !== b.saved
@@ -344,7 +436,8 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
   return (
     <div
       className={`tree-row file${isActive ? ' is-active' : ''}`}
-      style={{ paddingLeft: 8 + depth * 14 + 16 }}
+      data-depth={depth}
+      style={{ paddingLeft: 10 + depth * 18, color: colorOverride }}
       onClick={(e) => openNote(path, { newTab: e.ctrlKey || e.metaKey })}
       draggable
       onDragStart={(e) => {
@@ -371,6 +464,10 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
               onSelect: () => showIconPicker(path, e.clientX, e.clientY, iconOverride)
             },
             {
+              label: 'Change color…',
+              onSelect: () => showColorPicker(path, e.clientX, e.clientY, colorOverride)
+            },
+            {
               label: 'Duplicate',
               onSelect: () => void duplicate(path)
             },
@@ -388,13 +485,22 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
         })
       }}
     >
-      <Icon name={iconOverride ?? 'file'} size={14} className="tree-icon" />
-      <span className="tree-label truncate">{title}</span>
-      {dirty ? <span className="tree-dot" title="Unsaved changes" /> : null}
-      {pinned ? <Icon name="pin" size={11} className="tree-pin" /> : null}
-      {starred ? <Icon name="star" size={12} className="tree-star" /> : null}
+      <PathIcon path={path} size={16} className="tree-icon" />
+      <span className="tree-label truncate">
+        {title}
+        {showFileTypes ? <span className="tree-extension">{fileExtension(path)}</span> : null}
+      </span>
+      {dirty ? <span className="tree-dot" data-tooltip="Unsaved changes" /> : null}
+      {pinned ? <Icon name="pin" size={12} className="tree-pin" /> : null}
+      {starred ? <Icon name="star" size={14} className="tree-star" /> : null}
     </div>
   )
+}
+
+function fileExtension(path: string): string {
+  const name = path.split('/').pop() ?? path
+  const dot = name.lastIndexOf('.')
+  return dot > 0 ? name.slice(dot) : ''
 }
 
 async function duplicate(path: string): Promise<void> {

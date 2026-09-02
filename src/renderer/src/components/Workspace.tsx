@@ -9,7 +9,6 @@ import { getCommand, hotkeyFor, runCommand } from '../lib/commands'
 import { acceleratorChips } from '../lib/hotkeys'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
-import { useUi } from '../store/uiStore'
 import { titleOf } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 
@@ -34,8 +33,9 @@ export default function Workspace(): React.JSX.Element {
 function PrimaryPane(): React.JSX.Element {
   const tabs = useWorkspace((s) => s.tabs)
   const activeTab = useWorkspace((s) => s.activeTab)
-  const path = tabs[activeTab]?.path
-  const readMode = useUi((s) => s.readMode)
+  const tab = tabs[activeTab]
+  const path = tab?.path
+  const readMode = (tab?.mode ?? 'edit') === 'read'
 
   return (
     <main className="pane-main">
@@ -67,7 +67,7 @@ function SplitPane({ path }: { path: string }): React.JSX.Element {
     <main className="pane-main split-pane">
       <div className="split-pane-header">
         <span className="split-pane-title truncate">{titleOf(path)}</span>
-        <button className="icon-btn" title="Close split view" onClick={closeSplit}>
+        <button className="icon-btn" data-tooltip="Close split view" onClick={closeSplit}>
           <Icon name="close" size={13} />
         </button>
       </div>
@@ -93,6 +93,8 @@ function WordCountBar({ path }: { path: string }): React.JSX.Element | null {
 
 /** What the editor area shows before anything is open. */
 function NoNoteOpen(): React.JSX.Element {
+  // Keep the shortcut chips live while Settings changes command bindings.
+  useSettings((s) => s.settings.hotkeys)
   const shortcuts = [
     { id: 'switcher.open', label: 'Go to a note' },
     { id: 'note.new', label: 'Create a note' },

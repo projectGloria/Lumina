@@ -36,7 +36,16 @@ function onScreen(bounds: Bounds | undefined): Bounds | undefined {
   return visible ? bounds : { width, height }
 }
 
-export function createWindow(saved: Bounds | undefined, dark: boolean): BrowserWindow {
+/**
+ * `show: false` builds the window without ever showing it — how the tray keeps
+ * a warm window around when "preload the window in the background" is on. The
+ * caller shows it later (`showWindow` in `index.ts`).
+ */
+export function createWindow(
+  saved: Bounds | undefined,
+  dark: boolean,
+  { show = true }: { show?: boolean } = {}
+): BrowserWindow {
   const bounds = onScreen(saved)
 
   const win = new BrowserWindow({
@@ -64,7 +73,7 @@ export function createWindow(saved: Bounds | undefined, dark: boolean): BrowserW
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  if (show) win.once('ready-to-show', () => win.show())
 
   const pushMaximize = (): void =>
     win.webContents.send(CH.winMaximizeChanged, win.isMaximized())

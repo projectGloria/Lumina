@@ -9,15 +9,18 @@
  */
 import { copyLineDown } from '@codemirror/commands'
 import { dirname } from '@shared/markdown-parse'
+import type { IconName } from '../components/Icon'
 import {
   closeTab,
   confirmDelete,
-  createNote,
+  createGeneratedNote,
+  createQuickNote,
   isStarred,
   openDailyNote,
   pickVault,
   promptNewFolder,
   promptRename,
+  saveNoteWithFeedback,
   toggleStar
 } from './actions'
 import { renderToHtml } from './render'
@@ -42,6 +45,12 @@ export interface Command {
   id: string
   title: string
   section: 'Navigation' | 'Notes' | 'Editor' | 'View' | 'Vault'
+  /** Glyph used anywhere commands are presented alongside notes. */
+  icon?: IconName
+  /** Extra terms accepted by the unified navigator. */
+  keywords?: string[]
+  /** Short explanation shown by command and slash-command surfaces. */
+  description?: string
   /** Default accelerator; the user can override it in settings. */
   hotkey?: string
   /** Hidden from the palette and ignored by hotkeys when this returns false. */
@@ -61,6 +70,7 @@ export const COMMANDS: Command[] = [
     id: 'switcher.open',
     title: 'Go to note',
     section: 'Navigation',
+    icon: 'search',
     hotkey: 'Ctrl+P',
     run: () => useUi.getState().openModal('switcher')
   },
@@ -68,6 +78,7 @@ export const COMMANDS: Command[] = [
     id: 'palette.open',
     title: 'Command palette',
     section: 'Navigation',
+    icon: 'keyboard',
     hotkey: 'Ctrl+Shift+P',
     run: () => useUi.getState().openModal('palette')
   },
@@ -75,6 +86,7 @@ export const COMMANDS: Command[] = [
     id: 'search.open',
     title: 'Search in all notes',
     section: 'Navigation',
+    icon: 'search',
     hotkey: 'Ctrl+Shift+F',
     run: () => useWorkspace.getState().setLeftPanel('search')
   },
@@ -82,6 +94,7 @@ export const COMMANDS: Command[] = [
     id: 'graph.open',
     title: 'Open graph view',
     section: 'Navigation',
+    icon: 'graph',
     hotkey: 'Ctrl+G',
     run: () => useUi.getState().openModal('graph')
   },
@@ -89,6 +102,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.back',
     title: 'Navigate back',
     section: 'Navigation',
+    icon: 'back',
     hotkey: 'Alt+Left',
     run: () => useWorkspace.getState().back()
   },
@@ -96,6 +110,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.forward',
     title: 'Navigate forward',
     section: 'Navigation',
+    icon: 'forward',
     hotkey: 'Alt+Right',
     run: () => useWorkspace.getState().forward()
   },
@@ -103,6 +118,7 @@ export const COMMANDS: Command[] = [
     id: 'tab.next',
     title: 'Next tab',
     section: 'Navigation',
+    icon: 'files',
     hotkey: 'Ctrl+Tab',
     run: () => useWorkspace.getState().nextTab(1)
   },
@@ -110,6 +126,7 @@ export const COMMANDS: Command[] = [
     id: 'tab.prev',
     title: 'Previous tab',
     section: 'Navigation',
+    icon: 'files',
     hotkey: 'Ctrl+Shift+Tab',
     run: () => useWorkspace.getState().nextTab(-1)
   },
@@ -117,6 +134,7 @@ export const COMMANDS: Command[] = [
     id: 'tab.close',
     title: 'Close tab',
     section: 'Navigation',
+    icon: 'close',
     hotkey: 'Ctrl+W',
     enabled: hasNote,
     run: () => void closeTab(useWorkspace.getState().activeTab)
@@ -127,22 +145,34 @@ export const COMMANDS: Command[] = [
     id: 'note.new',
     title: 'New note',
     section: 'Notes',
+    icon: 'plus',
     hotkey: 'Ctrl+N',
     run: () => {
       const current = activePath()
-      void createNote(current ? dirname(current) : '', 'Untitled', '')
+      void createGeneratedNote(current ? dirname(current) : '')
     }
+  },
+  {
+    id: 'note.quick',
+    title: 'New quick note',
+    section: 'Notes',
+    icon: 'bolt',
+    // The same note the OS-wide shortcut makes, for when Lumina already has
+    // focus and reaching for a global accelerator would be silly.
+    run: () => void createQuickNote()
   },
   {
     id: 'note.newFolder',
     title: 'New folder',
     section: 'Notes',
+    icon: 'folderPlus',
     run: () => promptNewFolder('')
   },
   {
     id: 'note.daily',
     title: "Open today's daily note",
     section: 'Notes',
+    icon: 'clock',
     hotkey: 'Ctrl+Alt+D',
     run: () => void openDailyNote()
   },
@@ -150,26 +180,20 @@ export const COMMANDS: Command[] = [
     id: 'note.save',
     title: 'Save note',
     section: 'Notes',
+    icon: 'check',
     hotkey: 'Ctrl+S',
     enabled: hasNote,
     run: () => {
       const path = activePath()
       if (!path) return
-      const buffer = useEditor.getState().buffers[path]
-      const wasDirty = !!buffer && !buffer.loading && buffer.content !== buffer.saved
-      void useEditor
-        .getState()
-        .save(path)
-        .then(() => {
-          const after = useEditor.getState().buffers[path]
-          if (wasDirty && after && after.content === after.saved) toast('Saved')
-        })
+      void saveNoteWithFeedback(path)
     }
   },
   {
     id: 'note.rename',
     title: 'Rename note',
     section: 'Notes',
+    icon: 'edit',
     hotkey: 'F2',
     enabled: hasNote,
     run: () => {
@@ -181,6 +205,7 @@ export const COMMANDS: Command[] = [
     id: 'note.delete',
     title: 'Delete note',
     section: 'Notes',
+    icon: 'trash',
     enabled: hasNote,
     run: () => {
       const path = activePath()
@@ -191,6 +216,7 @@ export const COMMANDS: Command[] = [
     id: 'note.star',
     title: 'Star or unstar this note',
     section: 'Notes',
+    icon: 'star',
     enabled: hasNote,
     run: () => {
       const path = activePath()
@@ -204,6 +230,7 @@ export const COMMANDS: Command[] = [
     id: 'note.copyLink',
     title: 'Copy link to this note',
     section: 'Notes',
+    icon: 'link',
     enabled: hasNote,
     run: () => {
       const path = activePath()
@@ -216,6 +243,7 @@ export const COMMANDS: Command[] = [
     id: 'note.reveal',
     title: 'Show in file explorer',
     section: 'Notes',
+    icon: 'folder',
     enabled: hasNote,
     run: () => {
       const path = activePath()
@@ -226,6 +254,7 @@ export const COMMANDS: Command[] = [
     id: 'note.exportHtml',
     title: 'Export note as HTML',
     section: 'Notes',
+    icon: 'download',
     enabled: hasNote,
     run: () => void exportNote('html')
   },
@@ -233,29 +262,31 @@ export const COMMANDS: Command[] = [
     id: 'note.exportPdf',
     title: 'Export note as PDF',
     section: 'Notes',
+    icon: 'download',
     enabled: hasNote,
     run: () => void exportNote('pdf')
   },
 
   /* ----------------------------------------------------------- editor */
-  { id: 'format.bold', title: 'Bold', section: 'Editor', hotkey: 'Ctrl+B', enabled: hasNote, run: withView((v) => toggleWrap(v, '**')) },
-  { id: 'format.italic', title: 'Italic', section: 'Editor', hotkey: 'Ctrl+I', enabled: hasNote, run: withView((v) => toggleWrap(v, '*')) },
-  { id: 'format.code', title: 'Inline code', section: 'Editor', enabled: hasNote, run: withView((v) => toggleWrap(v, '`')) },
-  { id: 'format.highlight', title: 'Highlight', section: 'Editor', enabled: hasNote, run: withView((v) => toggleWrap(v, '==')) },
-  { id: 'format.strike', title: 'Strikethrough', section: 'Editor', enabled: hasNote, run: withView((v) => toggleWrap(v, '~~')) },
-  { id: 'format.link', title: 'Insert link', section: 'Editor', hotkey: 'Ctrl+K', enabled: hasNote, run: withView(insertLink) },
-  { id: 'format.wikilink', title: 'Insert wikilink', section: 'Editor', enabled: hasNote, run: withView(insertWikilink) },
-  { id: 'format.task', title: 'Toggle task', section: 'Editor', hotkey: 'Ctrl+Enter', enabled: hasNote, run: withView(toggleTask) },
-  { id: 'format.quote', title: 'Toggle quote', section: 'Editor', enabled: hasNote, run: withView(toggleQuote) },
-  { id: 'format.bullet', title: 'Toggle bullet list', section: 'Editor', enabled: hasNote, run: withView(toggleBullet) },
-  { id: 'format.numbered', title: 'Toggle numbered list', section: 'Editor', enabled: hasNote, run: withView(toggleNumbered) },
-  { id: 'format.h1', title: 'Heading 1', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 1)) },
-  { id: 'format.h2', title: 'Heading 2', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 2)) },
-  { id: 'format.h3', title: 'Heading 3', section: 'Editor', enabled: hasNote, run: withView((v) => toggleHeading(v, 3)) },
+  { id: 'format.bold', title: 'Bold', section: 'Editor', icon: 'book', description: 'Wrap the selection in bold markers', hotkey: 'Ctrl+B', enabled: hasNote, run: withView((v) => toggleWrap(v, '**')) },
+  { id: 'format.italic', title: 'Italic', section: 'Editor', icon: 'edit', description: 'Wrap the selection in italic markers', hotkey: 'Ctrl+I', enabled: hasNote, run: withView((v) => toggleWrap(v, '*')) },
+  { id: 'format.code', title: 'Inline code', section: 'Editor', icon: 'slash', description: 'Format the selection as inline code', enabled: hasNote, run: withView((v) => toggleWrap(v, '`')) },
+  { id: 'format.highlight', title: 'Highlight', section: 'Editor', icon: 'palette', description: 'Highlight the selected text', enabled: hasNote, run: withView((v) => toggleWrap(v, '==')) },
+  { id: 'format.strike', title: 'Strikethrough', section: 'Editor', icon: 'edit', description: 'Strike through the selected text', enabled: hasNote, run: withView((v) => toggleWrap(v, '~~')) },
+  { id: 'format.link', title: 'Insert link', section: 'Editor', icon: 'link', description: 'Insert or edit a web link', hotkey: 'Ctrl+K', enabled: hasNote, run: withView(insertLink) },
+  { id: 'format.wikilink', title: 'Insert wikilink', section: 'Editor', icon: 'link', description: 'Link to another note in the vault', enabled: hasNote, run: withView(insertWikilink) },
+  { id: 'format.task', title: 'Toggle task', section: 'Editor', icon: 'check', description: 'Turn the current line into a task', hotkey: 'Ctrl+Enter', enabled: hasNote, run: withView(toggleTask) },
+  { id: 'format.quote', title: 'Toggle quote', section: 'Editor', icon: 'info', description: 'Turn the current line into a quote', enabled: hasNote, run: withView(toggleQuote) },
+  { id: 'format.bullet', title: 'Toggle bullet list', section: 'Editor', icon: 'outline', description: 'Turn the current line into a bullet', enabled: hasNote, run: withView(toggleBullet) },
+  { id: 'format.numbered', title: 'Toggle numbered list', section: 'Editor', icon: 'outline', description: 'Turn the current line into a numbered item', enabled: hasNote, run: withView(toggleNumbered) },
+  { id: 'format.h1', title: 'Heading 1', section: 'Editor', icon: 'hash', description: 'Make the current line a large heading', enabled: hasNote, run: withView((v) => toggleHeading(v, 1)) },
+  { id: 'format.h2', title: 'Heading 2', section: 'Editor', icon: 'hash', description: 'Make the current line a medium heading', enabled: hasNote, run: withView((v) => toggleHeading(v, 2)) },
+  { id: 'format.h3', title: 'Heading 3', section: 'Editor', icon: 'hash', description: 'Make the current line a small heading', enabled: hasNote, run: withView((v) => toggleHeading(v, 3)) },
   {
     id: 'editor.duplicateLine',
     title: 'Duplicate line',
     section: 'Editor',
+    icon: 'files',
     hotkey: 'Ctrl+D',
     enabled: hasNote,
     run: withView((v) => {
@@ -268,6 +299,7 @@ export const COMMANDS: Command[] = [
     id: 'settings.open',
     title: 'Open settings',
     section: 'View',
+    icon: 'settings',
     hotkey: 'Ctrl+,',
     run: () => useUi.getState().openSettings()
   },
@@ -275,6 +307,7 @@ export const COMMANDS: Command[] = [
     id: 'view.toggleLeft',
     title: 'Toggle left sidebar',
     section: 'View',
+    icon: 'panelLeft',
     hotkey: 'Ctrl+\\',
     run: () => useWorkspace.getState().toggleLeft()
   },
@@ -282,6 +315,7 @@ export const COMMANDS: Command[] = [
     id: 'view.toggleRight',
     title: 'Toggle right sidebar',
     section: 'View',
+    icon: 'panelRight',
     hotkey: 'Ctrl+Shift+\\',
     run: () => useWorkspace.getState().toggleRight()
   },
@@ -289,6 +323,8 @@ export const COMMANDS: Command[] = [
     id: 'view.focusMode',
     title: 'Toggle focus mode',
     section: 'View',
+    icon: 'focus',
+    keywords: ['fullscreen', 'full screen', 'zen', 'distraction free'],
     hotkey: 'Ctrl+Shift+M',
     run: () => useWorkspace.getState().toggleFocusMode()
   },
@@ -296,6 +332,8 @@ export const COMMANDS: Command[] = [
     id: 'view.toggleTheme',
     title: 'Toggle light and dark',
     section: 'View',
+    icon: 'palette',
+    keywords: ['theme', 'appearance'],
     run: () => {
       const { settings, patch, mode } = useSettings.getState()
       // From `system`, the first toggle commits to the opposite of what shows.
@@ -307,6 +345,7 @@ export const COMMANDS: Command[] = [
     id: 'view.splitRight',
     title: 'Open note in split view',
     section: 'View',
+    icon: 'panelRight',
     enabled: hasNote,
     run: () => {
       const path = activePath()
@@ -317,21 +356,25 @@ export const COMMANDS: Command[] = [
     id: 'view.closeSplit',
     title: 'Close split view',
     section: 'View',
+    icon: 'close',
     enabled: () => useWorkspace.getState().splitPath !== null,
     run: () => useWorkspace.getState().closeSplit()
   },
   {
     id: 'view.readMode',
-    title: 'Toggle edit / view mode',
+    title: 'Toggle edit / read mode',
     section: 'View',
+    icon: 'book',
     hotkey: 'Ctrl+Shift+E',
     enabled: hasNote,
-    run: () => useUi.getState().toggleReadMode()
+    // Per tab, so two notes can be open in different modes.
+    run: () => useWorkspace.getState().toggleTabMode()
   },
   {
     id: 'view.livePreview',
     title: 'Toggle live preview',
     section: 'View',
+    icon: 'edit',
     run: () => {
       const on = useSettings.getState().settings.editor.livePreview
       useSettings.getState().patch({ editor: { livePreview: !on } })
@@ -342,41 +385,46 @@ export const COMMANDS: Command[] = [
     id: 'view.wordCount',
     title: 'Toggle word count',
     section: 'View',
+    icon: 'info',
     run: () => {
       const on = useSettings.getState().settings.editor.showWordCount
       useSettings.getState().patch({ editor: { showWordCount: !on } })
     }
   },
-  { id: 'panel.files', title: 'Show file list', section: 'View', run: () => useWorkspace.getState().setLeftPanel('files') },
-  { id: 'panel.tags', title: 'Show tags', section: 'View', run: () => useWorkspace.getState().setLeftPanel('tags') },
-  { id: 'panel.starred', title: 'Show starred notes', section: 'View', run: () => useWorkspace.getState().setLeftPanel('starred') },
-  { id: 'panel.backlinks', title: 'Show backlinks', section: 'View', run: () => useWorkspace.getState().setRightPanel('backlinks') },
-  { id: 'panel.outline', title: 'Show outline', section: 'View', run: () => useWorkspace.getState().setRightPanel('outline') },
-  { id: 'panel.localGraph', title: 'Show local graph', section: 'View', run: () => useWorkspace.getState().setRightPanel('graph') },
+  { id: 'panel.files', title: 'Show file list', section: 'View', icon: 'files', run: () => useWorkspace.getState().setLeftPanel('files') },
+  { id: 'panel.tags', title: 'Show tags', section: 'View', icon: 'tag', run: () => useWorkspace.getState().setLeftPanel('tags') },
+  { id: 'panel.starred', title: 'Show starred notes', section: 'View', icon: 'star', run: () => useWorkspace.getState().setLeftPanel('starred') },
+  { id: 'panel.backlinks', title: 'Show backlinks', section: 'View', icon: 'link', run: () => useWorkspace.getState().setRightPanel('backlinks') },
+  { id: 'panel.outline', title: 'Show outline', section: 'View', icon: 'outline', run: () => useWorkspace.getState().setRightPanel('outline') },
+  { id: 'panel.localGraph', title: 'Show local graph', section: 'View', icon: 'graph', run: () => useWorkspace.getState().setRightPanel('graph') },
 
   /* ------------------------------------------------------------ vault */
   {
     id: 'vault.open',
     title: 'Open another vault',
     section: 'Vault',
+    icon: 'vault',
     run: () => void pickVault()
   },
   {
     id: 'vault.saveAll',
     title: 'Save all notes',
     section: 'Vault',
+    icon: 'check',
     run: () => void useEditor.getState().saveAll()
   },
   {
     id: 'snippets.open',
     title: 'Open CSS snippets folder',
     section: 'Vault',
+    icon: 'folder',
     run: () => void window.lumina.snippets.openFolder()
   },
   {
     id: 'vault.stats',
     title: 'Vault statistics',
     section: 'Vault',
+    icon: 'info',
     run: () => {
       const { notes, tags } = useVault.getState().index
       const list = Object.values(notes)
@@ -406,6 +454,17 @@ export function runCommand(id: string): void {
 export function hotkeyFor(command: Command): string {
   const override = useSettings.getState().settings.hotkeys[command.id]
   return override ?? command.hotkey ?? ''
+}
+
+/** Reactive counterpart of `hotkeyFor`, for labels and tooltips in React. */
+export function useCommandHotkey(id: string): string {
+  const command = BY_ID.get(id)
+  const override = useSettings((s) => s.settings.hotkeys[id])
+  return override ?? command?.hotkey ?? ''
+}
+
+export function commandTooltip(label: string, hotkey: string): string {
+  return hotkey ? `${label}  (${hotkey})` : label
 }
 
 async function exportNote(kind: 'html' | 'pdf'): Promise<void> {

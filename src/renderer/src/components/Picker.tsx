@@ -4,6 +4,8 @@ import { highlight } from '../lib/fuzzy'
 export interface PickerItem {
   id: string
   label: string
+  /** Leading visual that distinguishes notes, commands and creation actions. */
+  icon?: React.ReactNode
   /** Indices in `label` that matched the query. */
   indices?: number[]
   detail?: string
@@ -114,6 +116,7 @@ export default function Picker({
                       choose(i)
                     }}
                   >
+                    {item.icon ? <span className="picker-icon">{item.icon}</span> : null}
                     <span className="picker-label truncate">
                       {highlight(item.label, item.indices ?? []).map((part, k) =>
                         part.hit ? <mark key={k}>{part.text}</mark> : <span key={k}>{part.text}</span>

@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { isMarkdownPath } from '@shared/markdown-parse'
@@ -7,6 +8,7 @@ import type {
   FileOpenRequest,
   SearchOptions,
   Settings,
+  SettingsPreset,
   ThemeFile,
   VaultChange,
   WorkspaceState
@@ -20,6 +22,8 @@ import {
   indexNote,
   scheduleCacheSave
 } from './indexer'
+import { forgetLinkPreviews, linkPreview } from './linkPreview'
+import { listSystemFonts } from './fonts'
 import { resolveFile, toRequest } from './openFile'
 import { samePath } from './paths'
 import {
@@ -41,8 +45,11 @@ import {
   loadSettings,
   loadTheme,
   loadWorkspace,
+  normalizeSettings,
+  normalizeTheme,
   rememberVault,
   saveSettings,
+  saveAppState,
   saveTheme,
   saveWorkspace
 } from './settings'
@@ -66,8 +73,22 @@ import {
 
 let win: BrowserWindow | null = null
 
+/**
+ * Called after settings are written, so `index.ts` can re-apply the parts of
+ * them that live outside the renderer. Set once at startup.
+ */
+let onSettingsSaved: ((settings: Settings) => void) | null = null
+
+export function onSettingsChanged(handler: (settings: Settings) => void): void {
+  onSettingsSaved = handler
+}
+
 export function setMainWindow(w: BrowserWindow): void {
   win = w
+  // A replacement window starts with a renderer that has not drained anything
+  // yet; leaving this true would send a quick-note request into a page that is
+  // still loading, where nothing is listening for it.
+  rendererListening = false
 }
 
 function send(channel: string, payload?: unknown): void {
@@ -83,6 +104,27 @@ function send(channel: string, payload?: unknown): void {
  */
 let rendererListening = false
 const pendingRequests: FileOpenRequest[] = []
+
+/**
+ * Quick-note presses waiting for the renderer, counted rather than queued.
+ *
+ * The shortcut is the one path that routinely fires before there is anything
+ * listening: pressing it with Lumina idling in the tray creates the window,
+ * and the press has to survive the whole cold start. This remains a count so
+ * no request is lost; the renderer may intentionally reuse the same generated
+ * note while it remains blank.
+ */
+let pendingQuickNotes = 0
+
+export function pushQuickNote(): void {
+  if (rendererListening && win && !win.isDestroyed()) send(CH.quickNote)
+  else pendingQuickNotes++
+}
+
+/** Tell the renderer a shortcut change did or did not take, so it can say so. */
+export function reportQuickNoteStatus(accelerator: string, registered: boolean): void {
+  send(CH.quickNoteStatus, { accelerator, registered })
+}
 
 function pushFileRequest(request: FileOpenRequest): void {
   // No live window means no listener, however ready the last one was — macOS
@@ -121,6 +163,14 @@ function focusWindow(): void {
   win.focus()
 }
 
+/**
+ * Whether the user has turned link previews on, mirrored here so the fetch is
+ * refused in the main process rather than only skipped in the renderer. Any
+ * URL in any note is a candidate, so the offline promise is worth enforcing
+ * where the network call actually happens.
+ */
+let linkPreviewsEnabled = false
+
 /* ------------------------------------------------------------ open a vault */
 
 /** Everything the renderer needs to draw a freshly opened vault in one payload. */
@@ -132,6 +182,7 @@ async function vaultPayload(vault: string) {
     readTree(),
     readSnippets(vault)
   ])
+  linkPreviewsEnabled = settings.editor.linkPreviews
   return {
     vault: { path: vault, name: path.basename(vault), lastOpened: Date.now() },
     settings,
@@ -149,6 +200,9 @@ export async function openVault(dir: string) {
   if (getRoot()) await flushRenderer()
 
   await setRoot(dir)
+  // The link cache lives in the vault, so the in-memory copy belongs to the
+  // one being left.
+  forgetLinkPreviews()
   await ensureLuminaDir(dir)
 
   if (await isEmptyVault(dir)) await seedVault(dir)
@@ -292,6 +346,13 @@ export function registerIpc(): void {
     return pendingRequests.splice(0, pendingRequests.length)
   })
 
+  ipcMain.handle(CH.quickNotePending, () => {
+    rendererListening = true
+    const count = pendingQuickNotes
+    pendingQuickNotes = 0
+    return count
+  })
+
   /* notes --------------------------------------------------------------- */
   ipcMain.handle(CH.noteRead, (_e, rel: string) => readNote(rel))
 
@@ -377,7 +438,81 @@ export function registerIpc(): void {
   ipcMain.handle(CH.settingsSet, async (_e, settings: Settings) => {
     const root = getRoot()
     if (root) await saveSettings(root, settings)
+    // The quick-note preferences live in this payload but are acted on by the
+    // main process (a global accelerator, a tray icon, a login item), so they
+    // have to be re-applied on every save rather than only at startup.
+    linkPreviewsEnabled = settings.editor.linkPreviews
+    onSettingsSaved?.(settings)
     return true
+  })
+  ipcMain.handle(CH.fontsList, () => listSystemFonts())
+
+  ipcMain.handle(CH.settingsProfilesList, async () => (await loadAppState()).settingsProfiles)
+  ipcMain.handle(
+    CH.settingsProfilesSave,
+    async (_e, name: string, settings: Settings, theme: ThemeFile): Promise<SettingsPreset> => {
+      const state = await loadAppState()
+      const profile: SettingsPreset = {
+        id: randomUUID(),
+        name: name.trim() || `Settings ${state.settingsProfiles.length + 1}`,
+        createdAt: Date.now(),
+        settings: normalizeSettings(settings),
+        theme: normalizeTheme(theme)
+      }
+      await saveAppState({ settingsProfiles: [...state.settingsProfiles, profile] })
+      return profile
+    }
+  )
+  ipcMain.handle(CH.settingsProfilesDelete, async (_e, id: string) => {
+    const state = await loadAppState()
+    await saveAppState({ settingsProfiles: state.settingsProfiles.filter((profile) => profile.id !== id) })
+  })
+  ipcMain.handle(CH.settingsProfilesImport, async (): Promise<SettingsPreset | null> => {
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Import Lumina settings',
+      properties: ['openFile'],
+      filters: [{ name: 'Lumina settings', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    const raw = JSON.parse((await fs.readFile(result.filePaths[0], 'utf8')).replace(/^﻿/, '')) as Record<string, unknown>
+    const source = raw.settings && typeof raw.settings === 'object' ? raw.settings : raw
+    const theme = raw.theme && typeof raw.theme === 'object' ? raw.theme : undefined
+    const state = await loadAppState()
+    const profile: SettingsPreset = {
+      id: randomUUID(),
+      name: typeof raw.name === 'string' && raw.name.trim()
+        ? raw.name.trim()
+        : path.basename(result.filePaths[0], path.extname(result.filePaths[0])),
+      createdAt: Date.now(),
+      settings: normalizeSettings(source),
+      theme: normalizeTheme(theme)
+    }
+    await saveAppState({ settingsProfiles: [...state.settingsProfiles, profile] })
+    return profile
+  })
+  ipcMain.handle(CH.settingsProfilesExport, async (_e, profile: SettingsPreset): Promise<boolean> => {
+    if (!win) return false
+    const safeName = profile.name.replace(/[<>:"/\\|?*]/g, '-').trim() || 'Lumina settings'
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Export Lumina settings',
+      defaultPath: `${safeName}.json`,
+      filters: [{ name: 'Lumina settings', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return false
+    await fs.writeFile(result.filePath, JSON.stringify({
+      format: 'lumina-settings',
+      version: 1,
+      name: profile.name,
+      settings: profile.settings,
+      theme: profile.theme
+    }, null, 2), 'utf8')
+    return true
+  })
+
+  ipcMain.handle(CH.linkPreview, async (_e, url: string) => {
+    if (!linkPreviewsEnabled) return null
+    return linkPreview(url)
   })
 
   ipcMain.handle(CH.themeGet, async () => {

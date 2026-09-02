@@ -1,3 +1,4 @@
+
 /**
  * Live preview: markdown that renders itself in place.
  *
@@ -30,7 +31,16 @@ import {
   type DecorationSet,
   type ViewUpdate
 } from '@codemirror/view'
+import {
+  fallbackLinkDetails,
+  linkAccentIndex,
+  parseLinkUrl,
+  standaloneLink,
+  type LinkMetadata
+} from '@shared/linkPreview'
 import { parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { createIconElement, type IconName } from '../components/Icon'
+import { useSettings } from '../store/settingsStore'
 import { aliasMap, knownPaths } from '../store/vaultStore'
 import { attachmentCandidates, isImageTarget, vaultUrl } from './resources'
 
@@ -135,6 +145,29 @@ class HrWidget extends WidgetType {
   }
 }
 
+/**
+ * Dev-only guard: a block widget's root element must never carry a margin.
+ *
+ * CodeMirror's height map is built from `getBoundingClientRect().height`,
+ * which excludes margins, while the drawn caret comes from real DOM rects - a
+ * margin desyncs the two and clicks land on the wrong line. Use padding.
+ *
+ * The check waits a frame because `toDOM` runs before the element is in the
+ * document, where `getComputedStyle` reports nothing at all.
+ */
+function warnOnMargin(el: HTMLElement, widget: string): void {
+  if (!import.meta.env.DEV) return
+  requestAnimationFrame(() => {
+    if (!el.isConnected) return
+    const { marginTop, marginBottom } = getComputedStyle(el)
+    if (marginTop === '0px' && marginBottom === '0px') return
+    console.warn(
+      `${widget} root element has a nonzero margin (${marginTop} / ${marginBottom}); ` +
+        'CodeMirror height map excludes margins and clicks will land on the wrong line.'
+    )
+  })
+}
+
 class ImageWidget extends WidgetType {
   constructor(
     readonly target: string,
@@ -166,6 +199,38 @@ class ImageWidget extends WidgetType {
     img.addEventListener('error', next)
     next()
     return img
+  }
+}
+
+/**
+ * The icon a wikilink's target was given in the file explorer (custom image or
+ * built-in name), rendered just before the link text so a rename/re-icon in
+ * the tree is visible everywhere the note is referenced, not just there.
+ */
+class WikilinkIconWidget extends WidgetType {
+  constructor(
+    readonly iconName: string | null,
+    readonly customIcon: string | null
+  ) {
+    super()
+  }
+  eq(other: WikilinkIconWidget): boolean {
+    return other.iconName === this.iconName && other.customIcon === this.customIcon
+  }
+  toDOM(): HTMLElement {
+    const wrap = document.createElement('span')
+    wrap.className = 'cm-wikilink-icon'
+    wrap.setAttribute('aria-hidden', 'true')
+    if (this.customIcon) {
+      const img = document.createElement('img')
+      img.className = 'cm-wikilink-icon-img'
+      img.src = vaultUrl(this.customIcon)
+      img.draggable = false
+      wrap.appendChild(img)
+    } else if (this.iconName) {
+      wrap.appendChild(createIconElement(this.iconName as IconName, 13))
+    }
+    return wrap
   }
 }
 
@@ -263,15 +328,7 @@ class FrontmatterWidget extends WidgetType {
 
     outer.appendChild(wrap)
 
-    if (import.meta.env.DEV) {
-      const margin = getComputedStyle(outer).marginBottom
-      if (margin !== '0px') {
-        console.warn(
-          `FrontmatterWidget outer element has a nonzero margin (${margin}); ` +
-            'CodeMirror height map excludes margins and clicks will land on the wrong line.'
-        )
-      }
-    }
+    warnOnMargin(outer, 'FrontmatterWidget')
 
     return outer
   }
@@ -335,18 +392,200 @@ class TableWidget extends WidgetType {
       view.focus()
     })
 
-    if (import.meta.env.DEV) {
-      const margin = getComputedStyle(wrap).marginBottom
-      if (margin !== '0px') {
-        console.warn(
-          `TableWidget root element has a nonzero margin (${margin}); ` +
-            'CodeMirror height map excludes margins and clicks will land on the wrong line.'
-        )
-      }
-    }
+    warnOnMargin(wrap, 'TableWidget')
 
     return wrap
   }
+  ignoreEvent(): boolean {
+    return false
+  }
+}
+
+/* -------------------------------------------------------- link banners */
+
+/**
+ * Page metadata for banner URLs, kept for the session.
+ *
+ * `null` means "asked and got nothing" - a failed fetch, previews turned off,
+ * or a page with no metadata - and is cached like any other answer so a dead
+ * link is not retried on every keystroke. The map is module-level because the
+ * widgets that need it are rebuilt constantly.
+ */
+const linkMetaCache = new Map<string, LinkMetadata | null>()
+const linkMetaPending = new Set<string>()
+
+function requestLinkMeta(url: string, view: EditorView): void {
+  if (linkMetaCache.has(url) || linkMetaPending.has(url)) return
+  linkMetaPending.add(url)
+
+  void window.lumina.links
+    .preview(url)
+    .then((meta) => {
+      linkMetaCache.set(url, meta)
+      // Rebuild so the card can pick the answer up. Dispatching straight from
+      // `toDOM` would be a write during an update; this always lands later.
+      try {
+        view.dispatch({ effects: refreshPreview.of(null) })
+      } catch {
+        // The view went away while the request was in flight.
+      }
+    })
+    .catch(() => {
+      linkMetaCache.set(url, null)
+    })
+    .finally(() => linkMetaPending.delete(url))
+}
+
+/**
+ * A link alone on its line, drawn as a card rather than a line of blue text.
+ *
+ * Offline it shows what the URL itself says: a site icon, the last path
+ * segment as a title, and the host. With link previews turned on it also
+ * carries the page's own title, description and thumbnail, which arrive later
+ * through `requestLinkMeta` above.
+ */
+class LinkBannerWidget extends WidgetType {
+  constructor(
+    readonly label: string,
+    readonly url: string,
+    readonly meta: LinkMetadata | null,
+    readonly fetchOnDraw: boolean,
+    readonly lineNumber: number
+  ) {
+    super()
+  }
+
+  eq(other: LinkBannerWidget): boolean {
+    return (
+      other.url === this.url &&
+      other.label === this.label &&
+      other.meta?.fetchedAt === this.meta?.fetchedAt &&
+      other.fetchOnDraw === this.fetchOnDraw &&
+      other.lineNumber === this.lineNumber
+    )
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    if (this.fetchOnDraw) requestLinkMeta(this.url, view)
+
+    const { host } = parseLinkUrl(this.url)
+    const fallback = fallbackLinkDetails(this.url)
+    // Padding, never margin: CodeMirror's height map excludes margins, and a
+    // block widget carrying one desyncs clicks from where the caret is drawn.
+    const outer = document.createElement('div')
+    outer.className = 'cm-link-banner-outer'
+
+    const card = document.createElement('div')
+    card.className = 'link-banner'
+    card.dataset.accent = String(linkAccentIndex(host || this.url))
+    card.setAttribute('role', 'link')
+    card.title = this.url
+
+    const grip = document.createElement('span')
+    grip.className = 'link-banner-grip'
+    grip.draggable = true
+    grip.setAttribute('role', 'button')
+    grip.setAttribute('aria-label', 'Drag to reorder link')
+    grip.title = 'Drag to reorder'
+    grip.textContent = '⠿'
+    grip.addEventListener('mousedown', (event) => event.stopPropagation())
+    grip.addEventListener('dragstart', (event) => {
+      event.stopPropagation()
+      event.dataTransfer?.setData('text/lumina-link-line', String(this.lineNumber))
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+      card.classList.add('is-dragging')
+    })
+    grip.addEventListener('dragend', () => card.classList.remove('is-dragging'))
+    card.appendChild(grip)
+
+    const mark = document.createElement('div')
+    mark.className = 'link-banner-mark'
+    mark.appendChild(createIconElement('globe', 22, 'link-banner-glyph'))
+    if (this.meta?.imagePath) {
+      const thumb = document.createElement('img')
+      thumb.className = 'link-banner-thumb'
+      thumb.src = vaultUrl(this.meta.imagePath)
+      thumb.alt = ''
+      thumb.draggable = false
+      // A thumbnail that will not load leaves the site icon behind it.
+      thumb.addEventListener('error', () => thumb.remove())
+      mark.appendChild(thumb)
+    }
+    card.appendChild(mark)
+
+    const body = document.createElement('div')
+    body.className = 'link-banner-body'
+
+    const title = document.createElement('div')
+    title.className = 'link-banner-title'
+    title.textContent = this.label || this.meta?.title || fallback.title
+    body.appendChild(title)
+
+    const descriptionText = this.meta?.description || fallback.description
+    if (descriptionText) {
+      const description = document.createElement('div')
+      description.className = 'link-banner-desc'
+      description.textContent = descriptionText
+      body.appendChild(description)
+    }
+
+    const source = document.createElement('div')
+    source.className = 'link-banner-host'
+    source.textContent = host || this.url
+    body.appendChild(source)
+
+    card.appendChild(body)
+
+    const openIcon = document.createElement('span')
+    openIcon.className = 'link-banner-open'
+    openIcon.setAttribute('aria-hidden', 'true')
+    openIcon.appendChild(createIconElement('external', 14))
+    card.appendChild(openIcon)
+
+    card.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      void window.lumina.files.openExternal(this.url)
+    })
+    card.addEventListener('dragover', (event) => {
+      if (!event.dataTransfer?.types.includes('text/lumina-link-line')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      card.classList.add('is-drop-target')
+    })
+    card.addEventListener('dragleave', () => card.classList.remove('is-drop-target'))
+    card.addEventListener('drop', (event) => {
+      card.classList.remove('is-drop-target')
+      const source = Number(event.dataTransfer?.getData('text/lumina-link-line'))
+      if (!Number.isInteger(source) || source === this.lineNumber) return
+      event.preventDefault()
+      event.stopPropagation()
+      const lines = view.state.doc.toString().split('\n')
+      const [moved] = lines.splice(source - 1, 1)
+      const target = this.lineNumber - 1 - (source < this.lineNumber ? 1 : 0)
+      lines.splice(target, 0, moved)
+      const next = lines.join('\n')
+      const anchor = lines.slice(0, target).reduce((sum, line) => sum + line.length + 1, 0)
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next }, selection: { anchor } })
+      view.focus()
+    })
+
+    // Clicking the gap around the card puts the caret on the line instead, so
+    // the raw markdown is still reachable with the mouse.
+    outer.addEventListener('mousedown', (event) => {
+      event.preventDefault()
+      view.dispatch({ selection: { anchor: view.posAtDOM(outer) } })
+      view.focus()
+    })
+
+    outer.appendChild(card)
+
+    warnOnMargin(outer, 'LinkBannerWidget')
+
+    return outer
+  }
+
   ignoreEvent(): boolean {
     return false
   }
@@ -376,18 +615,49 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
     )
   }
 
+  const wantsMetadata = useSettings.getState().settings.editor.linkPreviews
+  const bannerLines = new Set<number>()
+
   syntaxTree(state).iterate({
     enter: (node) => {
-      if (node.name !== 'Table') return
-      const first = state.doc.lineAt(node.from).number
-      const last = state.doc.lineAt(node.to).number
-      if (editingLines(active, first, last)) return false
+      if (node.name === 'Table') {
+        const first = state.doc.lineAt(node.from).number
+        const last = state.doc.lineAt(node.to).number
+        if (editingLines(active, first, last)) return false
 
+        ranges.push(
+          Decoration.replace({
+            widget: new TableWidget(state.sliceDoc(node.from, node.to)),
+            block: true
+          }).range(state.doc.line(first).from, state.doc.line(last).to)
+        )
+        return false
+      }
+
+      // A link that is the whole line becomes a card. Walking the tree rather
+      // than the raw lines is what keeps a URL inside a fenced code block out
+      // of it: there the text is `CodeText`, never a link node.
+      if (node.name !== 'Link' && node.name !== 'URL' && node.name !== 'Autolink') return
+
+      const line = state.doc.lineAt(node.from)
+      if (bannerLines.has(line.number) || line.from < fmEnd) return false
+
+      const link = standaloneLink(line.text)
+      if (!link) return false
+      if (editingLines(active, line.number, line.number)) return false
+
+      bannerLines.add(line.number)
       ranges.push(
         Decoration.replace({
-          widget: new TableWidget(state.sliceDoc(node.from, node.to)),
+          widget: new LinkBannerWidget(
+            link.label,
+            link.url,
+            linkMetaCache.get(link.url) ?? null,
+            wantsMetadata && !linkMetaCache.has(link.url),
+            line.number
+          ),
           block: true
-        }).range(state.doc.line(first).from, state.doc.line(last).to)
+        }).range(line.from, line.to)
       )
       return false
     }
@@ -423,8 +693,14 @@ const blockPreviewField = StateField.define<DecorationSet>({
 const HIDDEN = Decoration.replace({})
 const MARK_DIM = Decoration.mark({ class: 'cm-md-mark' })
 
+/**
+ * Callout type -> semantic colour. An empty string means the plain callout,
+ * which takes the accent — the clay orange the rest of the app is built on.
+ * `note` is the default type a callout gets when it names nothing else, so it
+ * belongs there rather than in the blue `info` group.
+ */
 const CALLOUT_TYPES: Record<string, string> = {
-  note: 'info',
+  note: '',
   info: 'info',
   todo: 'info',
   abstract: 'info',
@@ -473,8 +749,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 
   const paths = knownPaths()
   const aliases = aliasMap()
-  const linkClass = (target: string): string =>
-    resolveLink(target, from, paths, aliases) ? 'cm-wikilink' : 'cm-wikilink unresolved'
 
   const tree = syntaxTree(state)
 
@@ -564,9 +838,15 @@ function buildDecorations(view: EditorView): DecorationSet {
               const kind = CALLOUT_TYPES[callout[1].toLowerCase()] ?? ''
               const classes = ['cm-callout']
               if (kind) classes.push(`type-${kind}`)
-              if (n === first.number) classes.push('cm-callout-first')
-              if (n === lastLine) classes.push('cm-callout-last')
-              ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
+              if (n === first.number) {
+                classes.push('cm-callout-first')
+                ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
+              } else {
+                classes.push('cm-callout-body')
+                if (n === first.number + 1) classes.push('cm-callout-body-first')
+                if (n === lastLine) classes.push('cm-callout-last')
+                ranges.push(Decoration.line({ class: classes.join(' ') }).range(line.from))
+              }
             } else {
               ranges.push(Decoration.line({ class: 'cm-quote' }).range(line.from))
             }
@@ -635,7 +915,30 @@ function buildDecorations(view: EditorView): DecorationSet {
             )
             return false
           }
-          ranges.push(Decoration.mark({ class: linkClass(target) }).range(start, end))
+
+          const resolved = resolveLink(target, from, paths, aliases)
+          const overrides = useSettings.getState().settings
+          const color = resolved ? overrides.colorOverrides[resolved] : undefined
+          const iconName = resolved ? overrides.iconOverrides[resolved] : undefined
+          const customIcon = resolved ? overrides.customIcons[resolved] : undefined
+
+          ranges.push(
+            Decoration.mark({
+              class: resolved ? 'cm-wikilink' : 'cm-wikilink unresolved',
+              attributes: color ? { style: `color: ${color}` } : undefined
+            }).range(start, end)
+          )
+          // The icon sits just before the visible link text — same rule as
+          // everything else in live preview, it disappears when the caret is on
+          // this line so the raw `[[...]]` source is what you actually edit.
+          if (!isRaw(start) && (iconName || customIcon)) {
+            ranges.push(
+              Decoration.widget({
+                widget: new WikilinkIconWidget(iconName ?? null, customIcon ?? null),
+                side: -1
+              }).range(start)
+            )
+          }
           return undefined
         }
         if (name === 'WikiLinkMark') {
@@ -737,11 +1040,106 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
+/* ------------------------------------------------------- callout sizing */
+
+/**
+ * A callout's box is only as wide as its widest body line, so every line below
+ * the title has to be given that same width — otherwise a short last line sits
+ * in a visibly narrower box than the sentence above it.
+ *
+ * The width can only be read off the laid-out DOM. The raw source is a bad
+ * proxy for it: `> ` markers are hidden, inline code renders in the mono font
+ * at a different size, wikilinks lose their brackets. So this runs as a
+ * CodeMirror measure pass and writes `--callout-width` straight onto the line
+ * elements, rather than guessing at decoration time.
+ */
+type CalloutGroup = { lines: HTMLElement[]; width: number }
+
+/**
+ * Width of a line's rendered text, independent of the box it sits in — a
+ * `Range` over the contents ignores the `min-width` a previous pass applied,
+ * which measuring the element itself would feed back into.
+ */
+function renderedWidth(line: HTMLElement): number {
+  const range = document.createRange()
+  range.selectNodeContents(line)
+  const text = range.getBoundingClientRect().width
+  if (!text) return 0
+  const style = getComputedStyle(line)
+  // Lines are `border-box`, so `min-width` has to cover the padding as well.
+  return Math.ceil(text + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight))
+}
+
+function measureCallouts(view: EditorView): CalloutGroup[] {
+  const groups: CalloutGroup[] = []
+  let current: CalloutGroup | null = null
+
+  for (const child of Array.from(view.contentDOM.children)) {
+    const line = child as HTMLElement
+    if (line.classList.contains('cm-callout-body')) {
+      // A callout whose title line is scrolled out of the viewport has no
+      // `cm-callout-first` to open the group, so open one here too.
+      if (!current) {
+        current = { lines: [], width: 0 }
+        groups.push(current)
+      }
+      current.lines.push(line)
+      current.width = Math.max(current.width, renderedWidth(line))
+    } else {
+      current = line.classList.contains('cm-callout-first') ? { lines: [], width: 0 } : null
+      if (current) groups.push(current)
+    }
+  }
+
+  return groups.filter((g) => g.lines.length > 0)
+}
+
+const calloutWidthPlugin = ViewPlugin.fromClass(
+  class {
+    constructor(view: EditorView) {
+      this.schedule(view)
+    }
+
+    update(update: ViewUpdate): void {
+      // Deliberately unconditional. The width lives in an inline style rather
+      // than in the decoration, so any redraw that rebuilds a line's DOM drops
+      // it — and a redraw does not have to touch the doc, the selection or the
+      // geometry to happen. A `refreshPreview` effect (dispatched when the
+      // vault index lands, moments after a note opens) rebuilds every
+      // decoration and re-renders the callout lines with none of those flags
+      // set, which is why filtering on them left the box unsized until the
+      // first click. Re-measuring is viewport-bounded and deduplicated by the
+      // request key, so running it on every update is cheap.
+      this.schedule(update.view)
+    }
+
+    schedule(view: EditorView): void {
+      view.requestMeasure({
+        key: 'lumina-callout-width',
+        read: measureCallouts,
+        write: (groups, v) => {
+          // Line elements are recycled, so clear every line first rather than
+          // leaving a stale width on one that is no longer part of a callout.
+          for (const child of Array.from(v.contentDOM.children)) {
+            ;(child as HTMLElement).style.removeProperty('--callout-width')
+          }
+          for (const group of groups) {
+            for (const line of group.lines) {
+              line.style.setProperty('--callout-width', `${group.width}px`)
+            }
+          }
+        }
+      })
+    }
+  }
+)
+
 export function livePreviewExtension(path: string, enabled: boolean): Extension {
   return [
     notePath.of(path),
     livePreviewEnabled.of(enabled),
     blockPreviewField,
-    livePreviewPlugin
+    livePreviewPlugin,
+    calloutWidthPlugin
   ]
 }

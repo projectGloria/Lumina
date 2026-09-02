@@ -1,5 +1,5 @@
 import { Icon } from './Icon'
-import { runCommand } from '../lib/commands'
+import { commandTooltip, runCommand, useCommandHotkey } from '../lib/commands'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { useVault } from '../store/vaultStore'
@@ -19,6 +19,8 @@ export default function StatusBar(): React.JSX.Element {
   const index = useVault((s) => s.index)
   const mode = useSettings((s) => s.mode)
   const focusMode = useWorkspace((s) => s.focusMode)
+  const focusHotkey = useCommandHotkey('view.focusMode')
+  const settingsHotkey = useCommandHotkey('settings.open')
 
   const words = buffer && !buffer.loading ? countWords(buffer.content) : 0
   const minutes = Math.max(1, Math.round(words / WORDS_PER_MINUTE))
@@ -45,7 +47,7 @@ export default function StatusBar(): React.JSX.Element {
 
       <button
         className="icon-btn"
-        title={focusMode ? 'Leave focus mode' : 'Focus mode  (Ctrl+Shift+M)'}
+        data-tooltip={commandTooltip(focusMode ? 'Leave focus mode' : 'Focus mode', focusHotkey)}
         aria-label="Toggle focus mode"
         onClick={() => runCommand('view.focusMode')}
       >
@@ -53,7 +55,7 @@ export default function StatusBar(): React.JSX.Element {
       </button>
       <button
         className="icon-btn"
-        title={mode === 'dark' ? 'Switch to light' : 'Switch to dark'}
+        data-tooltip={mode === 'dark' ? 'Switch to light' : 'Switch to dark'}
         aria-label="Toggle theme"
         onClick={() => runCommand('view.toggleTheme')}
       >
@@ -61,7 +63,7 @@ export default function StatusBar(): React.JSX.Element {
       </button>
       <button
         className="icon-btn"
-        title="Settings  (Ctrl+,)"
+        data-tooltip={commandTooltip('Settings', settingsHotkey)}
         aria-label="Settings"
         onClick={() => runCommand('settings.open')}
       >

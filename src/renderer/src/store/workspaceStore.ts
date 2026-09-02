@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import type { LeftPanel, RightPanel, TabState, WorkspaceState } from '@shared/types'
+import type { LeftPanel, NoteMode, RightPanel, WorkspaceState } from '@shared/types'
 import { isPathAtOrBelow, rebaseDescendantPath } from '@shared/markdown-parse'
+import { openTab } from '@shared/tabs'
 
 interface WorkspaceStore extends WorkspaceState {
   /** Navigation history across all tabs, for Alt+Left / Alt+Right. */
@@ -26,6 +27,8 @@ interface WorkspaceStore extends WorkspaceState {
   renamePathInTabs: (from: string, to: string) => void
   removePathFromTabs: (path: string) => void
   setTabCursor: (path: string, cursor: number) => void
+  setTabMode: (index: number, mode: NoteMode) => void
+  toggleTabMode: () => void
   back: () => void
   forward: () => void
 
@@ -134,26 +137,7 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
 
     openNote: (path, opts = {}) => {
       const { tabs, activeTab } = get()
-      const existing = tabs.findIndex((t) => t.path === path)
-
-      if (existing !== -1 && !opts.newTab) {
-        update({ activeTab: existing })
-        pushHistory(path)
-        return
-      }
-
-      const tab: TabState = { path }
-      if (opts.replace && tabs.length) {
-        const next = tabs.slice()
-        next[activeTab] = tab
-        update({ tabs: next })
-      } else if (opts.newTab || !tabs.length) {
-        update({ tabs: [...tabs, tab], activeTab: tabs.length })
-      } else {
-        const next = tabs.slice()
-        next[activeTab] = tab
-        update({ tabs: next })
-      }
+      update(openTab(tabs, activeTab, path, opts))
       pushHistory(path)
     },
 
@@ -232,6 +216,23 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
       update({ tabs: tabs.map((tab) => (tab.path === path ? { ...tab, cursor } : tab)) })
     },
 
+    /**
+     * Edit or read, per tab rather than per app: two notes can be open in
+     * different modes, and `workspace.json` remembers which was which.
+     */
+    setTabMode: (index, mode) => {
+      const { tabs } = get()
+      if (!tabs[index] || (tabs[index].mode ?? 'edit') === mode) return
+      update({ tabs: tabs.map((tab, i) => (i === index ? { ...tab, mode } : tab)) })
+    },
+
+    toggleTabMode: () => {
+      const { tabs, activeTab } = get()
+      const current = tabs[activeTab]
+      if (!current) return
+      get().setTabMode(activeTab, (current.mode ?? 'edit') === 'read' ? 'edit' : 'read')
+    },
+
     back: () => {
       const { history, historyIndex } = get()
       if (historyIndex <= 0) return
@@ -270,6 +271,12 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
     toggleFocusMode: () => update({ focusMode: !get().focusMode })
   }
 })
+
+/** Whether the active tab is showing the editor or the rendered note. */
+export function activeMode(): NoteMode {
+  const { tabs, activeTab } = useWorkspace.getState()
+  return tabs[activeTab]?.mode ?? 'edit'
+}
 
 /** Path of the note currently in view, or null. */
 export function activePath(): string | null {

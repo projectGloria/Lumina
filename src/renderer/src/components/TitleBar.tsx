@@ -1,6 +1,7 @@
 import { dirname } from '@shared/markdown-parse'
 import { Icon } from './Icon'
-import { runCommand } from '../lib/commands'
+import PathIcon from './PathIcon'
+import { commandTooltip, runCommand, useCommandHotkey } from '../lib/commands'
 import { useVault } from '../store/vaultStore'
 import { useWorkspace } from '../store/workspaceStore'
 import { titleOf } from '../store/vaultStore'
@@ -35,6 +36,11 @@ export default function TitleBar(): React.JSX.Element {
   const rightOpen = useWorkspace((s) => s.rightOpen)
   const history = useWorkspace((s) => s.history)
   const historyIndex = useWorkspace((s) => s.historyIndex)
+  const leftHotkey = useCommandHotkey('view.toggleLeft')
+  const backHotkey = useCommandHotkey('nav.back')
+  const forwardHotkey = useCommandHotkey('nav.forward')
+  const switcherHotkey = useCommandHotkey('switcher.open')
+  const rightHotkey = useCommandHotkey('view.toggleRight')
 
   const path = tabs[activeTab]?.path
   const label = path ? titleOf(path) : (vault?.name ?? 'Lumina')
@@ -43,7 +49,7 @@ export default function TitleBar(): React.JSX.Element {
     <header className="titlebar">
       <button
         className={`icon-btn${leftOpen ? ' is-active' : ''}`}
-        title="Toggle left sidebar  (Ctrl+\\)"
+        data-tooltip={commandTooltip('Toggle left sidebar', leftHotkey)}
         aria-label="Toggle left sidebar"
         onClick={() => runCommand('view.toggleLeft')}
       >
@@ -52,7 +58,7 @@ export default function TitleBar(): React.JSX.Element {
 
       <button
         className="icon-btn"
-        title="Back  (Alt+Left)"
+        data-tooltip={commandTooltip('Back', backHotkey)}
         aria-label="Back"
         disabled={historyIndex <= 0}
         style={{ opacity: historyIndex <= 0 ? 0.35 : 1 }}
@@ -62,7 +68,7 @@ export default function TitleBar(): React.JSX.Element {
       </button>
       <button
         className="icon-btn"
-        title="Forward  (Alt+Right)"
+        data-tooltip={commandTooltip('Forward', forwardHotkey)}
         aria-label="Forward"
         disabled={historyIndex >= history.length - 1}
         style={{ opacity: historyIndex >= history.length - 1 ? 0.35 : 1 }}
@@ -76,9 +82,10 @@ export default function TitleBar(): React.JSX.Element {
           <button
             className="breadcrumb-segment"
             onClick={() => revealFolder('')}
-            title="Show vault root"
+            data-tooltip="Show vault root"
           >
-            {vault.name}
+            <Icon name="vault" size={15} className="breadcrumb-icon" />
+            <span>{vault.name}</span>
           </button>
         ) : null}
         {path
@@ -95,9 +102,10 @@ export default function TitleBar(): React.JSX.Element {
                     <button
                       className="breadcrumb-segment"
                       onClick={() => revealFolder(target)}
-                      title={`Show ${seg} in the sidebar`}
+                      data-tooltip={`Show ${seg} in the sidebar`}
                     >
-                      {seg}
+                      <PathIcon path={target} kind="folder" size={15} className="breadcrumb-icon" />
+                      <span>{seg}</span>
                     </button>
                   </span>
                 )
@@ -107,7 +115,10 @@ export default function TitleBar(): React.JSX.Element {
         {vault && path ? (
           <span className="breadcrumb-item">
             <span className="breadcrumb-sep">/</span>
-            <span className="breadcrumb-current truncate">{label}</span>
+            <span className="breadcrumb-current truncate">
+              <PathIcon path={path} size={15} className="breadcrumb-icon" />
+              <span className="truncate">{label}</span>
+            </span>
           </span>
         ) : !vault ? (
           label
@@ -116,7 +127,7 @@ export default function TitleBar(): React.JSX.Element {
 
       <button
         className="icon-btn"
-        title="Go to note  (Ctrl+P)"
+        data-tooltip={commandTooltip('Go to note or feature', switcherHotkey)}
         aria-label="Go to note"
         onClick={() => runCommand('switcher.open')}
       >
@@ -124,7 +135,7 @@ export default function TitleBar(): React.JSX.Element {
       </button>
       <button
         className={`icon-btn${rightOpen ? ' is-active' : ''}`}
-        title="Toggle right sidebar  (Ctrl+Shift+\\)"
+        data-tooltip={commandTooltip('Toggle right sidebar', rightHotkey)}
         aria-label="Toggle right sidebar"
         onClick={() => runCommand('view.toggleRight')}
       >

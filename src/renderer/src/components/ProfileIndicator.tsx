@@ -15,7 +15,7 @@ export default function ProfileIndicator(): React.JSX.Element | null {
   return (
     <button
       className="icon-btn rail-btn profile-indicator"
-      title={`Profile: ${profile.name} — click to switch`}
+      data-tooltip={`Profile: ${profile.name} — click to switch`}
       aria-label="Switch profile"
       onClick={(e) => {
         useUi.getState().showContextMenu({

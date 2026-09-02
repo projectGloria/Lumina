@@ -1,6 +1,9 @@
 /** Markdown to standalone HTML, used only by the export commands. */
 import { marked, Renderer } from 'marked'
+import { createIconElement } from '../components/Icon'
 import { parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { attachmentCandidates, vaultUrl } from '../editor/resources'
+import { fallbackLinkDetails, linkAccentIndex, parseLinkUrl } from '@shared/linkPreview'
 import { aliasMap, knownPaths, titleOf } from '../store/vaultStore'
 
 /**
@@ -19,7 +22,7 @@ import { aliasMap, knownPaths, titleOf } from '../store/vaultStore'
 const DECORATE_RE =
   /(?<wiki>!?\[\[[^[\]\n]+?\]\])|(?<=^|[^\w`/])#(?<tag>[A-Za-z0-9_À-￿][A-Za-z0-9_\-/À-￿]*)/g
 
-function decorate(html: string, fromPath: string): string {
+function decorate(html: string, fromPath: string, live: boolean): string {
   const doc = new DOMParser().parseFromString(`<!doctype html><body>${html}`, 'text/html')
   const paths = knownPaths()
   const aliases = aliasMap()
@@ -58,7 +61,92 @@ function decorate(html: string, fromPath: string): string {
     text.replaceWith(fragment)
   }
 
+  if (live) {
+    pointImagesAtVault(doc, fromPath)
+    bannerifyLoneLinks(doc)
+  }
+
   return doc.body.innerHTML
+}
+
+/**
+ * Turn a paragraph that is nothing but one link into the same card the editor
+ * draws, so read mode and live preview agree about what a pasted link looks
+ * like.
+ *
+ * Only in the app: an export is a standalone file with its own small
+ * stylesheet, and a link there is better off as a link.
+ */
+function bannerifyLoneLinks(doc: Document): void {
+  for (const paragraph of Array.from(doc.querySelectorAll('p'))) {
+    const anchor = paragraph.querySelector('a')
+    if (!anchor || paragraph.childNodes.length !== 1 || anchor !== paragraph.firstChild) continue
+
+    const url = anchor.getAttribute('href') ?? ''
+    if (!/^https?:\/\//i.test(url)) continue
+
+    const label = (anchor.textContent ?? '').trim()
+    const { host } = parseLinkUrl(url)
+    const fallback = fallbackLinkDetails(url)
+
+    const card = doc.createElement('a')
+    card.className = 'link-banner'
+    card.setAttribute('href', url)
+    card.setAttribute('rel', 'noreferrer noopener')
+    card.dataset.accent = String(linkAccentIndex(host || url))
+    card.dataset.url = url
+    card.title = url
+
+    const mark = doc.createElement('span')
+    mark.className = 'link-banner-mark'
+    mark.appendChild(createIconElement('globe', 22, 'link-banner-glyph', doc))
+    card.appendChild(mark)
+
+    const body = doc.createElement('span')
+    body.className = 'link-banner-body'
+    const title = doc.createElement('span')
+    title.className = 'link-banner-title'
+    const hasLabel = !!label && label !== url
+    title.textContent = hasLabel ? label : fallback.title
+    // Guessed from the URL, so a fetched page title may replace it later
+    // (see ReadView); a label the note actually wrote never gets overwritten.
+    if (!hasLabel) title.dataset.fromUrl = 'true'
+    body.appendChild(title)
+    const description = doc.createElement('span')
+    description.className = 'link-banner-desc'
+    description.dataset.fallback = 'true'
+    description.textContent = fallback.description
+    body.appendChild(description)
+    const source = doc.createElement('span')
+    source.className = 'link-banner-host'
+    source.textContent = host || url
+    body.appendChild(source)
+    card.appendChild(body)
+
+    paragraph.replaceWith(card)
+  }
+}
+
+/**
+ * Rewrite in-vault image sources to the `lumina://` scheme.
+ *
+ * Only for read mode: the renderer runs from http in dev and file in
+ * production, so a relative `attachments/x.png` resolves against neither. An
+ * export is written elsewhere and keeps its relative paths. Which folder the
+ * image actually lives in is a guess for the same reason the editor's image
+ * widget guesses (`attachmentCandidates`), so the rest of the list rides along
+ * in `data-candidates` for `ReadView` to fall through on error.
+ */
+function pointImagesAtVault(doc: Document, fromPath: string): void {
+  for (const img of Array.from(doc.querySelectorAll('img'))) {
+    const src = img.getAttribute('src') ?? ''
+    if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')) continue
+
+    const candidates = attachmentCandidates(src.replace(/^\.?\//, ''), fromPath)
+    if (!candidates.length) continue
+    img.setAttribute('src', vaultUrl(candidates[0]))
+    if (candidates.length > 1) img.setAttribute('data-candidates', JSON.stringify(candidates.slice(1)))
+  }
 }
 
 function wikilinkSpan(
@@ -71,10 +159,16 @@ function wikilinkSpan(
   const inner = raw.replace(/^!?\[\[/, '').replace(/\]\]$/, '')
   const [targetPart, alias] = inner.split('|')
   const target = targetPart.split(/[#^]/)[0].trim()
+  const anchor = targetPart.split('#')[1]?.trim()
   const resolved = resolveLink(target, fromPath, paths, aliases)
 
   const span = doc.createElement('span')
   span.className = resolved ? 'wikilink' : 'wikilink unresolved'
+  // Read mode clicks these; an export has no script, so the attributes are
+  // inert there rather than wrong.
+  span.dataset.target = target
+  if (resolved) span.dataset.resolved = resolved
+  if (anchor) span.dataset.anchor = anchor
   // textContent, so a note title containing `<` cannot become markup.
   span.textContent = alias?.trim() || (resolved ? titleOf(resolved) : target)
   return span
@@ -83,6 +177,7 @@ function wikilinkSpan(
 function tagSpan(doc: Document, tag: string): HTMLElement {
   const span = doc.createElement('span')
   span.className = 'tag'
+  span.dataset.tag = tag
   span.textContent = `#${tag}`
   return span
 }
@@ -137,8 +232,18 @@ function currentTokens(): string {
     .join('\n    ')
 }
 
-/** The rendered, decorated HTML body for a note — shared by the read-mode view and export. */
-export function renderNoteFragment(markdownSource: string, path: string): string {
+/**
+ * The rendered, decorated HTML body for a note — shared by read mode and export.
+ *
+ * `live` is what separates the two: read mode wants vault images served over
+ * `lumina://` and lone links drawn as cards, while an export wants the relative
+ * paths it was written with and plain anchors its own stylesheet can handle.
+ */
+export function renderNoteFragment(
+  markdownSource: string,
+  path: string,
+  { live = false }: { live?: boolean } = {}
+): string {
   const { body } = parseFrontmatter(markdownSource)
   const parsed = marked.parse(body, {
     async: false,
@@ -146,7 +251,7 @@ export function renderNoteFragment(markdownSource: string, path: string): string
     breaks: false,
     renderer: exportRenderer
   })
-  return decorate(parsed, path)
+  return decorate(parsed, path, live)
 }
 
 export function renderToHtml(markdownSource: string, path: string): string {

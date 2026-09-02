@@ -14,6 +14,8 @@ import {
   rebaseDescendantPath,
   stripExtension
 } from '@shared/markdown-parse'
+import { DEFAULT_QUICK_NOTE_FOLDER, isGeneratedNoteName, quickNoteName } from '@shared/quickNote'
+import { applyTemplate, formatDate } from '@shared/template'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
@@ -37,9 +39,9 @@ export function openNote(path: string, opts: OpenOptions = {}): void {
     // clicking a search hit inside the open note do nothing at all.
     useUi.getState().requestReveal({ path, anchor: opts.anchor, line: opts.line })
   }
-  // Opening a note usually replaces the active tab, so clicking through the
-  // file tree displaces one note per click. Diffing the tabs rather than
-  // re-deriving which case `openNote` took keeps the two from drifting apart.
+  // History navigation can still replace a tab. Diffing the strip rather than
+  // re-deriving which path was displaced keeps buffer cleanup correct for
+  // append, activate, replace and explicit duplicate opens.
   const before = useWorkspace.getState().tabs.map((tab) => tab.path)
   useWorkspace.getState().openNote(path, opts)
   void useEditor.getState().open(path)
@@ -47,6 +49,19 @@ export function openNote(path: string, opts: OpenOptions = {}): void {
   const after = new Set(useWorkspace.getState().tabs.map((tab) => tab.path))
   for (const displaced of before) {
     if (!after.has(displaced)) void releaseNote(displaced)
+  }
+}
+
+/** Save one note and replay the unobtrusive manual-save confirmation. */
+export async function saveNoteWithFeedback(path: string): Promise<void> {
+  const before = useEditor.getState().buffers[path]
+  if (!before || before.loading) return
+
+  await useEditor.getState().save(path)
+  const after = useEditor.getState().buffers[path]
+  // A failed write remains dirty and already produces an error toast.
+  if (after && !after.loading && after.content === after.saved) {
+    useUi.getState().showSaveIndicator()
   }
 }
 
@@ -95,7 +110,7 @@ export async function createNote(folder = '', title = 'Untitled', content = ''):
     toast(res.error ?? 'Could not create the note', 'error')
     return null
   }
-  openNote(res.data, { newTab: false })
+  openNote(res.data)
   // Land in the title so the first thing typed names the note.
   return res.data
 }
@@ -114,6 +129,98 @@ export async function createFromLink(target: string, fromPath: string | null): P
     return
   }
   openNote(res.data)
+}
+
+/* --------------------------------------------------------- quick notes */
+
+/**
+ * Presses of the OS-wide shortcut that arrived before there was a vault to
+ * write into — during the profile picker, or behind a passlock. The main
+ * process has already done its own queueing across the window's cold start;
+ * this covers the part of the journey after the renderer is up but before a
+ * vault is open.
+ */
+let pendingQuickNotes = 0
+
+export function requestQuickNote(): void {
+  pendingQuickNotes++
+  void drainQuickNotes()
+}
+
+/** Called again once a vault opens, so a note asked for at the lock screen still lands. */
+export async function drainQuickNotes(): Promise<void> {
+  if (!useVault.getState().vault) return
+  while (pendingQuickNotes > 0) {
+    pendingQuickNotes--
+    await createQuickNote()
+  }
+}
+
+/**
+ * Find an open timestamp-generated note that is still truly empty.
+ * Named empty notes are deliberately ignored: an empty project note may be a
+ * placeholder the user intends to keep, whereas the timestamp proves this one
+ * came from the quick-create flow.
+ */
+async function reusableGeneratedNote(folder: string): Promise<string | null> {
+  const { tabs, activeTab } = useWorkspace.getState()
+  const active = tabs[activeTab]
+  const ordered = [active, ...[...tabs].reverse()].filter(
+    (tab, index, all): tab is NonNullable<typeof tab> =>
+      !!tab && all.findIndex((candidate) => candidate?.path === tab.path) === index
+  )
+  const targetFolder = dirname(joinPath(folder, 'placeholder.md'))
+
+  for (const tab of ordered) {
+    if (dirname(tab.path) !== targetFolder) continue
+    if (!isGeneratedNoteName(stripExtension(basename(tab.path)))) continue
+
+    const buffer = useEditor.getState().buffers[tab.path]
+    if (buffer && !buffer.loading) {
+      if (buffer.content === '') return tab.path
+      continue
+    }
+
+    const disk = await window.lumina.notes.read(tab.path)
+    if (disk.ok && disk.data?.content === '') return tab.path
+  }
+  return null
+}
+
+// Ctrl+N can repeat before its first async create finishes. Serializing the
+// check-and-create pair makes the second call see and reuse the first note.
+let generatedNoteChain: Promise<void> = Promise.resolve()
+
+async function createOrReuseGeneratedNote(folder: string): Promise<string | null> {
+  const reusable = await reusableGeneratedNote(folder)
+  if (reusable) {
+    openNote(reusable)
+    return reusable
+  }
+
+  const res = await window.lumina.notes.create(joinPath(folder, `${quickNoteName()}.md`), '')
+  if (!res.ok || !res.data) {
+    toast(res.error ?? 'Could not create the note', 'error')
+    return null
+  }
+  openNote(res.data, { newTab: true })
+  return res.data
+}
+
+/** Create a timestamped blank note, unless an open generated one is still blank. */
+export function createGeneratedNote(folder = ''): Promise<string | null> {
+  const operation = generatedNoteChain.then(() => createOrReuseGeneratedNote(folder))
+  generatedNoteChain = operation.then(
+    () => undefined,
+    () => undefined
+  )
+  return operation
+}
+
+/** The OS-wide quick note uses the configured folder and the shared reuse rules. */
+export function createQuickNote(): Promise<string | null> {
+  const folder = useSettings.getState().settings.quickNote.folder || DEFAULT_QUICK_NOTE_FOLDER
+  return createGeneratedNote(folder)
 }
 
 export function promptNewNote(folder = ''): void {
@@ -169,6 +276,8 @@ export function promptRename(path: string): void {
       useWorkspace.getState().renamePathInTabs(path, res.data)
       renameStarredPaths(path, res.data)
       renameIconOverrides(path, res.data)
+      renameColorOverrides(path, res.data)
+      renameCustomIcons(path, res.data)
       renamePinnedPaths(path, res.data)
     }
   })
@@ -192,6 +301,8 @@ export async function movePath(path: string, targetFolder: string): Promise<void
   useWorkspace.getState().renamePathInTabs(path, res.data)
   renameStarredPaths(path, res.data)
   renameIconOverrides(path, res.data)
+  renameColorOverrides(path, res.data)
+  renameCustomIcons(path, res.data)
   renamePinnedPaths(path, res.data)
 }
 
@@ -214,6 +325,8 @@ export function confirmDelete(path: string): void {
       useWorkspace.getState().removePathFromTabs(path)
       removeStarredPaths(path)
       removeIconOverrides(path)
+      removeColorOverrides(path)
+      removeCustomIcons(path)
       removePinnedPaths(path)
     }
   })
@@ -221,36 +334,10 @@ export function confirmDelete(path: string): void {
 
 /* -------------------------------------------------------- daily notes */
 
-/** Minimal date formatter covering the tokens the settings field advertises. */
-export function formatDate(format: string, date = new Date()): string {
-  const pad = (n: number, len = 2): string => String(n).padStart(len, '0')
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-  return format.replace(/YYYY|YY|MMMM|MMM|MM|DDDD|DDD|DD|HH|mm|ss/g, (token) => {
-    switch (token) {
-      case 'YYYY': return String(date.getFullYear())
-      case 'YY': return pad(date.getFullYear() % 100)
-      case 'MMMM': return months[date.getMonth()]
-      case 'MMM': return months[date.getMonth()].slice(0, 3)
-      case 'MM': return pad(date.getMonth() + 1)
-      case 'DDDD': return days[date.getDay()]
-      case 'DDD': return days[date.getDay()].slice(0, 3)
-      case 'DD': return pad(date.getDate())
-      case 'HH': return pad(date.getHours())
-      case 'mm': return pad(date.getMinutes())
-      case 'ss': return pad(date.getSeconds())
-      default: return token
-    }
-  })
-}
-
-/** Fill `{{date}}`, `{{time}}` and `{{title}}` in a template body. */
-export function applyTemplate(body: string, title: string): string {
-  return body
-    .replace(/\{\{\s*title\s*\}\}/g, title)
-    .replace(/\{\{\s*date(?::([^}]+))?\s*\}\}/g, (_m, fmt) => formatDate(fmt || 'YYYY-MM-DD'))
-    .replace(/\{\{\s*time(?::([^}]+))?\s*\}\}/g, (_m, fmt) => formatDate(fmt || 'HH:mm'))
-}
+// Both moved to `@shared/template` so the slash-command snippets can share the
+// same placeholder vocabulary and be tested without a DOM. Re-exported here
+// because this is where callers have always found them.
+export { applyTemplate, formatDate }
 
 export async function openDailyNote(): Promise<void> {
   const { dailyNotes } = useSettings.getState().settings
@@ -355,6 +442,91 @@ export function removeIconOverrides(parent: string): void {
   if (entries.length !== Object.keys(settings.iconOverrides).length) {
     patch({ iconOverrides: Object.fromEntries(entries) })
   }
+}
+
+/* ------------------------------------------------------- color overrides */
+
+export function setColorOverride(path: string, color: string | null): void {
+  const { settings, patch } = useSettings.getState()
+  const colorOverrides = { ...settings.colorOverrides }
+  if (color) colorOverrides[path] = color
+  else delete colorOverrides[path]
+  patch({ colorOverrides })
+}
+
+export function renameColorOverrides(from: string, to: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.colorOverrides).map(
+    ([path, color]) => [rebaseDescendantPath(path, from, to), color] as const
+  )
+  patch({ colorOverrides: Object.fromEntries(entries) })
+}
+
+export function removeColorOverrides(parent: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.colorOverrides).filter(
+    ([path]) => !isPathAtOrBelow(path, parent)
+  )
+  if (entries.length !== Object.keys(settings.colorOverrides).length) {
+    patch({ colorOverrides: Object.fromEntries(entries) })
+  }
+}
+
+/* -------------------------------------------------------- custom icons */
+
+/** Vault-relative folder uploaded icon images are copied into. */
+const CUSTOM_ICON_FOLDER = '.lumina/icons'
+
+export function setCustomIcon(path: string, iconPath: string | null): void {
+  const { settings, patch } = useSettings.getState()
+  const customIcons = { ...settings.customIcons }
+  if (iconPath) customIcons[path] = iconPath
+  else delete customIcons[path]
+  patch({ customIcons })
+}
+
+export function renameCustomIcons(from: string, to: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.customIcons).map(
+    ([path, icon]) => [rebaseDescendantPath(path, from, to), icon] as const
+  )
+  patch({ customIcons: Object.fromEntries(entries) })
+}
+
+export function removeCustomIcons(parent: string): void {
+  const { settings, patch } = useSettings.getState()
+  const entries = Object.entries(settings.customIcons).filter(
+    ([path]) => !isPathAtOrBelow(path, parent)
+  )
+  if (entries.length !== Object.keys(settings.customIcons).length) {
+    patch({ customIcons: Object.fromEntries(entries) })
+  }
+}
+
+/**
+ * Opens the OS file picker, copies the chosen image into the vault's hidden
+ * icon folder, and sets it as `path`'s custom icon. `.lumina/icons` is
+ * ignored by the tree and indexer like every other dot-folder, so the
+ * uploaded image never shows up as a note.
+ */
+export function uploadCustomIcon(path: string): void {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (!file) return
+    void (async () => {
+      const buffer = await file.arrayBuffer()
+      const res = await window.lumina.files.saveAttachment(CUSTOM_ICON_FOLDER, file.name, buffer)
+      if (!res.ok || !res.data) {
+        toast(res.error ?? 'Could not save the icon', 'error')
+        return
+      }
+      setCustomIcon(path, res.data)
+    })()
+  }
+  input.click()
 }
 
 /* --------------------------------------------------------------- vault */

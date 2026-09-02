@@ -2,8 +2,18 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { app } from 'electron'
-import type { Profile, Settings, ThemeFile, VaultInfo, WorkspaceState } from '@shared/types'
+import type {
+  CustomSlashCommand,
+  Profile,
+  QuickNoteSettings,
+  Settings,
+  SettingsPreset,
+  ThemeFile,
+  VaultInfo,
+  WorkspaceState
+} from '@shared/types'
 import { luminaDir } from './paths'
+import { DEFAULT_QUICK_NOTE } from './quickNote'
 
 /* --------------------------------------------------------------- defaults */
 
@@ -23,7 +33,8 @@ export const DEFAULT_SETTINGS: Settings = {
     autosaveDelay: 400,
     livePreview: true,
     smartLists: true,
-    showWordCount: false
+    showWordCount: false,
+    linkPreviews: false
   },
   dailyNotes: {
     folder: 'Daily',
@@ -33,12 +44,19 @@ export const DEFAULT_SETTINGS: Settings = {
   attachmentFolder: 'attachments',
   templateFolder: 'Templates',
   hotkeys: {},
+  // Both of these are overlaid from app-level state on load; the values here
+  // only matter for a vault whose settings.json predates the split.
+  slashCommands: [],
+  quickNote: DEFAULT_QUICK_NOTE,
   snippets: {},
   starred: [],
   graphPerformanceMode: false,
   iconOverrides: {},
+  colorOverrides: {},
+  customIcons: {},
   pinned: [],
-  sortOrder: 'name'
+  sortOrder: 'name',
+  showFileTypes: false
 }
 
 export const DEFAULT_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }
@@ -73,9 +91,17 @@ function merge<T>(base: T, patch: unknown): T {
   return out as T
 }
 
+export const normalizeSettings = (value: unknown): Settings => merge(DEFAULT_SETTINGS, value)
+export const normalizeTheme = (value: unknown): ThemeFile => merge(DEFAULT_THEME, value)
+
 async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
-    return merge(fallback, JSON.parse(await fs.readFile(file, 'utf8')))
+    // These files are meant to be editable by hand, and a Windows editor will
+    // happily save one with a BOM - which `JSON.parse` rejects. Silently
+    // falling back to defaults there loses the user's settings on the next
+    // write, so strip it rather than treat the file as unreadable.
+    const raw = (await fs.readFile(file, 'utf8')).replace(/^﻿/, '')
+    return merge(fallback, JSON.parse(raw))
   } catch {
     return fallback
   }
@@ -115,16 +141,48 @@ export interface AppState {
   // `loadSettings`/`saveSettings`) even though `Settings.hotkeys` still exists
   // in memory for the renderer.
   hotkeys: Record<string, string>
+  /** The user's `/` snippets, app-level for the same reason as `hotkeys`. */
+  slashCommands: CustomSlashCommand[]
+  /**
+   * Quick-note preferences. App-level because the main process acts on them
+   * (a global accelerator, a tray icon, a login item) with no vault involved.
+   */
+  quickNote: QuickNoteSettings
   profiles: Profile[]
   activeProfileId: string | null
+  settingsProfiles: SettingsPreset[]
 }
+
+/**
+ * A couple of snippets to open the box with, so the settings tab shows what a
+ * custom command looks like rather than an empty list. They are seeded only
+ * when `lumina.json` has no `slashCommands` key at all — `merge` replaces
+ * arrays wholesale, so deleting them all sticks.
+ */
+const STARTER_SLASH_COMMANDS: CustomSlashCommand[] = [
+  {
+    id: 'starter-meeting',
+    name: 'meeting',
+    description: 'Meeting note skeleton',
+    body: '## Meeting — {{date}}\n\n**Present:** {{cursor}}\n\n### Notes\n\n- \n\n### Actions\n\n- [ ] '
+  },
+  {
+    id: 'starter-stamp',
+    name: 'stamp',
+    description: "Today's date and time",
+    body: '{{date}} {{time}}'
+  }
+]
 
 const APP_STATE_DEFAULT: AppState = {
   recentVaults: [],
   lastVault: null,
   hotkeys: {},
+  slashCommands: STARTER_SLASH_COMMANDS,
+  quickNote: DEFAULT_QUICK_NOTE,
   profiles: [],
-  activeProfileId: null
+  activeProfileId: null,
+  settingsProfiles: []
 }
 
 const appStateFile = (): string => path.join(app.getPath('userData'), 'lumina.json')
@@ -194,12 +252,13 @@ export async function ensureLuminaDir(vault: string): Promise<void> {
 }
 
 /**
- * Settings are per-vault on disk, except `hotkeys`, which lives in app-level
- * `lumina.json` (see `AppState`) so a rebind follows you between vaults. A
- * vault settings.json written by an older Lumina may still carry a `hotkeys`
- * object; the first load here migrates it into app state (without
- * overwriting an app-level override already set) and strips it going
- * forward.
+ * Settings are per-vault on disk, except `hotkeys`, `slashCommands` and
+ * `quickNote`, which live in app-level `lumina.json` (see `AppState`) so a
+ * rebind or a snippet follows you between vaults, and the quick-note shortcut
+ * works before any vault is open at all. A vault settings.json written by an older
+ * Lumina may still carry a `hotkeys` object; the first load here migrates it
+ * into app state (without overwriting an app-level override already set) and
+ * strips it going forward.
  */
 export async function loadSettings(v: string): Promise<Settings> {
   const [raw, appState] = await Promise.all([
@@ -207,18 +266,36 @@ export async function loadSettings(v: string): Promise<Settings> {
     loadAppState()
   ])
 
+  const appLevel = {
+    hotkeys: appState.hotkeys,
+    slashCommands: appState.slashCommands,
+    quickNote: appState.quickNote
+  }
+
   const legacy = raw.hotkeys
   if (legacy && Object.keys(legacy).length) {
     await saveAppState({ hotkeys: { ...legacy, ...appState.hotkeys } })
     await writeJson(settingsFile(v), { ...raw, hotkeys: {} })
-    return { ...raw, hotkeys: { ...legacy, ...appState.hotkeys } }
+    return { ...raw, ...appLevel, hotkeys: { ...legacy, ...appState.hotkeys } }
   }
 
-  return { ...raw, hotkeys: appState.hotkeys }
+  return { ...raw, ...appLevel }
 }
 
 export async function saveSettings(v: string, s: Settings): Promise<void> {
-  await Promise.all([writeJson(settingsFile(v), { ...s, hotkeys: {} }), saveAppState({ hotkeys: s.hotkeys })])
+  await Promise.all([
+    writeJson(settingsFile(v), {
+      ...s,
+      hotkeys: {},
+      slashCommands: [],
+      quickNote: DEFAULT_QUICK_NOTE
+    }),
+    saveAppState({
+      hotkeys: s.hotkeys,
+      slashCommands: s.slashCommands,
+      quickNote: s.quickNote
+    })
+  ])
 }
 
 export const loadTheme = (v: string): Promise<ThemeFile> => readJson(themeFile(v), DEFAULT_THEME)

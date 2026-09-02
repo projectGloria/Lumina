@@ -10,7 +10,12 @@ files:
   - out/**/*
   - package.json
 
-# Nothing is fetched at runtime, so the app works offline and inside a sandbox.
+# The tray icon is loaded at runtime, so it has to ship beside the app rather
+# than only being used to build it.
+extraResources:
+  - from: resources/icon.ico
+    to: icon.ico
+
 asar: true
 compression: normal
 

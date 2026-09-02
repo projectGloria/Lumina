@@ -34,9 +34,17 @@ body {
   border-radius: var(--lum-radius-sm);
 }
 
-/* Thin, warm scrollbars that stay out of the way until hovered. */
+/* Thin, warm scrollbars that stay out of the way until hovered.
+   `scrollbar-color`'s thumb channel must default to transparent too —
+   Chromium honors it even where a `::-webkit-scrollbar-thumb` rule also
+   exists, so leaving it non-transparent here drew a permanently visible
+   thumb-colored bar on every scrollable container, even ones with nothing
+   to scroll. */
 * {
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+*:hover {
   scrollbar-color: var(--lum-border-strong) transparent;
 }
 ::-webkit-scrollbar {
@@ -130,9 +138,16 @@ body {
   gap: var(--lum-space-2);
   padding: 0 var(--lum-space-2);
   background: var(--lum-bg-titlebar);
-  border-bottom: 1px solid var(--lum-border);
   -webkit-app-region: drag;
   user-select: none;
+}
+
+/* The native Windows controls occupy the full overlay height. Drawing the
+   divider inside that row lets their backgrounds cover/cut through it, so the
+   line belongs to the content immediately below the overlay instead. */
+.titlebar + .app-body,
+.titlebar + .welcome {
+  border-top: 1px solid var(--lum-border);
 }
 
 .titlebar button,
@@ -146,8 +161,8 @@ body {
   min-width: 0;
   text-align: center;
   color: var(--lum-text-muted);
-  font-size: var(--lum-font-size-small);
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 540;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;
@@ -158,6 +173,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 1px;
 }
 .breadcrumb-item {
   display: inline-flex;
@@ -165,21 +181,33 @@ body {
   min-width: 0;
 }
 .breadcrumb-sep {
-  margin: 0 var(--lum-space-1);
+  margin: 0 3px;
   color: var(--lum-text-faint);
 }
 .breadcrumb-segment {
-  color: var(--lum-text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  color: var(--lum-text-muted);
   -webkit-app-region: no-drag;
-  border-radius: 4px;
-  padding: 1px 3px;
+  border-radius: 7px;
+  padding: 3px 6px;
 }
 .breadcrumb-segment:hover {
   color: var(--lum-text-muted);
   background: var(--lum-surface-hover);
 }
 .breadcrumb-current {
-  color: var(--lum-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  min-width: 0;
+  padding: 3px 5px;
+  color: var(--lum-text);
+  font-weight: 620;
+}
+.breadcrumb-icon {
+  flex: none;
 }
 
 .titlebar-spacer {
@@ -209,6 +237,38 @@ body {
 
 .statusbar button {
   color: inherit;
+}
+
+/* Focus mode collapses the status bar that normally contains its toggle. Keep
+   one calm escape hatch on screen, and pair it with the Escape shortcut. */
+.focus-mode-exit {
+  position: fixed;
+  right: var(--lum-space-4);
+  bottom: var(--lum-space-4);
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  height: 32px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius);
+  background: color-mix(in srgb, var(--lum-surface) 92%, transparent);
+  color: var(--lum-text-muted);
+  box-shadow: var(--lum-shadow-sm);
+  opacity: 0.68;
+  transition: opacity var(--lum-transition), background var(--lum-transition);
+  -webkit-app-region: no-drag;
+}
+.focus-mode-exit:hover,
+.focus-mode-exit:focus-visible {
+  opacity: 1;
+  background: var(--lum-surface);
+  color: var(--lum-text);
+}
+.focus-mode-exit kbd {
+  background: transparent;
+  font-size: 10px;
 }
 
 /* ------------------------------------------------------------ controls */
@@ -293,6 +353,7 @@ button {
 input[type='text'],
 input[type='search'],
 input[type='number'],
+input[type='password'],
 select,
 textarea {
   font: inherit;
@@ -315,12 +376,36 @@ input::placeholder {
 }
 
 .field-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--lum-space-4);
   padding: var(--lum-space-3) 0;
   border-bottom: 1px solid var(--lum-border);
+}
+
+.setting-default {
+  flex: none;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--lum-text-faint);
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateX(4px);
+  pointer-events: none;
+  transition: opacity var(--lum-transition), color var(--lum-transition), transform var(--lum-transition);
+}
+.field-row:hover .setting-default,
+.field-row:focus-within .setting-default {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.setting-default:hover {
+  background: var(--lum-surface-hover);
+  color: var(--lum-accent);
 }
 .field-row:last-child {
   border-bottom: none;
@@ -520,6 +605,18 @@ kbd {
 
 /* Toasts ---------------------------------------------------------------- */
 
+.global-tooltip {
+  background: var(--lum-surface);
+  color: var(--lum-text);
+  border: 1px solid var(--lum-border-strong);
+  padding: 4px 8px;
+  border-radius: var(--lum-radius-sm);
+  font-size: var(--lum-font-size-small);
+  white-space: nowrap;
+  box-shadow: var(--lum-shadow-md);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
 .toasts {
   position: fixed;
   right: var(--lum-space-4);
@@ -546,4 +643,49 @@ kbd {
 .toast.error {
   border-color: var(--lum-danger);
   color: var(--lum-danger);
+}
+
+/* Manual Ctrl+S feedback is deliberately central and shorter-lived than a
+   toast: visible enough to confirm the action, but never asks for attention. */
+.save-indicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 250;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  padding: 9px 13px;
+  border: 1px solid var(--lum-border-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lum-surface) 94%, transparent);
+  color: var(--lum-success);
+  font-size: var(--lum-font-size-small);
+  font-weight: 600;
+  box-shadow: var(--lum-shadow-lg);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: lum-save-pulse 1100ms ease-in-out both;
+}
+
+@keyframes lum-save-pulse {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 5px)) scale(0.96);
+  }
+  16%,
+  68% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 3px)) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-indicator {
+    animation-duration: 650ms;
+  }
 }

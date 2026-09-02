@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import { Icon } from './Icon'
+import PathIcon from './PathIcon'
 import { closeOtherTabs, closeTab, confirmDelete, promptRename } from '../lib/actions'
-import { runCommand } from '../lib/commands'
+import { commandTooltip, runCommand, useCommandHotkey } from '../lib/commands'
 import { useEditor } from '../store/editorStore'
 import { useUi } from '../store/uiStore'
 import { titleOf } from '../store/vaultStore'
@@ -15,6 +16,7 @@ export default function TabBar(): React.JSX.Element | null {
   const closeOthers = (i: number): void => void closeOtherTabs(i)
   const moveTab = useWorkspace((s) => s.moveTab)
   const dragFrom = useRef<number | null>(null)
+  const newNoteHotkey = useCommandHotkey('note.new')
 
   if (!tabs.length) return null
 
@@ -63,15 +65,43 @@ export default function TabBar(): React.JSX.Element | null {
           />
         ))}
       </div>
+      <ModeToggle />
       <button
         className="icon-btn tabbar-new"
-        title="New note  (Ctrl+N)"
+        data-tooltip={commandTooltip('New note', newNoteHotkey)}
         aria-label="New note"
         onClick={() => runCommand('note.new')}
       >
         <Icon name="plus" size={15} />
       </button>
     </div>
+  )
+}
+
+/**
+ * Edit / read for the active tab. Mirrors the `view.readMode` command rather
+ * than toggling the store itself, so the button and the hotkey can never end
+ * up doing different things.
+ */
+function ModeToggle(): React.JSX.Element | null {
+  const tabs = useWorkspace((s) => s.tabs)
+  const activeTab = useWorkspace((s) => s.activeTab)
+  const tab = tabs[activeTab]
+  if (!tab) return null
+
+  const reading = (tab.mode ?? 'edit') === 'read'
+  const hotkey = useCommandHotkey('view.readMode')
+
+  return (
+    <button
+      className={`icon-btn tabbar-mode${reading ? ' is-active' : ''}`}
+      data-tooltip={`${reading ? 'Edit this note' : 'Read this note'}${hotkey ? `  (${hotkey})` : ''}`}
+      aria-label={reading ? 'Switch to edit mode' : 'Switch to read mode'}
+      aria-pressed={reading}
+      onClick={() => runCommand('view.readMode')}
+    >
+      <Icon name={reading ? 'edit' : 'book'} size={15} />
+    </button>
   )
 }
 
@@ -102,7 +132,7 @@ function Tab({
       role="tab"
       aria-selected={active}
       className={`tab${active ? ' is-active' : ''}`}
-      title={path}
+      data-tooltip={path}
       draggable
       onDragStart={onDragStart}
       onDragOver={(e) => {
@@ -119,17 +149,19 @@ function Tab({
         }
       }}
     >
+      <PathIcon path={path} size={15} className="tab-icon" />
       <span className="tab-title truncate">{titleOf(path)}</span>
       <button
         className="tab-close"
         aria-label="Close tab"
+        data-tooltip="Close tab"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation()
           onClose()
         }}
       >
-        {dirty ? <span className="tab-dot" title="Unsaved changes" /> : <Icon name="close" size={12} />}
+        {dirty ? <span className="tab-dot" data-tooltip="Unsaved changes" /> : <Icon name="close" size={12} />}
       </button>
     </div>
   )

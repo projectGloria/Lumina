@@ -13,6 +13,8 @@ export interface MenuItem {
   danger?: boolean
   separator?: boolean
   onSelect?: () => void
+  /** CSS color shown as a small swatch dot before the label, e.g. for a color picker. */
+  swatch?: string
 }
 
 export interface ContextMenuState {
@@ -61,15 +63,14 @@ interface UiState {
   prompt: PromptState | null
   confirm: ConfirmState | null
   toasts: Toast[]
+  /** Incremented for each successful manual save so its animation can replay. */
+  savePulse: number
   /** Tag currently filtering the file list, or null. */
   tagFilter: string | null
   /** Search query shared between the search panel and its results. */
   searchQuery: string
   /** Pending scroll target, cleared by the editor once it has been applied. */
   reveal: RevealRequest | null
-  /** Rendered, non-editable view of the active note instead of the CodeMirror editor. */
-  readMode: boolean
-
   openModal: (kind: ModalKind) => void
   closeModal: () => void
   openSettings: (tab?: string) => void
@@ -81,11 +82,11 @@ interface UiState {
   hideConfirm: () => void
   pushToast: (message: string, kind?: 'info' | 'error') => void
   dismissToast: (id: number) => void
+  showSaveIndicator: () => void
   setTagFilter: (tag: string | null) => void
   setSearchQuery: (q: string) => void
   requestReveal: (target: Omit<RevealRequest, 'nonce'>) => void
   clearReveal: (nonce: number) => void
-  toggleReadMode: () => void
 }
 
 let toastId = 0
@@ -98,11 +99,10 @@ export const useUi = create<UiState>((set, get) => ({
   prompt: null,
   confirm: null,
   toasts: [],
+  savePulse: 0,
   tagFilter: null,
   searchQuery: '',
   reveal: null,
-  readMode: false,
-
   openModal: (kind) => set({ modal: kind, contextMenu: null }),
   closeModal: () => set({ modal: null }),
   openSettings: (tab) => set({ modal: 'settings', settingsTab: tab ?? get().settingsTab }),
@@ -119,6 +119,7 @@ export const useUi = create<UiState>((set, get) => ({
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 6000 : 3200)
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+  showSaveIndicator: () => set((s) => ({ savePulse: s.savePulse + 1 })),
 
   setTagFilter: (tag) => set({ tagFilter: tag }),
   setSearchQuery: (q) => set({ searchQuery: q }),
@@ -128,7 +129,6 @@ export const useUi = create<UiState>((set, get) => ({
   // aimed at a note still loading is not thrown away by another one mounting.
   clearReveal: (nonce) => set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s)),
 
-  toggleReadMode: () => set((s) => ({ readMode: !s.readMode }))
 }))
 
 /** Convenience for non-component code. */

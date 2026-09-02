@@ -83,7 +83,8 @@
 .note-view-content th { background: var(--lum-surface-hover); }
 .note-view-content img { max-width: 100%; border-radius: var(--lum-radius); }
 .note-view-content mark { background: var(--lum-mark-bg); }
-.note-view-content .wikilink { color: var(--lum-link); }
+.note-view-content .wikilink { color: var(--lum-link); cursor: pointer; }
+.note-view-content .wikilink:hover { text-decoration: underline; }
 .note-view-content .wikilink.unresolved { color: var(--lum-link-unresolved); }
 .note-view-content .tag {
   background: var(--lum-tag-bg);
@@ -91,9 +92,12 @@
   border-radius: 999px;
   padding: 0.08em 0.55em;
   font-size: 0.86em;
+  cursor: pointer;
 }
+.note-view-content a { color: var(--lum-link); cursor: pointer; }
 
 .cm-editor {
+  isolation: isolate;
   height: 100%;
   background: var(--lum-bg);
   color: var(--lum-text);
@@ -106,10 +110,17 @@
   outline: none;
 }
 
-.cm-scroller {
+.cm-editor .cm-scroller {
   font-family: inherit;
   line-height: inherit;
   padding: var(--lum-space-6) 0 45vh; /* room to keep the last line off the floor */
+  /* The bottom padding above always makes scrollHeight exceed clientHeight, which
+     would mark every note "scrollable" even a one-line one. `scrollOverflow.ts`
+     measures past that reserve and adds `cm-has-overflow` only when the note's
+     actual content doesn't fit — overflow (and the scrollbar) stays off otherwise. */
+  overflow-y: hidden;
+}
+.cm-scroller.cm-has-overflow {
   overflow-y: auto;
 }
 
@@ -145,9 +156,14 @@
  * entirely. Padding `.cm-content` instead left the selection highlight
  * spanning the full editor width, edge to edge, well past the centered text.
  */
-.cm-line {
-  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
-  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+.cm-editor {
+  container-type: inline-size;
+  --inset: max(var(--lum-space-6), (100cqw - var(--lum-content-width, 100%)) / 2);
+}
+
+.cm-editor .cm-line {
+  padding-left: var(--inset);
+  padding-right: var(--inset);
 }
 
 .cm-editor .cm-cursor,
@@ -219,29 +235,51 @@
 }
 
 .cm-code-block {
+  width: fit-content;
   font-family: var(--lum-font-mono);
   font-size: 0.88em;
+  padding-left: calc(var(--inset) + var(--lum-space-3)) !important;
+  padding-right: calc(var(--inset) + var(--lum-space-3)) !important;
+  position: relative;
+}
+.cm-code-block::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--inset);
+  right: var(--inset);
   background: var(--lum-code-bg);
-  display: inline-block;
-  width: 100%;
-  padding: 0 var(--lum-space-3);
+  z-index: -1;
+  pointer-events: none;
 }
 .cm-code-block-first {
-  border-radius: var(--lum-radius-sm) var(--lum-radius-sm) 0 0;
-  padding-top: var(--lum-space-2);
+  padding-top: 12px;
 }
 .cm-code-block-last {
+  padding-bottom: 12px;
+}
+.cm-code-block-first::before {
+  border-radius: var(--lum-radius-sm) var(--lum-radius-sm) 0 0;
+}
+.cm-code-block-last::before {
   border-radius: 0 0 var(--lum-radius-sm) var(--lum-radius-sm);
-  padding-bottom: var(--lum-space-2);
 }
 
 .cm-quote {
-  border-left: 3px solid var(--lum-quote-border);
-  padding-left: var(--lum-space-4);
+  width: fit-content;
+  padding-left: calc(var(--inset) + var(--lum-space-4)) !important;
   color: var(--lum-text-muted);
   font-style: italic;
-  display: inline-block;
-  width: 100%;
+  position: relative;
+}
+.cm-quote::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--inset);
+  border-left: 3px solid var(--lum-quote-border);
+  z-index: -1;
+  pointer-events: none;
 }
 
 .cm-hr-line {
@@ -276,6 +314,20 @@
 .cm-wikilink.unresolved {
   color: var(--lum-link-unresolved);
   border-bottom: 1px dashed var(--lum-link-unresolved);
+}
+
+.cm-wikilink-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: -2px;
+  margin-right: 3px;
+  color: var(--lum-text-faint);
+}
+.cm-wikilink-icon-img {
+  width: 13px;
+  height: 13px;
+  object-fit: cover;
+  border-radius: 3px;
 }
 
 .cm-link-chip {
@@ -360,24 +412,42 @@
 /* ---------------------------------------------------------- callouts */
 
 .cm-callout {
-  display: inline-block;
-  width: 100%;
-  background: var(--lum-surface-hover);
-  border-left: 3px solid var(--lum-accent);
-  padding: 0 var(--lum-space-4);
+  width: fit-content;
+  padding-left: calc(var(--inset) + var(--lum-space-4)) !important;
+  padding-right: calc(var(--inset) + var(--lum-space-4)) !important;
   color: var(--lum-text);
   font-style: normal;
+  position: relative;
 }
-.cm-callout-first { border-radius: var(--lum-radius-sm) var(--lum-radius-sm) 0 0; padding-top: 6px; }
-.cm-callout-last { border-radius: 0 0 var(--lum-radius-sm) var(--lum-radius-sm); padding-bottom: 6px; }
+.cm-callout::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: var(--inset);
+  right: var(--inset);
+  background: var(--lum-surface-hover);
+  border-left: 3px solid var(--lum-accent);
+  z-index: -1;
+  pointer-events: none;
+}
+.cm-callout-first::before {
+  border-top-left-radius: var(--lum-radius-sm);
+  border-top-right-radius: var(--lum-radius-sm);
+}
+.cm-callout-last::before {
+  border-bottom-left-radius: var(--lum-radius-sm);
+  border-bottom-right-radius: var(--lum-radius-sm);
+}
+.cm-callout-first { padding-top: 12px; }
+.cm-callout-last { padding-bottom: 12px; }
 .cm-callout-title { font-weight: 640; color: var(--lum-accent); }
-.cm-callout.type-warning { border-left-color: var(--lum-warning); }
+.cm-callout.type-warning::before { border-left-color: var(--lum-warning); }
 .cm-callout.type-warning .cm-callout-title { color: var(--lum-warning); }
-.cm-callout.type-danger { border-left-color: var(--lum-danger); }
+.cm-callout.type-danger::before { border-left-color: var(--lum-danger); }
 .cm-callout.type-danger .cm-callout-title { color: var(--lum-danger); }
-.cm-callout.type-success { border-left-color: var(--lum-success); }
+.cm-callout.type-success::before { border-left-color: var(--lum-success); }
 .cm-callout.type-success .cm-callout-title { color: var(--lum-success); }
-.cm-callout.type-info { border-left-color: var(--lum-info); }
+.cm-callout.type-info::before { border-left-color: var(--lum-info); }
 .cm-callout.type-info .cm-callout-title { color: var(--lum-info); }
 
 /* ------------------------------------------------------------ tables */
@@ -436,12 +506,121 @@
   display: none;
 }
 
+.cm-tooltip.cm-completionInfo {
+  width: min(280px, 42vw);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius);
+  background: var(--lum-surface);
+  box-shadow: var(--lum-shadow-lg);
+}
+.slash-command-info {
+  padding: var(--lum-space-3);
+}
+.slash-command-info-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  color: var(--lum-text);
+}
+.slash-command-info-heading svg {
+  flex: none;
+  color: var(--lum-accent);
+}
+.slash-command-info-group {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--lum-accent-soft);
+  color: var(--lum-accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.slash-command-info-detail {
+  margin-top: var(--lum-space-2);
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+  line-height: 1.45;
+}
+
 /* ------------------------------------------------------- search panel */
 
 .cm-panels {
-  background: var(--lum-bg-sidebar);
+  background: color-mix(in srgb, var(--lum-surface) 96%, var(--lum-bg));
   border-color: var(--lum-border);
   color: var(--lum-text);
+  font-family: var(--lum-font-ui);
+  box-shadow: var(--lum-shadow-sm);
+  z-index: 8;
+}
+.cm-panel.cm-search {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 44px 10px 12px;
+  border-bottom: 1px solid var(--lum-border);
+}
+.cm-panel.cm-search br {
+  display: none;
+}
+.cm-panel.cm-search input[type='text'] {
+  height: 34px;
+  min-width: 0;
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  background: var(--lum-bg);
+  color: var(--lum-text);
+  padding: 0 10px;
+}
+.cm-panel.cm-search input[name='search'] {
+  grid-column: 1;
+}
+.cm-panel.cm-search input[name='replace'] {
+  grid-column: 1;
+  grid-row: 2;
+}
+.cm-panel.cm-search button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  background: var(--lum-surface);
+  color: var(--lum-text-muted);
+  font-family: inherit;
+  text-transform: capitalize;
+}
+.cm-panel.cm-search button:hover:not(:disabled) {
+  border-color: var(--lum-border-strong);
+  background: var(--lum-surface-hover);
+  color: var(--lum-text);
+}
+.cm-panel.cm-search button[name='close'] {
+  position: absolute;
+  top: 11px;
+  right: 12px;
+  width: 30px;
+  padding: 0;
+  font-size: 0;
+}
+.cm-panel.cm-search button[name='close']::before {
+  content: '×';
+  font-size: 20px;
+  font-weight: 300;
+}
+.cm-panel.cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--lum-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.cm-panel.cm-search input[type='checkbox'] {
+  accent-color: var(--lum-accent);
 }
 .cm-searchMatch {
   background: var(--lum-mark-bg);
@@ -464,8 +643,8 @@
    * centering inset now that it lives on `.cm-line` rather than
    * `.cm-content` (see the comment above `.cm-line` for why it moved).
    */
-  padding-left: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
-  padding-right: max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2);
+  padding-left: var(--inset);
+  padding-right: var(--inset);
   padding-bottom: var(--lum-space-5);
   box-sizing: border-box;
 }
@@ -533,9 +712,7 @@
 .cm-table-wrap {
   /* See the comment on `.cm-properties-outer` above: block-replace widgets
    * need their own centering inset now that `.cm-content` no longer has one. */
-  padding: var(--lum-space-3)
-    max(var(--lum-space-6), (100% - var(--lum-content-width, 100%)) / 2)
-    var(--lum-space-4);
+  padding: var(--lum-space-3) var(--inset) var(--lum-space-4);
   box-sizing: border-box;
   overflow-x: auto;
   cursor: text;
@@ -568,4 +745,210 @@
 
 .cm-table tr:hover td {
   background: var(--lum-surface-hover);
+}
+
+/* Every line below a callout's title shares the width of the widest of them,
+ * measured off the laid-out DOM in `editor/livePreview.ts`. The line is
+ * `border-box`, so `--callout-width` already includes the callout padding. */
+.cm-callout-body {
+  min-width: min(100%, var(--callout-width, 0px));
+}
+
+.cm-code-block {
+  min-width: 100%;
+}
+
+.cm-quote {
+  min-width: 100%;
+}
+
+.cm-callout-body-first::before {
+  border-top-right-radius: var(--lum-radius-sm);
+}
+
+
+/* Link banners ---------------------------------------------------------
+ *
+ * One card, drawn by the editor widget (`livePreview.ts`) and by read mode
+ * (`render.ts`), which is why the class names carry no `cm-` prefix. Only the
+ * outer wrapper is CodeMirror's, and it exists to hold the vertical spacing:
+ * a block widget must not carry a margin, so the gap has to be padding.
+ */
+
+.cm-link-banner-outer {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px var(--inset);
+  margin: 0;
+}
+
+.link-banner {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(680px, 100%);
+  min-width: 0;
+  min-height: 66px;
+  padding: 10px 12px 10px 9px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--lum-border) 86%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--lum-accent) 9%, transparent), transparent 80px),
+    color-mix(in srgb, var(--lum-surface) 76%, var(--lum-bg));
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 3%, transparent),
+    0 1px 2px color-mix(in srgb, black 9%, transparent);
+  transition: border-color var(--lum-transition), background var(--lum-transition), transform var(--lum-transition), box-shadow var(--lum-transition);
+}
+.link-banner::before {
+  content: '';
+  position: absolute;
+  inset: 11px auto 11px 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--lum-accent);
+  opacity: 0.7;
+}
+.link-banner:hover {
+  border-color: color-mix(in srgb, var(--lum-accent) 40%, var(--lum-border));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--lum-accent) 13%, transparent), transparent 96px),
+    var(--lum-surface-hover);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 4%, transparent),
+    0 5px 16px color-mix(in srgb, black 14%, transparent);
+}
+.link-banner.is-dragging { opacity: 0.55; }
+.link-banner.is-drop-target { outline: 2px solid var(--lum-accent); outline-offset: 2px; }
+
+.link-banner-grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  width: 14px;
+  border-radius: 5px;
+  color: var(--lum-text-faint);
+  cursor: grab;
+  opacity: 0;
+  font-family: var(--lum-font-ui);
+  font-size: 14px;
+  transition: opacity var(--lum-transition), background var(--lum-transition), color var(--lum-transition);
+}
+.link-banner:hover .link-banner-grip,
+.link-banner-grip:focus { opacity: 1; }
+.link-banner-grip:hover { background: var(--lum-accent-soft); color: var(--lum-accent); }
+.link-banner-grip:active { cursor: grabbing; }
+
+/* The globe stands in for a favicon, which would mean a network request for
+   every link in every note. Six hues keyed off the hostname keep two sites
+   from looking identical without anyone choosing colours. */
+.link-banner-mark {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--lum-accent-soft) 78%, var(--lum-surface));
+  color: var(--lum-accent);
+  font-family: var(--lum-font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+.link-banner-glyph {
+  display: block;
+}
+.link-banner[data-accent='1'] .link-banner-mark { background: color-mix(in srgb, #5b9bd5 18%, transparent); color: #4a86bd; }
+.link-banner[data-accent='2'] .link-banner-mark { background: color-mix(in srgb, #70ad47 18%, transparent); color: #5e9a3a; }
+.link-banner[data-accent='3'] .link-banner-mark { background: color-mix(in srgb, #a273d6 18%, transparent); color: #8f5fc7; }
+.link-banner[data-accent='4'] .link-banner-mark { background: color-mix(in srgb, #e0a458 20%, transparent); color: #c2873c; }
+.link-banner[data-accent='5'] .link-banner-mark { background: color-mix(in srgb, #4bb3a3 18%, transparent); color: #37998a; }
+
+.link-banner-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.link-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.link-banner-title {
+  color: var(--lum-text);
+  font-family: "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-banner-desc {
+  color: color-mix(in srgb, var(--lum-text-muted) 90%, transparent);
+  font-family: "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.link-banner-host {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 1px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lum-text) 5%, transparent);
+  color: var(--lum-text-faint);
+  font-family: "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 550;
+  letter-spacing: 0.015em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-banner-open {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--lum-text-faint);
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  transition: background var(--lum-transition), color var(--lum-transition);
+}
+.link-banner:hover .link-banner-open {
+  background: color-mix(in srgb, var(--lum-accent) 10%, transparent);
+  color: var(--lum-accent);
+}
+
+.note-view-content .link-banner {
+  margin: 6px 0;
+}
+.note-view-content a.link-banner {
+  color: inherit;
 }

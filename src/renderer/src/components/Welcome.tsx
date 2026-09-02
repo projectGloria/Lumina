@@ -41,7 +41,7 @@ export default function Welcome(): React.JSX.Element {
           account, no sync, nothing to lock you in.
         </p>
 
-        <button className="btn btn-primary welcome-cta" onClick={() => void pickVault()} disabled={loading}>
+        <button className="btn btn-primary welcome-cta" data-tooltip="Pick a folder to use as a vault" onClick={() => void pickVault()} disabled={loading}>
           {loading ? 'Opening…' : 'Choose a folder'}
         </button>
         <p className="welcome-note">
@@ -56,6 +56,7 @@ export default function Welcome(): React.JSX.Element {
               <button
                 key={vault.path}
                 className="welcome-recent-item"
+                data-tooltip={`Open vault at ${vault.path}`}
                 onClick={() => void openVaultPath(vault.path)}
               >
                 <Icon name="vault" size={15} />

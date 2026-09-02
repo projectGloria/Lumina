@@ -9,6 +9,7 @@ import PasslockScreen from './components/PasslockScreen'
 import ProfilePicker from './components/ProfilePicker'
 import QuickSwitcher from './components/QuickSwitcher'
 import Resizer from './components/Resizer'
+import SaveIndicator from './components/SaveIndicator'
 import RightSidebar from './components/RightSidebar'
 import SettingsModal from './components/settings/SettingsModal'
 import Sidebar from './components/Sidebar'
@@ -17,10 +18,18 @@ import TitleBar from './components/TitleBar'
 import Toasts from './components/Toasts'
 import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
+import { Icon } from './components/Icon'
 import { getActiveView } from './editor/activeView'
 import { captureActiveSession } from './editor/session'
-import { openNote, removeStarredPaths, removeIconOverrides, removePinnedPaths } from './lib/actions'
-import { COMMANDS, hotkeyFor } from './lib/commands'
+import {
+  drainQuickNotes,
+  openNote,
+  removeStarredPaths,
+  removeIconOverrides,
+  removePinnedPaths,
+  requestQuickNote
+} from './lib/actions'
+import { COMMANDS, hotkeyFor, runCommand } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
 import { useEditor } from './store/editorStore'
 import { useProfiles } from './store/profileStore'
@@ -43,6 +52,18 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     void useProfiles.getState().init()
   }, [])
+
+  /* ------------------------------------------- leave focus mode safely */
+  useEffect(() => {
+    if (!focusMode) return
+    const leave = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      useWorkspace.getState().toggleFocusMode()
+    }
+    window.addEventListener('keydown', leave)
+    return () => window.removeEventListener('keydown', leave)
+  }, [focusMode])
 
   /* ------------------------------------------------------ main process */
   useEffect(() => {
@@ -71,6 +92,10 @@ export default function App(): React.JSX.Element {
       // Load the note that was open last time so the app resumes where it was.
       const active = workspace.tabs[workspace.activeTab]
       if (active) void useEditor.getState().open(active.path)
+
+      // A quick note asked for while the picker or the passlock was up has
+      // been waiting for exactly this.
+      void drainQuickNotes()
     }
 
     // A note double-clicked in the file manager. The main process has already
@@ -119,6 +144,17 @@ export default function App(): React.JSX.Element {
 
       window.lumina.files.onOpenRequest(openRequested),
 
+      // The OS-wide shortcut. The window may have been created by the press
+      // itself, so this can arrive before there is a vault — `requestQuickNote`
+      // holds it until there is one.
+      window.lumina.quickNote.onRequest(() => requestQuickNote()),
+
+      window.lumina.quickNote.onStatus(({ accelerator, registered }) => {
+        if (!registered) {
+          toast(`${accelerator} could not be registered — another app may own it`, 'error')
+        }
+      }),
+
       // The app is quitting and the main process is waiting on us. Autosave is
       // debounced, so the last few keystrokes live only here until this runs.
       window.lumina.app.onFlush(() => {
@@ -154,6 +190,15 @@ export default function App(): React.JSX.Element {
       } catch (err) {
         toast(`Could not open the requested note: ${(err as Error).message}`, 'error')
       }
+
+      // Shortcut presses that landed during the window's cold start — the
+      // usual case when the app was idling in the tray.
+      try {
+        const presses = await window.lumina.quickNote.takePending()
+        for (let i = 0; i < presses; i++) requestQuickNote()
+      } catch (err) {
+        toast(`Could not create the quick note: ${(err as Error).message}`, 'error')
+      }
     })()
 
     return () => unsubscribers.forEach((off) => off())
@@ -188,8 +233,10 @@ export default function App(): React.JSX.Element {
         const accel = hotkeyFor(command)
         if (!accel || !matchesAccelerator(e, accel)) continue
 
-        // CodeMirror owns the formatting keys while the editor has focus.
-        if (inEditor && command.section === 'Editor') return
+        // CodeMirror owns formatting and save while the editor has focus. Save
+        // needs the mounted editor's path and feedback callback, not a second
+        // global dispatch of the same keystroke.
+        if (inEditor && (command.section === 'Editor' || command.id === 'note.save')) return
         // Bare keys like F2 stay out of the way of ordinary typing.
         if (inField && !e.ctrlKey && !e.altKey && !e.metaKey) return
         if (command.enabled && !command.enabled()) return
@@ -283,6 +330,19 @@ export default function App(): React.JSX.Element {
 
       <StatusBar />
 
+      {focusMode ? (
+        <button
+          className="focus-mode-exit"
+          onClick={() => runCommand('view.focusMode')}
+          data-tooltip="Leave focus mode (Esc)"
+          aria-label="Leave focus mode"
+        >
+          <Icon name="focus" size={15} />
+          <span>Exit focus</span>
+          <kbd>Esc</kbd>
+        </button>
+      ) : null}
+
       {modal === 'palette' ? <CommandPalette /> : null}
       {modal === 'switcher' ? <QuickSwitcher /> : null}
       {modal === 'settings' ? <SettingsModal /> : null}
@@ -291,6 +351,7 @@ export default function App(): React.JSX.Element {
       <PromptDialog />
       <ConfirmDialog />
       <ContextMenu />
+      <SaveIndicator />
       <Toasts />
     </div>
   )

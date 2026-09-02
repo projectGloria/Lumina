@@ -39,6 +39,7 @@
   --lum-warning: #a97b21;
   --lum-danger: #b34a3f;
   --lum-info: #4a6fa5;
+  --lum-folder: #e07a3f;
 
   /* --------------------------------------------------------- markdown */
   --lum-link: var(--lum-accent);
@@ -134,6 +135,7 @@
   --lum-warning: #d0a755;
   --lum-danger: #e08074;
   --lum-info: #7fa3d9;
+  --lum-folder: #e58a55;
 
   --lum-link-unresolved: #6f6a63;
   --lum-tag-bg: #3a3a36;
