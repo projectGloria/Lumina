@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { HomeWidget } from '@shared/types'
 import {
+  MAX_ROWS,
   canArrange,
   clampToColumns,
   fitToColumns,
@@ -211,7 +212,13 @@ export default function HomeBoard(): React.JSX.Element {
             drag.min.w,
             columns - drag.origin.x
           ),
-          h: Math.max(drag.min.h, drag.origin.h + Math.round(drag.dy / drag.stepY))
+          // Bounded where `clampToColumns` bounds it, so a resize cannot
+          // author a height the board would then clamp back.
+          h: clamp(
+            drag.origin.h + Math.round(drag.dy / drag.stepY),
+            drag.min.h,
+            Math.max(MAX_ROWS, drag.min.h)
+          )
         }
       }
       schedule()

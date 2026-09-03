@@ -286,11 +286,20 @@ describe('clampToColumns, hand-edited extremes', () => {
   })
 
   it('still honours a minimum taller than the bound, if one is ever declared', () => {
-    expect(clampToColumns(widget('a', 0, 0, 1, 99999), 4, { w: 1, h: 40 }).h).toBe(40)
+    expect(clampToColumns(widget('a', 0, 0, 1, 99999), 4, { w: 1, h: 80 }).h).toBe(80)
   })
 
   it('leaves an ordinary height alone', () => {
     expect(clampToColumns(widget('a', 0, 0, 2, 3), 4).h).toBe(3)
+  })
+
+  // The bound is for a hand-edited file, not for the user: anything anyone
+  // could plausibly have dragged a card to has to come back untouched, or the
+  // clamp is quietly eating rows off a layout that was fine.
+  it('leaves a deliberately tall card alone', () => {
+    for (const h of [12, 20, 30, MAX_ROWS]) {
+      expect(clampToColumns(widget('a', 0, 0, 2, h), 4).h).toBe(h)
+    }
   })
 
   // The bound is what keeps this scan from running a hundred thousand rows.

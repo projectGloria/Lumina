@@ -390,19 +390,36 @@ export async function loadHome(v: string): Promise<HomeLayout | null> {
 const COVER_GRACE_MS = 60_000
 
 /**
+ * The cover each vault's board was last saved with.
+ *
+ * Every widget drag is a debounced save, and the sweep below is a directory
+ * scan and a decision to delete files — it has no business on the hot path of
+ * moving a card around. An absent entry is the first save of this session for
+ * this vault, which is deliberately swept: it is the one chance to collect
+ * whatever an earlier session or a crash left behind.
+ */
+const lastSavedCover = new Map<string, string>()
+
+/**
  * Delete the pictures under `.lumina/home` the board has stopped using.
  *
  * Covers are copies Lumina made, so nothing else refers to one and a replaced
  * or removed picture is otherwise kept forever. It is still a destructive pass
  * driven by a debounced save from the renderer, so it is deliberately timid:
  * `sweepableCovers` decides (and is tested), the files go to the recycle bin
- * like every other delete Lumina makes, only this one folder is ever read, and
- * a board with no widgets in it is left alone — an empty list is what a
- * renderer that has not loaded a board yet would send, and a picture is not
- * worth losing on the strength of that.
+ * like every other delete Lumina makes, only this one folder is ever read, a
+ * board with no widgets in it is left alone — an empty list is what a renderer
+ * that has not loaded a board yet would send, and a picture is not worth
+ * losing on the strength of that — and it runs only when the cover reference
+ * has actually changed, so dragging a card does not reach it at all.
  */
 async function sweepCovers(v: string, layout: HomeLayout): Promise<void> {
   if (!layout.widgets.length) return
+
+  const cover = layout.cover?.path ?? ''
+  const previous = lastSavedCover.get(v)
+  lastSavedCover.set(v, cover)
+  if (previous === cover) return
 
   const dir = path.join(v, HOME_COVER_DIR)
   let entries
@@ -424,7 +441,7 @@ async function sweepCovers(v: string, layout: HomeLayout): Promise<void> {
   )
 
   for (const name of sweepableCovers(files, {
-    coverPath: layout.cover?.path,
+    coverPath: cover,
     now: Date.now(),
     graceMs: COVER_GRACE_MS
   })) {

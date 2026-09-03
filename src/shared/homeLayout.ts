@@ -32,8 +32,15 @@ export const MAX_COLUMNS = 12
  * `home.json` is a file a user can edit, and an `h` of 99999 is not only an
  * absurd card — it makes `findFreeSpot` scan a hundred thousand rows on every
  * add, because the board's bottom edge is derived from it.
+ *
+ * The number is high on purpose. At the row height and gutter the board draws
+ * with, this is around seven screens of card, which is past any use anyone has
+ * for one — and a clamp that trimmed a height someone had actually dragged to
+ * would be a worse bug than the one it prevents. The resize gesture in
+ * `HomeBoard` stops here too, so the only way to be above it is to have
+ * written the file by hand.
  */
-export const MAX_ROWS = 24
+export const MAX_ROWS = 64
 
 export function rectsOverlap(a: GridRect, b: GridRect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
