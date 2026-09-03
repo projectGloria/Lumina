@@ -103,7 +103,9 @@ export const heatmapWidget = defineWidget<HeatmapConfig>({
   description: 'How much you wrote each day, as a grid of weeks',
   icon: 'grid',
   defaultSize: { w: 4, h: 2 },
-  minSize: { w: 2, h: 1 },
+  // Two rows, not one. Seven days of cells plus the legend need about 138px;
+  // a one-row card offers 58px, which drew the year as 2px slivers.
+  minSize: { w: 2, h: 2 },
   defaultConfig: { weeks: 26 },
   accent: 'primary',
   Component: Heatmap,
