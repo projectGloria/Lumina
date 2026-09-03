@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { HomeWidget } from '@shared/types'
+import type { HomeLayout, HomeWidget } from '@shared/types'
+import { HOME_LAYOUT_VERSION } from '@shared/types'
 import {
   clampToColumns,
   compact,
   findFreeSpot,
   normalizeLayout,
   placeWidget,
-  rectsOverlap
+  rectsOverlap,
+  withWidgets
 } from '@shared/homeLayout'
 
 const widget = (id: string, x: number, y: number, w = 1, h = 1): HomeWidget => ({
@@ -200,5 +202,46 @@ describe('normalizeLayout, cover', () => {
 
   it('leaves the key out entirely when there is no cover', () => {
     expect('cover' in normalizeLayout({ widgets: [] })).toBe(false)
+  })
+})
+
+describe('withWidgets', () => {
+  const covered: HomeLayout = {
+    version: HOME_LAYOUT_VERSION,
+    columns: 4,
+    widgets: [widget('a', 0, 0, 2, 2), widget('b', 2, 0, 2, 2)],
+    cover: { path: '.lumina/home/photo.jpg', position: 40 }
+  }
+
+  // Every gesture that rearranges the board — a drag, a resize, an arrow-key
+  // nudge, adding a widget, and the settings pane's reset to the starter
+  // board — commits through here. Rebuilding the layout instead used to drop
+  // the cover on all five.
+  it('keeps the cover through an arrangement', () => {
+    const moved = withWidgets(covered, [widget('b', 0, 0, 2, 2), widget('a', 2, 0, 2, 2)], 4)
+    expect(moved.cover).toEqual({ path: '.lumina/home/photo.jpg', position: 40 })
+  })
+
+  it('keeps the cover when the arrangement re-authors the column count', () => {
+    expect(withWidgets(covered, covered.widgets, 2)).toMatchObject({
+      columns: 2,
+      cover: { path: '.lumina/home/photo.jpg', position: 40 }
+    })
+  })
+
+  it('keeps the cover when every widget is removed', () => {
+    expect(withWidgets(covered, [], 4).cover).toBeDefined()
+  })
+
+  it('leaves a board with no cover without one', () => {
+    const bare: HomeLayout = { version: HOME_LAYOUT_VERSION, columns: 4, widgets: [] }
+    expect('cover' in withWidgets(bare, [widget('a', 0, 0)], 4)).toBe(false)
+  })
+
+  it('stamps the current version and the width it was arranged at', () => {
+    expect(withWidgets({ ...covered, version: 0 }, covered.widgets, 3)).toMatchObject({
+      version: HOME_LAYOUT_VERSION,
+      columns: 3
+    })
   })
 })

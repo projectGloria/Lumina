@@ -194,3 +194,19 @@ export function normalizeLayout(value: unknown): HomeLayout {
     ...(cover ? { cover } : {})
   }
 }
+
+/**
+ * Replace the board's widgets, keeping everything else the layout carries.
+ *
+ * Written as a function rather than spread at the call site because the cover
+ * is the part that gets forgotten: a `commit` that rebuilt the layout from
+ * `{ version, columns, widgets }` dropped `cover`, so every drag, resize,
+ * arrow-key nudge and board reset silently deleted the user's picture.
+ */
+export function withWidgets(
+  layout: HomeLayout,
+  widgets: HomeWidget[],
+  columns: number
+): HomeLayout {
+  return { ...layout, version: HOME_LAYOUT_VERSION, columns, widgets }
+}

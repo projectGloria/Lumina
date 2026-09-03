@@ -9,7 +9,7 @@
 import { create } from 'zustand'
 import type { HomeCover, HomeLayout, HomeWidget } from '@shared/types'
 import { HOME_LAYOUT_VERSION } from '@shared/types'
-import { compact, normalizeLayout } from '@shared/homeLayout'
+import { compact, normalizeLayout, withWidgets } from '@shared/homeLayout'
 
 /** The column count layouts are authored against; the board rescales below it. */
 export const HOME_COLUMNS = 4
@@ -132,8 +132,9 @@ export const useHome = create<HomeStore>((set, get) => {
 
     setEditing: (editing) => set({ editing }),
 
-    commit: (widgets, columns) =>
-      update({ version: HOME_LAYOUT_VERSION, columns, widgets }),
+    // Through `withWidgets` rather than a fresh object, so the cover survives
+    // an arrangement — rebuilding the layout here is what used to delete it.
+    commit: (widgets, columns) => update(withWidgets(get().layout, widgets, columns)),
 
     removeWidget: (id) => {
       const { columns, widgets } = get().layout
