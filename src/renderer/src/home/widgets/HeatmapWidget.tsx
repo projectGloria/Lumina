@@ -49,7 +49,9 @@ function Heatmap({ config }: WidgetProps<HeatmapConfig>): React.JSX.Element {
 
   return (
     <div className="home-heatmap">
-      <div className="home-heatmap-grid" style={{ gridTemplateColumns: `repeat(${weeks}, 1fr)` }}>
+      {/* No column template: the cells are square, so their width follows the
+          row height and the columns size themselves. */}
+      <div className="home-heatmap-grid">
         {columns.map((column, i) => (
           <div key={i} className="home-heatmap-week">
             {column.map(({ date, count, ahead, level }) => (

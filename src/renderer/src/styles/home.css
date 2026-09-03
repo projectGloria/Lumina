@@ -1010,9 +1010,23 @@
   height: 100%;
 }
 
+/* The columns are sized by the cells rather than by the card: a cell takes its
+   height from the row track and its width from `aspect-ratio`, so every day is
+   a square rather than a stretched rectangle.
+
+   The consequence is that the grid is as wide as the weeks need, which is not
+   necessarily as wide as the card. Aligned to the end rather than centred, for
+   both of the cases that produces: with room to spare the run of weeks finishes
+   at the card's right edge, which is where a series ending today should finish;
+   and where the card is too narrow for the weeks on show, what falls off is the
+   oldest end rather than a slice of both. `settings` still offers Weeks shown
+   for anyone who wants them all on a small card. */
 .home-heatmap-grid {
   flex: 1 1 auto;
   display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: max-content;
+  justify-content: end;
   gap: var(--lum-home-heat-gap);
   min-height: 0;
 }
@@ -1025,6 +1039,8 @@
 }
 
 .home-heatmap-cell {
+  aspect-ratio: 1;
+  height: 100%;
   border-radius: var(--lum-home-heat-cell-radius);
   background: var(--lum-home-heat-0);
   min-height: 6px;
