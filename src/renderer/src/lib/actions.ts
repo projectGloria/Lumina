@@ -6,6 +6,7 @@
  * command palette.
  */
 import { HOME_COVER_DIR } from '@shared/homeCovers'
+import type { WidgetPathHooks } from '@shared/homePaths'
 import { isNoteTab } from '@shared/types'
 import {
   basename,
@@ -19,6 +20,7 @@ import {
 import { DEFAULT_QUICK_NOTE_FOLDER, isGeneratedNoteName, quickNoteName } from '@shared/quickNote'
 import { applyTemplate, formatDate } from '@shared/template'
 import { useEditor } from '../store/editorStore'
+import { useHome } from '../store/homeStore'
 import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
 import { pathForNewNote, useVault } from '../store/vaultStore'
@@ -396,6 +398,7 @@ export function promptRename(path: string): void {
       renameColorOverrides(path, res.data)
       renameCustomIcons(path, res.data)
       renamePinnedPaths(path, res.data)
+      renameWidgetPaths(path, res.data)
     }
   })
 }
@@ -421,6 +424,7 @@ export async function movePath(path: string, targetFolder: string): Promise<void
   renameColorOverrides(path, res.data)
   renameCustomIcons(path, res.data)
   renamePinnedPaths(path, res.data)
+  renameWidgetPaths(path, res.data)
 }
 
 /* ------------------------------------------------------------ deleting */
@@ -445,6 +449,7 @@ export function confirmDelete(path: string): void {
       removeColorOverrides(path)
       removeCustomIcons(path)
       removePinnedPaths(path)
+      removeWidgetPaths(path)
     }
   })
 }
@@ -604,6 +609,57 @@ export function removeColorOverrides(parent: string): void {
 }
 
 /* -------------------------------------------------------- custom icons */
+
+/* ------------------------------------------------- the Home board's paths */
+
+/**
+ * How the two walkers below find a widget's path hooks.
+ *
+ * Registered by the widget registry rather than imported from it, for the same
+ * reason `useHome.load` takes its seed as a parameter: this file sits at the
+ * bottom of the renderer's import graph — it imports only shared code and
+ * stores, and everything else imports it — and reaching for the registry here
+ * would make that a cycle, since every widget imports this file. The registry
+ * publishes itself on the way up instead.
+ */
+let widgetPathHooks: (type: string) => WidgetPathHooks | undefined = () => undefined
+
+export function registerWidgetPathHooks(lookup: (type: string) => WidgetPathHooks | undefined): void {
+  widgetPathHooks = lookup
+}
+
+/**
+ * Ask every widget on the board to update the vault paths it stores.
+ *
+ * `home.json` holds paths — a scratch pad's note, a task list's folder — so a
+ * board is one more thing a rename has to move, alongside buffers, tabs and
+ * the path-keyed settings maps. Which of its options are paths is the widget's
+ * own business, declared as `rebasePaths` / `forgetPaths` on its definition,
+ * so a widget added later is covered by having said so rather than by someone
+ * remembering to come back here.
+ *
+ * `patch` returning null for every widget writes nothing at all, which is what
+ * keeps a rename elsewhere in the vault from touching the board.
+ */
+function walkWidgetPaths(
+  patch: (hooks: WidgetPathHooks, config: Record<string, unknown>) => Record<string, unknown> | null
+): void {
+  const { layout, setWidgetConfig } = useHome.getState()
+  for (const widget of layout.widgets) {
+    const hooks = widgetPathHooks(widget.type)
+    if (!hooks) continue
+    const change = patch(hooks, widget.config)
+    if (change) setWidgetConfig(widget.id, change)
+  }
+}
+
+export function renameWidgetPaths(from: string, to: string): void {
+  walkWidgetPaths((hooks, config) => hooks.rebasePaths?.(config, from, to) ?? null)
+}
+
+export function removeWidgetPaths(deleted: string): void {
+  walkWidgetPaths((hooks, config) => hooks.forgetPaths?.(config, deleted) ?? null)
+}
 
 /** Vault-relative folder uploaded icon images are copied into. */
 const CUSTOM_ICON_FOLDER = '.lumina/icons'

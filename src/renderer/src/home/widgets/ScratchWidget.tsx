@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { rebaseConfigPath } from '@shared/homePaths'
 import { Icon } from '@/components/Icon'
 import { dropNote, ensureNote, holdNote, openNote, releaseNote } from '@/lib/actions'
 import { useEditor } from '@/store/editorStore'
@@ -21,6 +22,7 @@ const DEFAULT_PATH = 'Scratch.md'
 function Scratch({ config }: WidgetProps<ScratchConfig>): React.JSX.Element {
   const path = config.path || DEFAULT_PATH
   const buffer = useEditor((s) => s.buffers[path])
+  const seen = useRef({ path, found: false })
 
   useEffect(() => {
     // Held for as long as the card is on screen: this pad is a reason for the
@@ -38,7 +40,21 @@ function Scratch({ config }: WidgetProps<ScratchConfig>): React.JSX.Element {
     }
   }, [path])
 
-  if (buffer?.error) {
+  /**
+   * Whether the note is gone, rather than not loaded yet.
+   *
+   * A buffer that was here and then vanished is a note deleted or renamed
+   * under the pad — the watcher closes the buffer directly, and no hold should
+   * override that, since the file really has gone. Tracked rather than
+   * inferred because a buffer that has never arrived looks identical: this is
+   * also true on the first render, before the effect above has opened
+   * anything, and on the render after the pad is pointed at another note.
+   */
+  if (seen.current.path !== path) seen.current = { path, found: false }
+  if (buffer) seen.current.found = true
+  const missing = !!buffer?.error || (seen.current.found && !buffer)
+
+  if (missing) {
     return (
       <div className="home-scratch-missing">
         <p className="home-widget-empty">
@@ -107,5 +123,10 @@ export const scratchWidget = defineWidget<ScratchConfig>({
   minSize: { w: 1, h: 2 },
   defaultConfig: { path: DEFAULT_PATH },
   Component: Scratch,
-  Settings: ScratchSettings
+  Settings: ScratchSettings,
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'path', from, to),
+  // No `forgetPaths` on purpose. Clearing the path would fall back to
+  // `DEFAULT_PATH` and silently point the pad at a different note; the widget
+  // says the note is missing and offers to create it, which is a state the
+  // user can see and undo.
 })

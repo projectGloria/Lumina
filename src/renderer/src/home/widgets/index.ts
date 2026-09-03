@@ -5,6 +5,7 @@
  * the board and `home.json` all read this list. A `type` is persisted, so
  * renaming one orphans every board that used it — add a new entry instead.
  */
+import { registerWidgetPathHooks } from '@/lib/actions'
 import { calendarWidget } from './CalendarWidget'
 import { captureWidget } from './CaptureWidget'
 import { clockWidget } from './ClockWidget'
@@ -52,3 +53,15 @@ const BY_TYPE = new Map(WIDGETS.map((def) => [def.type, def]))
 export function widgetDef(type: string): AnyWidgetDef | undefined {
   return BY_TYPE.get(type)
 }
+
+/**
+ * Hand `lib/actions.ts` the lookup it needs to move the vault paths widgets
+ * store when a note or folder is renamed, moved or deleted.
+ *
+ * Published from here rather than imported there: `actions.ts` imports only
+ * shared code and stores, and every widget in this registry imports it, so an
+ * import the other way would be a cycle. This module is evaluated at boot —
+ * `App.tsx` reaches it through the starter board — so the lookup is in place
+ * long before anything can be renamed.
+ */
+registerWidgetPathHooks(widgetDef)

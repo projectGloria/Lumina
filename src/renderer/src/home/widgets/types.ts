@@ -5,6 +5,7 @@
  * in the registry, and the board can draw it. Adding a widget must never mean
  * editing the board, the store, or the persistence layer.
  */
+import type { WidgetPathHooks } from '@shared/homePaths'
 import type { IconName } from '@/components/Icon'
 
 export interface WidgetProps<C = unknown> {
@@ -26,7 +27,14 @@ export interface GridSpan {
   h: number
 }
 
-export interface WidgetDef<C = unknown> {
+/**
+ * `WidgetPathHooks` is part of a definition because a widget that stores a
+ * vault path is data about that too: `lib/actions.ts` walks the board through
+ * these on a rename, a move and a delete, so nothing has to be taught about
+ * the widget one by one. Declaring one is the whole of what a new widget owes
+ * — see the list in CLAUDE.md.
+ */
+export interface WidgetDef<C = unknown> extends WidgetPathHooks {
   /** Stable id, written into `home.json`. Renaming one orphans every board. */
   type: string
   /** Shown in the picker and as the card's title. */

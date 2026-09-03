@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { forgetConfigPath, rebaseConfigPath } from '@shared/homePaths'
 import { isPathAtOrBelow } from '@shared/markdown-parse'
 import { useVault } from '@/store/vaultStore'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
@@ -78,5 +79,8 @@ export const progressWidget = defineWidget<ProgressConfig>({
   minSize: { w: 1, h: 1 },
   defaultConfig: { folder: '' },
   Component: Progress,
-  Settings: ProgressSettings
+  Settings: ProgressSettings,
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to),
+  // Given up rather than kept, for the reason the tasks card gives.
+  forgetPaths: (config, deleted) => forgetConfigPath(config, 'folder', deleted, '')
 })

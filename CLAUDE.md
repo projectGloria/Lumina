@@ -390,10 +390,28 @@ a note the same way.
 That file is also where path-keyed bookkeeping lives, and it is easy to update
 only half of it. A rename or move has to rebase **every** map keyed by
 vault-relative path — buffers, tabs, `starred`, `pinned`, `iconOverrides`,
-`colorOverrides`, `customIcons` — and a delete has to drop the same set, via the
-`rename*` / `remove*` helper pairs. A new per-path setting owes both helpers plus
-calls in `promptRename`, `movePath` and `confirmDelete`, or the user's decoration
-silently stays attached to the old path forever.
+`colorOverrides`, `customIcons`, and the Home board's widget options — and a
+delete has to drop the same set, via the `rename*` / `remove*` helper pairs. A
+new per-path setting owes both helpers plus calls in `promptRename`, `movePath`
+and `confirmDelete`, or the user's decoration silently stays attached to the old
+path forever.
+
+The board is the one entry in that list that is not a map here. `home.json`
+holds paths too — the scratch pad's note, a task list's folder — and a widget
+declares them as `rebasePaths` / `forgetPaths` on its own `WidgetDef`, using
+`rebaseConfigPath` / `forgetConfigPath` from `@shared/homePaths`;
+`renameWidgetPaths` / `removeWidgetPaths` walk the board through whatever each
+widget declared. So a **new widget that stores a path owes those two hooks and
+nothing else**, and a widget that stores none declares neither. Patching one
+widget from `actions.ts` instead would re-arm the trap for the next one.
+
+That walk finds the hooks through a lookup the registry hands over
+(`registerWidgetPathHooks`, called from `home/widgets/index.ts`) rather than by
+importing the registry. `lib/actions.ts` sits at the bottom of the renderer's
+import graph — it imports only `src/shared` and the stores, and everything else
+imports it — and every widget imports it, so an import the other way would be
+the renderer's first cycle. It is the same reason `useHome.load` takes its seed
+as a parameter.
 
 Editor-section commands are also bound in CodeMirror's own keymap
 (`editor/extensions.ts`). The global handler in `App.tsx` deliberately yields to

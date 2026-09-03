@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { forgetConfigPath, rebaseConfigPath } from '@shared/homePaths'
 import { findTaskLine, isPathAtOrBelow, setTaskDone, toPlainText } from '@shared/markdown-parse'
 import {
   drop,
@@ -197,5 +198,10 @@ export const tasksWidget = defineWidget<TasksConfig>({
   minSize: { w: 1, h: 2 },
   defaultConfig: { count: 12, folder: '', showDone: false },
   Component: Tasks,
-  Settings: TasksSettings
+  Settings: TasksSettings,
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to),
+  // A filter naming a folder that no longer exists draws an empty card with
+  // nothing to explain it, and the filter shows nowhere but this widget's own
+  // settings — so the folder is given up and the list goes back to the vault.
+  forgetPaths: (config, deleted) => forgetConfigPath(config, 'folder', deleted, '')
 })
