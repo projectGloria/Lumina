@@ -1010,37 +1010,44 @@
   height: 100%;
 }
 
-/* The columns are sized by the cells rather than by the card: a cell takes its
-   height from the row track and its width from `aspect-ratio`, so every day is
-   a square rather than a stretched rectangle.
+/* Every day is a square, and the width is what decides how big.
 
-   The consequence is that the grid is as wide as the weeks need, which is not
-   necessarily as wide as the card. Aligned to the end rather than centred, for
-   both of the cases that produces: with room to spare the run of weeks finishes
-   at the card's right edge, which is where a series ending today should finish;
-   and where the card is too narrow for the weeks on show, what falls off is the
-   oldest end rather than a slice of both. `settings` still offers Weeks shown
-   for anyone who wants them all on a small card. */
+   The columns divide the card's width, and `aspect-ratio` on the cell derives
+   the height from that — not the other way round. Deriving the width instead
+   was the same class of bug as a vanishing task: the card drew fewer weeks
+   than its own setting claimed, and nothing on screen said so. Sized this way
+   the run always fits, however narrow the card gets; the days simply get
+   smaller.
+
+   The cap keeps a wide card from drawing tiles instead of days, and once the
+   columns reach it the run is centred. End-aligning it would put the newest
+   day where a series ending today ought to end, which is the nicer reading —
+   but it is a preference, and it has no business standing in for a fit. */
 .home-heatmap-grid {
   flex: 1 1 auto;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: max-content;
-  justify-content: end;
+  grid-template-columns: repeat(
+    var(--lum-home-heat-weeks),
+    minmax(0, var(--lum-home-heat-cell-max))
+  );
+  justify-content: center;
+  align-content: start;
   gap: var(--lum-home-heat-gap);
   min-height: 0;
 }
 
+/* Rows sized by the cells, not by the card: a `1fr` row would stretch a cell
+   back into a rectangle and undo the aspect ratio. */
 .home-heatmap-week {
   display: grid;
-  grid-template-rows: repeat(7, 1fr);
+  grid-template-rows: repeat(7, auto);
+  align-content: start;
   gap: var(--lum-home-heat-gap);
   min-height: 0;
 }
 
 .home-heatmap-cell {
   aspect-ratio: 1;
-  height: 100%;
   border-radius: var(--lum-home-heat-cell-radius);
   background: var(--lum-home-heat-0);
   min-height: 6px;

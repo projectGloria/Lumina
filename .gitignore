@@ -8,6 +8,10 @@ release/
 *.tsbuildinfo
 test-vault/
 
+# Written by the editor tooling when it starts a preview server, with whatever
+# port it guessed. Machine-local, and not a description of how this app runs.
+.claude/launch.json
+
 # Speech engines and models bundled into the installer. Gigabytes of upstream
 # binaries and model weights — fetched by scripts/fetch-speech-packs.ps1, never
 # committed.

@@ -194,6 +194,9 @@
   --lum-home-spark-height: 34px;
   --lum-home-heat-cell-radius: 3px;
   --lum-home-heat-gap: 3px;
+  /* A day is as wide as its share of the card, up to this. Without the cap a
+     four-column card draws tiles rather than days. */
+  --lum-home-heat-cell-max: 18px;
 
   /* ---------------------------------------------------- home edit mode */
   --lum-home-edit-bg: color-mix(in srgb, var(--lum-text) 6%, var(--lum-bg));
