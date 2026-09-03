@@ -10,7 +10,7 @@
  * with plain DOM calls (`createIconElement`) and needs the identical shapes.
  */
 
-const PATHS: Record<string, string> = {
+const PATHS = {
   files: '<path d="M3 5.5A1.5 1.5 0 014.5 4h4L10 6h9.5A1.5 1.5 0 0121 7.5v11A1.5 1.5 0 0119.5 20h-15A1.5 1.5 0 013 18.5v-13z" />',
   search: '<circle cx="11" cy="11" r="6.5" /><path d="M20 20l-4.2-4.2" />',
   tag: '<path d="M11 3H4a1 1 0 00-1 1v7l9.5 9.5a1.5 1.5 0 002.1 0l6-6a1.5 1.5 0 000-2.1L11 3z" /><circle cx="7.5" cy="7.5" r="1.2" />',
@@ -67,9 +67,33 @@ const PATHS: Record<string, string> = {
   pause: '<path d="M9.5 5.5v13M14.5 5.5v13" />',
   skipBack: '<path d="M17 6.5v11L9 12l8-5.5z" /><path d="M6.5 6v12" />',
   skipForward: '<path d="M7 6.5L15 12l-8 5.5v-11z" /><path d="M17.5 6v12" />'
-}
+} as const
 
+/**
+ * Every glyph this app can draw.
+ *
+ * `as const` rather than `Record<string, string>`, so this is a union of the
+ * names that exist rather than `string`. Without it a misspelled `name` is
+ * accepted by the typechecker and renders an empty `<svg>` — which is how
+ * `checkCircle` came to be referenced before it was added.
+ */
 export type IconName = keyof typeof PATHS
+
+/** Drawn in place of a name that is not in the map. */
+export const FALLBACK_ICON: IconName = 'file'
+
+/**
+ * A name from outside the codebase, resolved to one this map has.
+ *
+ * The type above only guards names written in code. Icons also arrive from
+ * places TypeScript cannot see — a note's frontmatter, a hand-edited settings
+ * file — and the honest answer to one this build does not know is a plain
+ * glyph, not an empty box where an icon should be.
+ */
+export function resolveIcon(name: unknown): IconName {
+  if (typeof name === 'string' && name in PATHS) return name as IconName
+  return FALLBACK_ICON
+}
 
 const SVG_ATTRS: Record<string, string> = {
   viewBox: '0 0 24 24',
@@ -94,7 +118,8 @@ export function createIconElement(
   svg.setAttribute('width', String(size))
   svg.setAttribute('height', String(size))
   if (className) svg.setAttribute('class', className)
-  svg.innerHTML = PATHS[name]
+  // Defensive despite the type: `name` can arrive from a cast or from a file.
+  svg.innerHTML = PATHS[name] ?? PATHS[FALLBACK_ICON]
   return svg
 }
 
@@ -124,7 +149,7 @@ export function Icon({
       aria-hidden="true"
       focusable="false"
       // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: PATHS[name] }}
+      dangerouslySetInnerHTML={{ __html: PATHS[name] ?? PATHS[FALLBACK_ICON] }}
     />
   )
 }
