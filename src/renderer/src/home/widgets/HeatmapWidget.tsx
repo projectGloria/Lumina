@@ -1,20 +1,12 @@
 import { useMemo } from 'react'
 import { dayKey, heatmapDays } from '@shared/homeDates'
+import { heatLevel, heatThresholds } from '@shared/homeHeat'
 import { formatDate } from '@shared/template'
 import { useVault } from '@/store/vaultStore'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
 interface HeatmapConfig extends Record<string, unknown> {
   weeks: number
-}
-
-/** Five steps, because more than that reads as noise at this cell size. */
-function level(count: number): number {
-  if (!count) return 0
-  if (count === 1) return 1
-  if (count === 2) return 2
-  if (count <= 4) return 3
-  return 4
 }
 
 /**
@@ -39,12 +31,19 @@ function Heatmap({ config }: WidgetProps<HeatmapConfig>): React.JSX.Element {
     // day is an hour shorter when the clocks go forward, and the old ms
     // arithmetic dropped that day from the grid altogether.
     const now = Date.now()
-    return heatmapDays(new Date(now), weeks).map((column) =>
+    const grid = heatmapDays(new Date(now), weeks).map((column) =>
       column.map((date) => ({
         date,
         count: counts.get(dayKey(date)) ?? 0,
         ahead: date.getTime() > now
       }))
+    )
+
+    // Shaded against the days on screen rather than against fixed counts, so
+    // the grid has a shape whether this vault writes two notes a day or forty.
+    const thresholds = heatThresholds(grid.flat().map((cell) => cell.count))
+    return grid.map((column) =>
+      column.map((cell) => ({ ...cell, level: heatLevel(cell.count, thresholds) }))
     )
   }, [index, weeks])
 
@@ -53,11 +52,11 @@ function Heatmap({ config }: WidgetProps<HeatmapConfig>): React.JSX.Element {
       <div className="home-heatmap-grid" style={{ gridTemplateColumns: `repeat(${weeks}, 1fr)` }}>
         {columns.map((column, i) => (
           <div key={i} className="home-heatmap-week">
-            {column.map(({ date, count, ahead }) => (
+            {column.map(({ date, count, ahead, level }) => (
               <span
                 key={date.toISOString()}
                 className={`home-heatmap-cell${ahead ? ' is-ahead' : ''}`}
-                data-level={level(count)}
+                data-level={level}
                 data-tooltip={`${formatDate('DDD DD MMM', date)} · ${count} note${count === 1 ? '' : 's'}`}
               />
             ))}
