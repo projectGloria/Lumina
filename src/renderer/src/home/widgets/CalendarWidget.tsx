@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { oneOf } from '@shared/homeConfig'
 import { dayKey } from '@shared/homeDates'
 import { formatDate } from '@shared/template'
 import { Icon } from '@/components/Icon'
@@ -19,6 +20,9 @@ function Calendar({ config }: WidgetProps<CalendarConfig>): React.JSX.Element {
   // which the path helper reads from the store itself.
   const daily = useSettings((s) => s.settings.dailyNotes)
   const [monthOffset, setMonthOffset] = useState(0)
+  // A string default cannot say which strings mean something, so the one fixed
+  // set of words this widget accepts is checked here.
+  const weekStart = oneOf(config.weekStart, ['monday', 'sunday'] as const, 'monday')
 
   const today = new Date()
   const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
@@ -36,7 +40,7 @@ function Calendar({ config }: WidgetProps<CalendarConfig>): React.JSX.Element {
 
   const weeks = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1)
-    const lead = config.weekStart === 'monday' ? (first.getDay() + 6) % 7 : first.getDay()
+    const lead = weekStart === 'monday' ? (first.getDay() + 6) % 7 : first.getDay()
     const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
     const rows = Math.ceil((lead + days) / 7)
 
@@ -49,10 +53,10 @@ function Calendar({ config }: WidgetProps<CalendarConfig>): React.JSX.Element {
         return date
       })
     )
-  }, [month, config.weekStart])
+  }, [month, weekStart])
 
   const labels =
-    config.weekStart === 'monday'
+    weekStart === 'monday'
       ? ['M', 'T', 'W', 'T', 'F', 'S', 'S']
       : ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
@@ -145,7 +149,7 @@ function CalendarSettings({
     <label className="home-setting">
       <span>Week starts</span>
       <select
-        value={config.weekStart}
+        value={oneOf(config.weekStart, ['monday', 'sunday'] as const, 'monday')}
         onChange={(e) => setConfig({ weekStart: e.target.value as CalendarConfig['weekStart'] })}
       >
         <option value="monday">Monday</option>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { oneOf } from '@shared/homeConfig'
 import { Icon } from '@/components/Icon'
 import { captureText } from '@/lib/actions'
 import { toast } from '@/store/uiStore'
@@ -12,15 +13,18 @@ interface CaptureConfig extends Record<string, unknown> {
 function Capture({ config }: WidgetProps<CaptureConfig>): React.JSX.Element {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+  // Where a captured line is filed decides what the hint promises, so a word
+  // this widget does not know must resolve once rather than per branch.
+  const target = oneOf(config.target, ['quick', 'daily'] as const, 'quick')
 
   const submit = async (): Promise<void> => {
     if (!text.trim() || busy) return
     setBusy(true)
-    const ok = await captureText(text, config.target)
+    const ok = await captureText(text, target)
     setBusy(false)
     if (!ok) return
     setText('')
-    toast(config.target === 'daily' ? 'Added to today’s note' : 'Captured')
+    toast(target === 'daily' ? 'Added to today’s note' : 'Captured')
   }
 
   return (
@@ -42,7 +46,7 @@ function Capture({ config }: WidgetProps<CaptureConfig>): React.JSX.Element {
       />
       <div className="home-capture-actions">
         <span className="home-capture-hint">
-          {config.target === 'daily' ? 'Appends to today’s note' : 'Files a new quick note'}
+          {target === 'daily' ? 'Appends to today’s note' : 'Files a new quick note'}
         </span>
         <button
           className="btn btn-small btn-primary"
@@ -65,7 +69,7 @@ function CaptureSettings({
     <label className="home-setting">
       <span>File into</span>
       <select
-        value={config.target}
+        value={oneOf(config.target, ['quick', 'daily'] as const, 'quick')}
         onChange={(e) => setConfig({ target: e.target.value as CaptureConfig['target'] })}
       >
         <option value="quick">A new quick note</option>

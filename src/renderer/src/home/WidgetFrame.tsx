@@ -6,6 +6,7 @@
  * with it. Widgets themselves render only their contents.
  */
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react'
+import { mergeWidgetConfig } from '@shared/homeConfig'
 import type { HomeWidget } from '@shared/types'
 import { Icon } from '@/components/Icon'
 import { useUi } from '@/store/uiStore'
@@ -60,7 +61,11 @@ export default function WidgetFrame({
     )
   }
 
-  const config = { ...def.defaultConfig, ...widget.config }
+  // Merged rather than spread: `home.json` is hand-editable and outlives the
+  // build that wrote it, so a stored option can be the wrong type for the key
+  // it is under. Unknown keys are dropped on the way in here, never from the
+  // file, so a board written by a later build keeps its own.
+  const config = mergeWidgetConfig(def.defaultConfig, widget.config)
   const Settings = def.Settings
 
   const openMenu = (e: React.MouseEvent): void => {
