@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { dayKey } from '@shared/homeDates'
 import { formatDate } from '@shared/template'
 import { Icon } from '@/components/Icon'
 import { dailyNotePath, ensureNote, openDailyNote, openNote } from '@/lib/actions'
@@ -9,10 +10,6 @@ import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './type
 interface CalendarConfig extends Record<string, unknown> {
   weekStart: 'monday' | 'sunday'
 }
-
-/** Year-month-day, ignoring the time — two notes on one day share a key. */
-const dayKey = (date: Date): string =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 
 const sameDay = (a: Date, b: Date): boolean => dayKey(a) === dayKey(b)
 

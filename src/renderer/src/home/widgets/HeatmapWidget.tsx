@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { dayKey, heatmapDays } from '@shared/homeDates'
 import { formatDate } from '@shared/template'
 import { useVault } from '@/store/vaultStore'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
@@ -6,8 +7,6 @@ import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './type
 interface HeatmapConfig extends Record<string, unknown> {
   weeks: number
 }
-
-const DAY = 86_400_000
 
 /** Five steps, because more than that reads as noise at this cell size. */
 function level(count: number): number {
@@ -17,9 +16,6 @@ function level(count: number): number {
   if (count <= 4) return 3
   return 4
 }
-
-const dayKey = (date: Date): string =>
-  `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 
 /**
  * Notes touched per day, as a grid of weeks.
@@ -39,17 +35,16 @@ function Heatmap({ config }: WidgetProps<HeatmapConfig>): React.JSX.Element {
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
 
-    // End on the Saturday of this week so the last column is the current one.
-    const today = new Date()
-    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    end.setDate(end.getDate() + (6 - end.getDay()))
-
-    return Array.from({ length: weeks }, (_, week) =>
-      Array.from({ length: 7 }, (_, day) => {
-        const date = new Date(end.getTime() - ((weeks - 1 - week) * 7 + (6 - day)) * DAY)
-        const count = counts.get(dayKey(date)) ?? 0
-        return { date, count, ahead: date.getTime() > today.getTime() }
-      })
+    // Stepped by the calendar in `heatmapDays`, not by fixed milliseconds: a
+    // day is an hour shorter when the clocks go forward, and the old ms
+    // arithmetic dropped that day from the grid altogether.
+    const now = Date.now()
+    return heatmapDays(new Date(now), weeks).map((column) =>
+      column.map((date) => ({
+        date,
+        count: counts.get(dayKey(date)) ?? 0,
+        ahead: date.getTime() > now
+      }))
     )
   }, [index, weeks])
 
