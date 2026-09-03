@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="head">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="name">Clip to Lumina</span>
+    </div>
+
+    <p class="page" id="page-title">…</p>
+
+    <div class="modes" role="radiogroup" aria-label="What to clip">
+      <button class="mode" data-mode="article" role="radio" aria-checked="true">
+        <span class="mode-name">Article</span>
+        <span class="mode-hint">Just the readable text</span>
+      </button>
+      <button class="mode" data-mode="selection" role="radio" aria-checked="false">
+        <span class="mode-name">Selection</span>
+        <span class="mode-hint">What you highlighted</span>
+      </button>
+      <button class="mode" data-mode="full" role="radio" aria-checked="false">
+        <span class="mode-name">Full page</span>
+        <span class="mode-hint">Everything, unstripped</span>
+      </button>
+      <button class="mode" data-mode="bookmark" role="radio" aria-checked="false">
+        <span class="mode-name">Bookmark</span>
+        <span class="mode-hint">Link and summary only</span>
+      </button>
+    </div>
+
+    <label class="field">
+      <span>Tags</span>
+      <input id="tags" type="text" placeholder="reading, research" autocomplete="off" />
+    </label>
+
+    <label class="field">
+      <span>Note</span>
+      <textarea id="remark" rows="2" placeholder="Why you kept this"></textarea>
+    </label>
+
+    <button id="clip" class="primary">Clip</button>
+    <p id="status" class="status" role="status"></p>
+    <a id="options" href="#" class="link">Options</a>
+
+    <script src="lumina.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

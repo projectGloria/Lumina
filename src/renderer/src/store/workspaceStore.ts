@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import type { LeftPanel, NoteMode, RightPanel, WorkspaceState } from '@shared/types'
+import type { LeftPanel, NoteMode, RightPanel, TabState, WorkspaceState } from '@shared/types'
+import { isNoteTab } from '@shared/types'
 import { isPathAtOrBelow, rebaseDescendantPath } from '@shared/markdown-parse'
-import { openTab } from '@shared/tabs'
+import { openHomeTab, openTab } from '@shared/tabs'
 
 interface WorkspaceStore extends WorkspaceState {
   /** Navigation history across all tabs, for Alt+Left / Alt+Right. */
@@ -19,6 +20,8 @@ interface WorkspaceStore extends WorkspaceState {
 
   hydrate: (state: WorkspaceState) => void
   openNote: (path: string, opts?: { newTab?: boolean; replace?: boolean }) => void
+  /** Show the Home board, reusing the tab it is already open in. */
+  openHome: () => void
   closeTab: (index: number) => void
   closeOthers: (index: number) => void
   activateTab: (index: number) => void
@@ -132,13 +135,20 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
     hydrate: (state) => {
       set({ ...state, hydrated: true })
       const active = state.tabs[state.activeTab]
-      if (active) set({ history: [active.path], historyIndex: 0 })
+      // Home names no file, so it is not a history entry: Alt+Left from the
+      // board goes back to the last note rather than to an empty path.
+      if (active && isNoteTab(active)) set({ history: [active.path], historyIndex: 0 })
     },
 
     openNote: (path, opts = {}) => {
       const { tabs, activeTab } = get()
       update(openTab(tabs, activeTab, path, opts))
       pushHistory(path)
+    },
+
+    openHome: () => {
+      const { tabs, activeTab } = get()
+      update(openHomeTab(tabs, activeTab))
     },
 
     closeTab: (index) => {
@@ -156,9 +166,10 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
 
     activateTab: (index) => {
       const { tabs } = get()
-      if (!tabs[index]) return
+      const tab = tabs[index]
+      if (!tab) return
       update({ activeTab: index })
-      pushHistory(tabs[index].path)
+      if (isNoteTab(tab)) pushHistory(tab.path)
     },
 
     moveTab: (from, to) => {
@@ -166,8 +177,10 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
       const [moved] = tabs.splice(from, 1)
       if (!moved) return
       tabs.splice(to, 0, moved)
-      const activePath = get().tabs[get().activeTab]?.path
-      update({ tabs, activeTab: Math.max(0, tabs.findIndex((t) => t.path === activePath)) })
+      // Follow the tab object rather than its path: Home has none, and two
+      // tabs can show the same note.
+      const active = get().tabs[get().activeTab]
+      update({ tabs, activeTab: Math.max(0, tabs.indexOf(active)) })
     },
 
     nextTab: (delta) => {
@@ -178,7 +191,11 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
     },
 
     renamePathInTabs: (from, to) => {
-      const tabs = get().tabs.map((t) => ({ ...t, path: rebaseDescendantPath(t.path, from, to) }))
+      // Home's path is '', and `rebaseDescendantPath('', from, to)` is exactly
+      // the kind of thing that would quietly point the board at a note.
+      const tabs = get().tabs.map((t) =>
+        isNoteTab(t) ? { ...t, path: rebaseDescendantPath(t.path, from, to) } : t
+      )
       const expanded = get().expanded.map((p) => rebaseDescendantPath(p, from, to))
       update({ tabs, expanded })
       set({ history: get().history.map((h) => rebaseDescendantPath(h, from, to)) })
@@ -188,7 +205,9 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
 
     removePathFromTabs: (path) => {
       const { tabs, activeTab } = get()
-      const next = tabs.filter((t) => !isPathAtOrBelow(t.path, path))
+      // `isPathAtOrBelow('', path)` on the home tab's empty path would close
+      // the board along with the deleted note.
+      const next = tabs.filter((t) => !isNoteTab(t) || !isPathAtOrBelow(t.path, path))
       const expanded = get().expanded.filter((p) => !isPathAtOrBelow(p, path))
       if (next.length !== tabs.length || expanded.length !== get().expanded.length) {
         update({
@@ -212,8 +231,9 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
      */
     setTabCursor: (path, cursor) => {
       const { tabs } = get()
-      if (!tabs.some((tab) => tab.path === path && tab.cursor !== cursor)) return
-      update({ tabs: tabs.map((tab) => (tab.path === path ? { ...tab, cursor } : tab)) })
+      const carries = (tab: TabState): boolean => isNoteTab(tab) && tab.path === path
+      if (!tabs.some((tab) => carries(tab) && tab.cursor !== cursor)) return
+      update({ tabs: tabs.map((tab) => (carries(tab) ? { ...tab, cursor } : tab)) })
     },
 
     /**
@@ -222,14 +242,15 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
      */
     setTabMode: (index, mode) => {
       const { tabs } = get()
-      if (!tabs[index] || (tabs[index].mode ?? 'edit') === mode) return
+      const tab = tabs[index]
+      if (!tab || !isNoteTab(tab) || (tab.mode ?? 'edit') === mode) return
       update({ tabs: tabs.map((tab, i) => (i === index ? { ...tab, mode } : tab)) })
     },
 
     toggleTabMode: () => {
       const { tabs, activeTab } = get()
       const current = tabs[activeTab]
-      if (!current) return
+      if (!current || !isNoteTab(current)) return
       get().setTabMode(activeTab, (current.mode ?? 'edit') === 'read' ? 'edit' : 'read')
     },
 
@@ -275,11 +296,24 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
 /** Whether the active tab is showing the editor or the rendered note. */
 export function activeMode(): NoteMode {
   const { tabs, activeTab } = useWorkspace.getState()
-  return tabs[activeTab]?.mode ?? 'edit'
+  const tab = tabs[activeTab]
+  return tab && isNoteTab(tab) ? (tab.mode ?? 'edit') : 'edit'
 }
 
-/** Path of the note currently in view, or null. */
+/**
+ * Path of the note currently in view, or null.
+ *
+ * Home is null rather than its empty path, which is what keeps every
+ * `enabled: () => !!activePath()` command correctly unavailable on the board.
+ */
 export function activePath(): string | null {
   const { tabs, activeTab } = useWorkspace.getState()
-  return tabs[activeTab]?.path ?? null
+  const tab = tabs[activeTab]
+  return tab && isNoteTab(tab) ? tab.path : null
+}
+
+/** Whether the Home board is the tab on screen. */
+export function isHomeActive(): boolean {
+  const { tabs, activeTab } = useWorkspace.getState()
+  return tabs[activeTab]?.kind === 'home'
 }

@@ -3,6 +3,46 @@ import { BrowserWindow, screen, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { saveAppState } from './settings'
 
+/**
+ * Answer permission prompts ourselves, allowing only the microphone.
+ *
+ * Electron's default handler approves most requests for a page it considers
+ * trusted, which for a voice-note feature is more than we need: this window
+ * has no business reaching a camera, a location or a notification, and saying
+ * so here means a future dependency cannot quietly acquire one either. Both
+ * handlers are needed — Chromium asks `check` for a synchronous capability
+ * test (`enumerateDevices` labels) and `request` for the real prompt.
+ */
+function grantMicrophoneOnly(win: BrowserWindow): void {
+  /**
+   * The two handlers describe the media type differently, and the difference
+   * is easy to miss: the *request* handler is given `mediaTypes` (an array),
+   * the *check* handler `mediaType` (one string). Reading only the array makes
+   * every check fail, which does not block recording — it strips the names off
+   * `enumerateDevices`, so a microphone picker shows "Microphone 1" and
+   * nothing else.
+   */
+  const allowed = (
+    permission: string,
+    details?: { mediaTypes?: string[]; mediaType?: string }
+  ): boolean => {
+    if (permission !== 'media') return false
+
+    const types = details?.mediaTypes ?? (details?.mediaType ? [details.mediaType] : [])
+    // `media` covers the camera too, so an empty or unknown type is refused
+    // rather than assumed to be audio.
+    return types.length > 0 && types.every((type) => type === 'audio')
+  }
+
+  const session = win.webContents.session
+  session.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    callback(allowed(permission, details as { mediaTypes?: string[] }))
+  })
+  session.setPermissionCheckHandler((_wc, permission, _origin, details) =>
+    allowed(permission, details as unknown as { mediaTypes?: string[]; mediaType?: string })
+  )
+}
+
 /** Matches `--lum-bg` in the light theme, so the window never flashes white. */
 const LIGHT_BG = '#faf9f5'
 const DARK_BG = '#262624'
@@ -72,6 +112,8 @@ export function createWindow(
       spellcheck: true
     }
   })
+
+  grantMicrophoneOnly(win)
 
   if (show) win.once('ready-to-show', () => win.show())
 

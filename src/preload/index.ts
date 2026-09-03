@@ -1,9 +1,15 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CH } from '@shared/channels'
 import type { LinkMetadata } from '@shared/linkPreview'
+import type { ClipPayload } from '@shared/clip'
+
 import type {
+  ClipperStatus,
   FileOpenRequest,
+  SpeechInstallProgress,
+  SpeechPack,
   FolderNode,
+  HomeLayout,
   OpResult,
   Profile,
   SearchHit,
@@ -11,10 +17,12 @@ import type {
   Settings,
   SettingsPreset,
   ThemeFile,
+  TranscribeResponse,
   TreeNode,
   VaultChange,
   VaultIndex,
   VaultInfo,
+  VoiceToolStatus,
   WorkspaceState,
   WriteResult
 } from '@shared/types'
@@ -148,6 +156,16 @@ const api = {
     set: (w: WorkspaceState): Promise<boolean> => ipcRenderer.invoke(CH.workspaceSet, w)
   },
 
+  /**
+   * The Home board's widget layout, per vault. `get` resolves null when this
+   * vault has never had one, which is what tells the renderer to seed the
+   * starter board instead of drawing an empty page.
+   */
+  home: {
+    get: (): Promise<HomeLayout | null> => ipcRenderer.invoke(CH.homeGet),
+    set: (layout: HomeLayout): Promise<boolean> => ipcRenderer.invoke(CH.homeSet, layout)
+  },
+
   links: {
     /**
      * Page metadata for a link banner, or null when previews are off, the URL
@@ -181,6 +199,53 @@ const api = {
     exportPdf: (title: string, html: string): Promise<OpResult> =>
       ipcRenderer.invoke(CH.exportPdf, title, html),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke(CH.openExternal, url)
+  },
+
+  /**
+   * Dictation. The renderer captures the audio — only it has a microphone —
+   * and hands over 16 kHz mono WAV bytes; the main process owns the model and
+   * the child process, so no path to a binary ever reaches the page.
+   */
+  voice: {
+    status: (): Promise<VoiceToolStatus> => ipcRenderer.invoke(CH.voiceStatus),
+    transcribe: (wav: ArrayBuffer, language?: string): Promise<TranscribeResponse> =>
+      ipcRenderer.invoke(CH.voiceTranscribe, wav, language),
+    /** Bring up the resident model. Resolves with a reason when it could not. */
+    liveStart: (): Promise<string | null> => ipcRenderer.invoke(CH.voiceLiveStart),
+    /** One phrase against the resident model; null when it could not be read. */
+    transcribeLive: (wav: ArrayBuffer, language?: string): Promise<string | null> =>
+      ipcRenderer.invoke(CH.voiceLiveChunk, wav, language),
+    liveStop: (): Promise<void> => ipcRenderer.invoke(CH.voiceLiveStop),
+
+    /**
+     * Speech engines and models carried inside the installer.
+     *
+     * Nothing here touches the network: installing copies out of the build,
+     * importing copies from a folder the user picked.
+     */
+    packs: (): Promise<SpeechPack[]> => ipcRenderer.invoke(CH.speechPacks),
+    installPack: (id: string): Promise<string | null> =>
+      ipcRenderer.invoke(CH.speechInstall, id),
+    importPack: (): Promise<string | null> => ipcRenderer.invoke(CH.speechImport),
+    removePack: (id: string): Promise<string | null> =>
+      ipcRenderer.invoke(CH.speechRemove, id),
+    onPackProgress: (cb: (progress: SpeechInstallProgress) => void) =>
+      on<SpeechInstallProgress>(CH.speechProgress, cb)
+  },
+
+  /**
+   * The web clipper. Main owns the socket and the network; the renderer only
+   * ever sees a validated clip and turns it into a note.
+   */
+  clipper: {
+    onClip: (cb: (clip: ClipPayload) => void) => on<ClipPayload>(CH.clipArrived, cb),
+    /** Clips that arrived before the renderer was listening. Call once, on mount. */
+    takePending: (): Promise<ClipPayload[]> => ipcRenderer.invoke(CH.clipPending),
+    status: (): Promise<ClipperStatus> => ipcRenderer.invoke(CH.clipStatus),
+    regenerateToken: (): Promise<string> => ipcRenderer.invoke(CH.clipRegenerateToken),
+    /** Copy one remote image into the vault; null when it could not be had. */
+    saveImage: (folder: string, url: string): Promise<string | null> =>
+      ipcRenderer.invoke(CH.clipSaveImage, folder, url)
   }
 }
 

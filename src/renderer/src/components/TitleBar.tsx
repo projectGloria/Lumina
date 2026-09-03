@@ -42,7 +42,10 @@ export default function TitleBar(): React.JSX.Element {
   const switcherHotkey = useCommandHotkey('switcher.open')
   const rightHotkey = useCommandHotkey('view.toggleRight')
 
-  const path = tabs[activeTab]?.path
+  const tab = tabs[activeTab]
+  const home = tab?.kind === 'home'
+  // Home names no file, so it gets a crumb of its own rather than a path.
+  const path = home ? undefined : tab?.path
   const label = path ? titleOf(path) : (vault?.name ?? 'Lumina')
 
   return (
@@ -112,6 +115,15 @@ export default function TitleBar(): React.JSX.Element {
               })
             })()
           : null}
+        {vault && home ? (
+          <span className="breadcrumb-item">
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-current truncate">
+              <Icon name="home" size={15} className="breadcrumb-icon" />
+              <span className="truncate">Home</span>
+            </span>
+          </span>
+        ) : null}
         {vault && path ? (
           <span className="breadcrumb-item">
             <span className="breadcrumb-sep">/</span>
@@ -134,9 +146,14 @@ export default function TitleBar(): React.JSX.Element {
         <Icon name="search" />
       </button>
       <button
-        className={`icon-btn${rightOpen ? ' is-active' : ''}`}
-        data-tooltip={commandTooltip('Toggle right sidebar', rightHotkey)}
+        className={`icon-btn${rightOpen && !home ? ' is-active' : ''}`}
+        data-tooltip={
+          home
+            ? 'Home uses this space for the board'
+            : commandTooltip('Toggle right sidebar', rightHotkey)
+        }
         aria-label="Toggle right sidebar"
+        disabled={home}
         onClick={() => runCommand('view.toggleRight')}
       >
         <Icon name="panelRight" />

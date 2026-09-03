@@ -2,6 +2,7 @@
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import { insertLink, toggleWrap } from './format'
+import { speak } from '../lib/readAloud'
 import { toast, useUi } from '../store/uiStore'
 
 export function editorContextMenu(): Extension {
@@ -67,6 +68,17 @@ export function editorContextMenu(): Extension {
             }
           },
           { separator: true, label: 'sep2' },
+          {
+            // Right-click is the one gesture that does not disturb the
+            // selection, which is why reading it aloud belongs here as much as
+            // on a hotkey.
+            label: hasSelection ? 'Read selection aloud' : 'Read note aloud',
+            onSelect: () =>
+              speak(
+                hasSelection ? selectedText : view.state.doc.toString(),
+                hasSelection ? 'Selection' : 'This note'
+              )
+          },
           {
             label: 'Copy as wikilink',
             onSelect: () => {

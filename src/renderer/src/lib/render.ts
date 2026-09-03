@@ -1,7 +1,8 @@
 /** Markdown to standalone HTML, used only by the export commands. */
 import { marked, Renderer } from 'marked'
 import { createIconElement } from '../components/Icon'
-import { parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { decodeTarget, parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { isAudioTarget } from '@shared/audio'
 import { attachmentCandidates, vaultUrl } from '../editor/resources'
 import { fallbackLinkDetails, linkAccentIndex, parseLinkUrl } from '@shared/linkPreview'
 import { aliasMap, knownPaths, titleOf } from '../store/vaultStore'
@@ -142,11 +143,41 @@ function pointImagesAtVault(doc: Document, fromPath: string): void {
     const src = img.getAttribute('src') ?? ''
     if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('//')) continue
 
-    const candidates = attachmentCandidates(src.replace(/^\.?\//, ''), fromPath)
+    // `src` is still a markdown destination at this point, so a name with a
+    // space arrives percent-encoded; `vaultUrl` re-encodes what it is given.
+    const target = decodeTarget(src.replace(/^\.?\//, ''))
+    const candidates = attachmentCandidates(target, fromPath)
     if (!candidates.length) continue
-    img.setAttribute('src', vaultUrl(candidates[0]))
-    if (candidates.length > 1) img.setAttribute('data-candidates', JSON.stringify(candidates.slice(1)))
+
+    // A voice note is written with the image syntax, so `marked` produced an
+    // `<img>` for it; swapping the element here is what makes read mode show
+    // the same player the editor does.
+    const el = isAudioTarget(target) ? asAudioPlayer(doc, img) : img
+    el.setAttribute('src', vaultUrl(candidates[0]))
+    if (candidates.length > 1) el.setAttribute('data-candidates', JSON.stringify(candidates.slice(1)))
   }
+}
+
+/** Replace an `<img>` standing in for a recording with a real audio player. */
+function asAudioPlayer(doc: Document, img: HTMLImageElement): HTMLElement {
+  const wrap = doc.createElement('span')
+  wrap.className = 'cm-embed-audio'
+
+  const audio = doc.createElement('audio')
+  audio.setAttribute('controls', '')
+  audio.setAttribute('preload', 'metadata')
+  wrap.appendChild(audio)
+
+  const label = img.getAttribute('alt')
+  if (label) {
+    const caption = doc.createElement('span')
+    caption.className = 'cm-embed-audio-label'
+    caption.textContent = label
+    wrap.appendChild(caption)
+  }
+
+  img.replaceWith(wrap)
+  return audio
 }
 
 function wikilinkSpan(

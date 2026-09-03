@@ -65,11 +65,12 @@ function flattenTree(
 }
 
 const Scroller = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement>>((props, ref) => {
+  const alwaysCount = useSettings((s) => s.settings.alwaysShowFolderCount)
   return (
     <div
       {...props}
       ref={ref}
-      className={`panel-scroll tree ${props.className || ''}`}
+      className={`panel-scroll tree${alwaysCount ? ' always-count' : ''} ${props.className || ''}`}
       onContextMenu={(e) => {
         if ((e.target as HTMLElement).closest('.tree-row')) return
         e.preventDefault()
@@ -353,7 +354,12 @@ function FolderRow({
     <div
       className={`tree-row folder${dropping ? ' is-dropping' : ''}`}
       data-depth={depth}
-        style={{ paddingLeft: 28 + depth * 18, color: colorOverride }}
+        style={{
+          // The extra step is the gutter the chevron hangs in; file rows at the
+          // same depth start one indent to the left of their folder's label.
+          paddingLeft: `calc(10px + ${depth + 1} * var(--lum-tree-indent))`,
+          color: colorOverride
+        }}
         onClick={() => toggle(node.path)}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -437,7 +443,10 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
     <div
       className={`tree-row file${isActive ? ' is-active' : ''}`}
       data-depth={depth}
-      style={{ paddingLeft: 10 + depth * 18, color: colorOverride }}
+      style={{
+        paddingLeft: `calc(10px + ${depth} * var(--lum-tree-indent))`,
+        color: colorOverride
+      }}
       onClick={(e) => openNote(path, { newTab: e.ctrlKey || e.metaKey })}
       draggable
       onDragStart={(e) => {

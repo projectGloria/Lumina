@@ -80,6 +80,16 @@
      when readable line length is off. */
   --lum-content-width: 46rem;
 
+  /* ----------------------------------------------------- file explorer
+   * Set from `settings.explorerSize` in `applyTheme`; the values here are the
+   * `default` step, so the explorer still draws correctly before settings
+   * hydrate and when a snippet wants to override just one of them. */
+  --lum-tree-row-height: 36px;
+  --lum-tree-font-size: 14.5px;
+  --lum-tree-icon-size: 18px;
+  --lum-tree-gap: 10px;
+  --lum-tree-indent: 18px;
+
   /* ---------------------------------------------------------- spacing */
   --lum-space-1: 4px;
   --lum-space-2: 8px;
@@ -98,6 +108,27 @@
    * The two shadows here are only for things that genuinely float. */
   --lum-shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05);
   --lum-shadow-lg: 0 12px 32px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+
+  /* ------------------------------------------------------------- home
+   * The dashboard's grid. The row height and gutter are tokens because the
+   * board measures widget heights in rows: a snippet that wants a denser
+   * board changes these two rather than every widget. */
+  --lum-home-row-height: 104px;
+  --lum-home-gap: 14px;
+  /* Home fills the window, so its measure is wider than a note's — wide
+     enough to use the space the hidden sidebars gave back, still capped so a
+     board does not stretch to nothing on an ultrawide display. */
+  --lum-home-width: 88rem;
+  --lum-home-cover-height: 220px;
+  /* Activity levels, mixed from the accent so a retheme carries them along
+     instead of leaving one green grid in a clay-coloured app. */
+  --lum-home-heat-0: var(--lum-surface-hover);
+  --lum-home-heat-1: color-mix(in srgb, var(--lum-accent) 22%, var(--lum-surface));
+  --lum-home-heat-2: color-mix(in srgb, var(--lum-accent) 45%, var(--lum-surface));
+  --lum-home-heat-3: color-mix(in srgb, var(--lum-accent) 70%, var(--lum-surface));
+  --lum-home-heat-4: var(--lum-accent);
+  --lum-home-widget-bg: var(--lum-surface);
+  --lum-home-widget-border: var(--lum-border);
 
   /* ---------------------------------------------------------- chrome */
   --lum-titlebar-height: 38px;

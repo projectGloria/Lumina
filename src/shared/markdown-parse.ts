@@ -4,7 +4,7 @@
  * The main-process indexer and the renderer's editor decorations both import
  * this, so link resolution can never disagree between the two sides.
  */
-import type { Heading, LinkRef, NoteIndexEntry } from './types'
+import type { Heading, LinkRef, NoteIndexEntry, Task } from './types'
 
 /* --------------------------------------------------------------- paths */
 
@@ -183,6 +183,54 @@ export function extractHeadings(src: string): Heading[] {
     if (m) out.push({ level: m[1].length, text: m[2].trim(), line: i })
   })
   return out
+}
+
+/* ---------------------------------------------------------------- tasks */
+
+/**
+ * A checkbox list item: the bullet, the box, and everything after it.
+ *
+ * Only ` `, `x` and `X` count. Obsidian-style alternatives (`[-]`, `[/]`) are
+ * left as ordinary list items rather than guessed at, because Home's tasks
+ * widget writes a box back and can only honestly write one it understands.
+ */
+const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\](.*)$/
+
+/**
+ * Every task in a note, with the line each one is on.
+ *
+ * Read from `maskCode`d text so a checkbox inside a fenced block is a code
+ * sample, not a chore. Line numbers are the note's own, which is what lets a
+ * change be written straight back to the source line.
+ */
+export function extractTasks(src: string): Task[] {
+  const out: Task[] = []
+  maskCode(src)
+    .split('\n')
+    .forEach((line, i) => {
+      const m = line.match(TASK_RE)
+      if (m) out.push({ text: m[3].trim(), done: m[2] !== ' ', line: i })
+    })
+  return out
+}
+
+/**
+ * Tick or untick the checkbox on one line.
+ *
+ * Returns null when that line is not a task any more — the index is a snapshot,
+ * and a note edited since it was taken may have moved the line elsewhere.
+ * Writing the box back blind would tick the wrong thing.
+ */
+export function setTaskDone(content: string, line: number, done: boolean): string | null {
+  const lines = content.split('\n')
+  const target = lines[line]
+  if (target === undefined) return null
+
+  const m = target.match(TASK_RE)
+  if (!m) return null
+
+  lines[line] = `${m[1]}[${done ? 'x' : ' '}]${m[3]}`
+  return lines.join('\n')
 }
 
 /* ----------------------------------------------------------------- tags */
@@ -446,6 +494,7 @@ export function parseNote(path: string, content: string, mtime = 0, createdAt = 
     headings,
     tags: extractTags(fm.body, fm.data),
     links,
+    tasks: extractTasks(fm.body),
     frontmatter: fm.data,
     excerpt: plain.slice(0, 220)
   }
@@ -463,4 +512,38 @@ export function isPathAtOrBelow(path: string, parent: string): boolean {
 /** Rebase a path when a note or an entire folder moves. */
 export function rebaseDescendantPath(path: string, from: string, to: string): string {
   return path === from ? to : path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : path
+}
+
+/* ------------------------------------------------- markdown link targets */
+
+/**
+ * Percent-encode a vault-relative path for use as a markdown link destination.
+ *
+ * CommonMark ends an unbracketed destination at the first space, so
+ * `![a](attachments/my shot.png)` is not an image at all — the parser never
+ * emits an `Image` node and the line renders as literal text. Attachment names
+ * grow spaces easily (a screenshot's own name, and `uniquePath`'s ` 1` suffix
+ * on the second paste of an `image.png`), so anything writing a target has to
+ * encode it. `decodeTarget` is the inverse and the two must stay a pair.
+ */
+export function encodeTarget(rel: string): string {
+  return normalizePath(rel)
+    .split('/')
+    .map((segment) => encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
+    .join('/')
+}
+
+/**
+ * Read a markdown link destination back as a vault-relative path.
+ *
+ * Tolerant on purpose: notes written by hand (or by another editor) carry raw
+ * spaces and unescaped `%`, and a target that is not valid percent-encoding
+ * must come back unchanged rather than throw.
+ */
+export function decodeTarget(target: string): string {
+  try {
+    return normalizePath(decodeURIComponent(target))
+  } catch {
+    return normalizePath(target)
+  }
 }

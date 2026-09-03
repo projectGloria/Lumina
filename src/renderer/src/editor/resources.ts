@@ -27,6 +27,9 @@ export function isImageTarget(target: string): boolean {
  * attachments folder, or the file sitting next to the note.
  */
 export function attachmentCandidates(target: string, fromPath: string): string[] {
+  // `target` is a real vault path here, not a markdown destination — callers
+  // that read one out of `](...)` decode it first, because `vaultUrl` encodes
+  // again on the way out and decoding twice would 404 a name containing a `%`.
   const t = normalizePath(target)
   if (t.includes('/')) return [t]
 

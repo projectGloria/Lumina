@@ -1,4 +1,6 @@
 import { useRef } from 'react'
+import type { TabState } from '@shared/types'
+import { isNoteTab } from '@shared/types'
 import { Icon } from './Icon'
 import PathIcon from './PathIcon'
 import { closeOtherTabs, closeTab, confirmDelete, promptRename } from '../lib/actions'
@@ -25,8 +27,8 @@ export default function TabBar(): React.JSX.Element | null {
       <div className="tabbar-scroll">
         {tabs.map((tab, i) => (
           <Tab
-            key={`${tab.path}-${i}`}
-            path={tab.path}
+            key={`${tab.kind ?? 'note'}-${tab.path}-${i}`}
+            tab={tab}
             active={i === activeTab}
             onActivate={() => activate(i)}
             onClose={() => close(i)}
@@ -44,7 +46,13 @@ export default function TabBar(): React.JSX.Element | null {
               useUi.getState().showContextMenu({
                 x: e.clientX,
                 y: e.clientY,
-                items: [
+                // Home names no file, so everything below the separator —
+                // splitting, renaming, revealing, deleting — has nothing to
+                // act on.
+                items: !isNoteTab(tab) ? [
+                  { label: 'Close', onSelect: () => close(i) },
+                  { label: 'Close others', onSelect: () => closeOthers(i) }
+                ] : [
                   { label: 'Close', onSelect: () => close(i) },
                   { label: 'Close others', onSelect: () => closeOthers(i) },
                   { separator: true, label: 'sep1' },
@@ -87,10 +95,11 @@ function ModeToggle(): React.JSX.Element | null {
   const tabs = useWorkspace((s) => s.tabs)
   const activeTab = useWorkspace((s) => s.activeTab)
   const tab = tabs[activeTab]
-  if (!tab) return null
+  const hotkey = useCommandHotkey('view.readMode')
+  // Home has no edit/read of its own, and neither does an empty strip.
+  if (!tab || !isNoteTab(tab)) return null
 
   const reading = (tab.mode ?? 'edit') === 'read'
-  const hotkey = useCommandHotkey('view.readMode')
 
   return (
     <button
@@ -106,7 +115,7 @@ function ModeToggle(): React.JSX.Element | null {
 }
 
 function Tab({
-  path,
+  tab,
   active,
   onActivate,
   onClose,
@@ -114,7 +123,7 @@ function Tab({
   onDragOver,
   onContextMenu
 }: {
-  path: string
+  tab: TabState
   active: boolean
   onActivate: () => void
   onClose: () => void
@@ -122,6 +131,8 @@ function Tab({
   onDragOver: () => void
   onContextMenu: (e: React.MouseEvent) => void
 }): React.JSX.Element {
+  const path = tab.path
+  const home = !isNoteTab(tab)
   const dirty = useEditor((s) => {
     const b = s.buffers[path]
     return !!b && !b.loading && b.content !== b.saved
@@ -132,7 +143,7 @@ function Tab({
       role="tab"
       aria-selected={active}
       className={`tab${active ? ' is-active' : ''}`}
-      data-tooltip={path}
+      data-tooltip={home ? 'Home' : path}
       draggable
       onDragStart={onDragStart}
       onDragOver={(e) => {
@@ -149,8 +160,12 @@ function Tab({
         }
       }}
     >
-      <PathIcon path={path} size={15} className="tab-icon" />
-      <span className="tab-title truncate">{titleOf(path)}</span>
+      {home ? (
+        <Icon name="home" size={15} className="tab-icon" />
+      ) : (
+        <PathIcon path={path} size={15} className="tab-icon" />
+      )}
+      <span className="tab-title truncate">{home ? 'Home' : titleOf(path)}</span>
       <button
         className="tab-close"
         aria-label="Close tab"

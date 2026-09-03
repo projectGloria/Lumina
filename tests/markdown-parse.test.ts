@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAliasMap,
+  decodeTarget,
+  encodeTarget,
   extractHeadings,
   extractLinks,
   extractTags,
+  extractTasks,
   isMarkdownPath,
   isPathAtOrBelow,
   maskCode,
@@ -11,6 +14,7 @@ import {
   parseNote,
   rebaseDescendantPath,
   resolveLink,
+  setTaskDone,
   stripExtension,
   titleFromPath
 } from '@shared/markdown-parse'
@@ -299,5 +303,124 @@ describe('parseNote', () => {
   it('falls back to the first H1, then the file name', () => {
     expect(parseNote('x.md', '# From heading').title).toBe('From heading')
     expect(parseNote('Folder/From file.md', 'no heading').title).toBe('From file')
+  })
+})
+
+describe('encodeTarget / decodeTarget', () => {
+  it('encodes a space so the destination does not end early', () => {
+    // The whole point: `![a](attachments/Pasted image 1.png)` is not an image,
+    // because CommonMark stops the destination at the first space.
+    expect(encodeTarget('attachments/Pasted image 1.png')).toBe(
+      'attachments/Pasted%20image%201.png'
+    )
+  })
+
+  it('keeps the separators that make it a path', () => {
+    expect(encodeTarget('a/b/c.png')).toBe('a/b/c.png')
+  })
+
+  it('encodes the characters a markdown destination cannot hold raw', () => {
+    expect(encodeTarget('shots/screen (2).png')).toBe('shots/screen%20%282%29.png')
+    expect(encodeTarget('shots/100%.png')).toBe('shots/100%25.png')
+  })
+
+  it('round-trips back to the real filename', () => {
+    for (const path of ['a/Pasted image 1.png', 'a/100%.png', 'a/screen (2).png', 'plain.png']) {
+      expect(decodeTarget(encodeTarget(path))).toBe(path)
+    }
+  })
+
+  it('leaves a hand-written target with raw spaces alone', () => {
+    expect(decodeTarget('attachments/my shot.png')).toBe('attachments/my shot.png')
+  })
+
+  it('returns a malformed escape unchanged instead of throwing', () => {
+    expect(decodeTarget('attachments/50%off.png')).toBe('attachments/50%off.png')
+  })
+
+  it('normalises separators on the way out', () => {
+    expect(decodeTarget('attachments\\deep\\x.png')).toBe('attachments/deep/x.png')
+  })
+})
+
+
+describe('extractTasks', () => {
+  it('reads open and done boxes off any list marker', () => {
+    const src = ['- [ ] milk', '* [x] bread', '+ [X] jam', '1. [ ] tea', '2) [x] coffee'].join('\n')
+    expect(extractTasks(src)).toEqual([
+      { text: 'milk', done: false, line: 0 },
+      { text: 'bread', done: true, line: 1 },
+      { text: 'jam', done: true, line: 2 },
+      { text: 'tea', done: false, line: 3 },
+      { text: 'coffee', done: true, line: 4 }
+    ])
+  })
+
+  it('keeps the source line so a change can be written back', () => {
+    const src = ['# Plans', '', 'Some prose.', '', '   - [ ] nested chore'].join('\n')
+    expect(extractTasks(src)).toEqual([{ text: 'nested chore', done: false, line: 4 }])
+  })
+
+  it('ignores a checkbox inside a fenced code block', () => {
+    const src = ['- [ ] real', '```md', '- [ ] documentation', '```'].join('\n')
+    expect(extractTasks(src)).toEqual([{ text: 'real', done: false, line: 0 }])
+  })
+
+  it('is not fooled by list items that only look like tasks', () => {
+    const src = ['- [] no space', '- [-] partial', '- [ x] wide', 'text [ ] loose', '- plain'].join('\n')
+    expect(extractTasks(src)).toEqual([])
+  })
+
+  it('keeps the task text exactly as written, trimmed', () => {
+    expect(extractTasks('- [ ]   call [[Ana]] about **it**  ')).toEqual([
+      { text: 'call [[Ana]] about **it**', done: false, line: 0 }
+    ])
+  })
+
+  it('records an empty checkbox rather than dropping the line', () => {
+    expect(extractTasks('- [ ] ')).toEqual([{ text: '', done: false, line: 0 }])
+  })
+})
+
+describe('parseNote, tasks', () => {
+  it('numbers tasks by their line in the whole note, frontmatter included', () => {
+    const src = ['---', 'title: Chores', '---', '', '- [x] done thing', '- [ ] open thing'].join('\n')
+    expect(parseNote('Chores.md', src).tasks).toEqual([
+      { text: 'done thing', done: true, line: 4 },
+      { text: 'open thing', done: false, line: 5 }
+    ])
+  })
+
+  it('gives a note with no checkboxes an empty list', () => {
+    expect(parseNote('Plain.md', '# Title\n\nJust prose.').tasks).toEqual([])
+  })
+})
+
+describe('setTaskDone', () => {
+  it('ticks a box without touching the rest of the line', () => {
+    const src = ['- [ ] buy milk #errand', '- [ ] other'].join('\n')
+    expect(setTaskDone(src, 0, true)).toBe(['- [x] buy milk #errand', '- [ ] other'].join('\n'))
+  })
+
+  it('unticks a box, whichever case it was written in', () => {
+    expect(setTaskDone('  1. [X] filed', 0, false)).toBe('  1. [ ] filed')
+  })
+
+  it('preserves indentation, marker and trailing spacing', () => {
+    expect(setTaskDone('\t* [ ]   spaced  ', 0, true)).toBe('\t* [x]   spaced  ')
+  })
+
+  it('refuses a line that is no longer a task', () => {
+    // The index is a snapshot: a note edited since it was taken may have moved
+    // the line, and ticking it blind would tick the wrong thing.
+    expect(setTaskDone('- [ ] first\nplain prose', 1, true)).toBeNull()
+    expect(setTaskDone('- [ ] first', 9, true)).toBeNull()
+  })
+
+  it('round-trips through the parser', () => {
+    const src = ['- [ ] a', '- [x] b'].join('\n')
+    const ticked = setTaskDone(src, 0, true)
+    expect(ticked).not.toBeNull()
+    expect(extractTasks(ticked as string).map((t) => t.done)).toEqual([true, true])
   })
 })

@@ -21,12 +21,25 @@ export default function Sidebar(): React.JSX.Element {
   const panel = useWorkspace((s) => s.leftPanel)
   const setPanel = useWorkspace((s) => s.setLeftPanel)
   const vault = useVault((s) => s.vault)
+  const homeHotkey = useCommandHotkey('view.home')
   const searchHotkey = useCommandHotkey('search.open')
   const settingsHotkey = useCommandHotkey('settings.open')
 
   return (
     <aside className="sidebar left">
       <nav className="rail" aria-label="Sidebar sections">
+        {/* Home is a tab in the workspace rather than a panel, so it sits
+            above the panel switches and never takes their pressed state. */}
+        <button
+          className="icon-btn rail-btn"
+          data-tooltip={commandTooltip('Home', homeHotkey)}
+          aria-label="Home"
+          onClick={() => runCommand('view.home')}
+        >
+          <Icon name="home" size={18} />
+        </button>
+        <div className="rail-divider" />
+
         {TABS.map((tab) => (
           <button
             key={tab.id}

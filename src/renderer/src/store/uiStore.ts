@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ModalKind = 'palette' | 'switcher' | 'settings' | 'graph' | null
+export type ModalKind = 'palette' | 'switcher' | 'settings' | 'graph' | 'speechSetup' | null
 
 export interface Toast {
   id: number
@@ -56,6 +56,42 @@ export interface RevealRequest {
   nonce: number
 }
 
+/**
+ * The recorder, as much of it as the UI has to draw.
+ *
+ * The live `MediaRecorder` stays in `lib/voice.ts`; only the phase and the
+ * start time are here, because a microphone is not serialisable state and two
+ * copies of it would be one too many.
+ */
+export interface VoiceState {
+  mode: 'note' | 'dictate'
+  phase: 'starting' | 'recording' | 'saving' | 'transcribing'
+  startedAt: number
+  /**
+   * Phrases sent to the speech model but not yet written back.
+   *
+   * Only live dictation sets this. It is what lets the bar say the words are
+   * on their way rather than looking idle while someone waits for a sentence.
+   */
+  pending?: number
+}
+
+/**
+ * Read aloud, as much of it as the player bar has to draw.
+ *
+ * The live `SpeechSynthesisUtterance` queue stays in `lib/readAloud.ts` for the
+ * same reason the microphone stays in `lib/voice.ts`: a synthesizer is not
+ * serialisable state, and two copies of it would be one too many.
+ */
+export interface SpeechState {
+  /** What is being read — a note title, or "Selection". */
+  label: string
+  phase: 'speaking' | 'paused'
+  /** Zero-based utterance being spoken, and how many there are. */
+  index: number
+  total: number
+}
+
 interface UiState {
   modal: ModalKind
   settingsTab: string
@@ -71,6 +107,10 @@ interface UiState {
   searchQuery: string
   /** Pending scroll target, cleared by the editor once it has been applied. */
   reveal: RevealRequest | null
+  /** The running voice recording, or null when the microphone is closed. */
+  voice: VoiceState | null
+  /** What read-aloud is speaking, or null when nothing is. */
+  speech: SpeechState | null
   openModal: (kind: ModalKind) => void
   closeModal: () => void
   openSettings: (tab?: string) => void
@@ -87,6 +127,10 @@ interface UiState {
   setSearchQuery: (q: string) => void
   requestReveal: (target: Omit<RevealRequest, 'nonce'>) => void
   clearReveal: (nonce: number) => void
+  setVoice: (voice: VoiceState | null) => void
+  setVoicePending: (pending: number) => void
+  setSpeech: (speech: SpeechState | null) => void
+  setSpeechProgress: (index: number, phase?: SpeechState['phase']) => void
 }
 
 let toastId = 0
@@ -103,6 +147,8 @@ export const useUi = create<UiState>((set, get) => ({
   tagFilter: null,
   searchQuery: '',
   reveal: null,
+  voice: null,
+  speech: null,
   openModal: (kind) => set({ modal: kind, contextMenu: null }),
   closeModal: () => set({ modal: null }),
   openSettings: (tab) => set({ modal: 'settings', settingsTab: tab ?? get().settingsTab }),
@@ -128,6 +174,18 @@ export const useUi = create<UiState>((set, get) => ({
   // Only the editor that actually handled this request clears it, so a reveal
   // aimed at a note still loading is not thrown away by another one mounting.
   clearReveal: (nonce) => set((s) => (s.reveal?.nonce === nonce ? { reveal: null } : s)),
+
+  setVoice: (voice) => set({ voice }),
+  // Ignored when no recording is running, so a phrase landing after the user
+  // stopped cannot revive the bar.
+  setVoicePending: (pending) =>
+    set((s) => (s.voice ? { voice: { ...s.voice, pending } } : s)),
+
+  setSpeech: (speech) => set({ speech }),
+  // Ignored once the bar is gone, so an utterance ending after the user pressed
+  // stop cannot bring it back.
+  setSpeechProgress: (index, phase) =>
+    set((s) => (s.speech ? { speech: { ...s.speech, index, phase: phase ?? s.speech.phase } } : s)),
 
 }))
 

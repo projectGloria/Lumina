@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Icon, type IconName } from '../Icon'
 import ThemeEditor, { SliderRow } from './ThemeEditor'
-import { COMMANDS, hotkeyFor } from '../../lib/commands'
+import MicTester from './MicTester'
+import SpeechPacks from './SpeechPacks'
+import { COMMANDS, hotkeyFor, runCommand } from '../../lib/commands'
 import { SLASH_ITEMS } from '../../editor/slashCommands'
 import { acceleratorChips, acceleratorFromEvent } from '../../lib/hotkeys'
+import { listVoices, onVoicesChanged, previewVoice, speechAvailable, stopReading } from '../../lib/readAloud'
 import { slashCommandName } from '@shared/template'
-import type { CustomSlashCommand, SettingsPreset } from '@shared/types'
+import { WHISPER_LANGUAGES } from '@shared/audio'
+import type {
+  ClipperStatus,
+  CustomSlashCommand,
+  SettingsPreset,
+  VoiceToolStatus
+} from '@shared/types'
+import { defaultLayout } from '../../home/widgets/defaults'
+import { WIDGETS } from '../../home/widgets'
+import { useHome } from '../../store/homeStore'
 import { FALLBACK_SETTINGS, useSettings } from '../../store/settingsStore'
 import { toast, useUi } from '../../store/uiStore'
 import { useVault } from '../../store/vaultStore'
@@ -23,6 +35,9 @@ const TABS: { id: string; label: string; icon: IconName }[] = [
   { id: 'editor', label: 'Editor', icon: 'edit' },
   { id: 'slash', label: 'Slash commands', icon: 'slash' },
   { id: 'quick', label: 'Quick note', icon: 'bolt' },
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'voice', label: 'Voice', icon: 'mic' },
+  { id: 'clipper', label: 'Web clipper', icon: 'globe' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
   { id: 'profiles', label: 'Settings profiles', icon: 'settings' },
   { id: 'hotkeys', label: 'Hotkeys', icon: 'keyboard' },
@@ -68,6 +83,9 @@ export default function SettingsModal(): React.JSX.Element {
           {tab === 'editor' ? <EditorSettingsTab /> : null}
           {tab === 'slash' ? <SlashCommandsTab /> : null}
           {tab === 'quick' ? <QuickNoteTab /> : null}
+          {tab === 'home' ? <HomeTab /> : null}
+          {tab === 'voice' ? <VoiceTab /> : null}
+          {tab === 'clipper' ? <ClipperTab /> : null}
           {tab === 'vault' ? <VaultSettingsTab /> : null}
           {tab === 'profiles' ? <SettingsProfilesTab /> : null}
           {tab === 'hotkeys' ? <HotkeysTab /> : null}
@@ -75,6 +93,477 @@ export default function SettingsModal(): React.JSX.Element {
         </div>
       </div>
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------- home */
+
+function HomeTab(): React.JSX.Element {
+  const home = useSettings((s) => s.settings.home)
+  const patch = useSettings((s) => s.patch)
+  const widgets = useHome((s) => s.layout.widgets)
+  const columns = useHome((s) => s.layout.columns)
+  const commit = useHome((s) => s.commit)
+  const close = useUi((s) => s.closeModal)
+
+  return (
+    <div className="settings-body">
+      <section className="settings-section">
+        <h3 className="settings-heading">Home</h3>
+        <p className="voice-blurb">
+          A dashboard of widgets, one per vault. The arrangement lives in this vault&rsquo;s
+          <code>.lumina/home.json</code>, so a board follows the notes it is about rather than the
+          machine you built it on.
+        </p>
+
+        <ToggleRow
+          label="Open Home on launch"
+          hint="Only when there are no notes to restore — Home never displaces the note you left open."
+          value={home.openOnLaunch}
+          defaultValue={FALLBACK_SETTINGS.home.openOnLaunch}
+          onChange={(v) => patch({ home: { openOnLaunch: v } })}
+        />
+      </section>
+
+      <section className="settings-section">
+        <h3 className="settings-heading">This vault&rsquo;s board</h3>
+        <div className="field-row">
+          <div>
+            <div className="field-label">
+              {widgets.length} widget{widgets.length === 1 ? '' : 's'}, {columns} columns wide
+            </div>
+            <div className="field-hint">
+              Widgets are moved, resized and added from the board itself — open Home and choose
+              Edit layout.
+            </div>
+          </div>
+          <div className="field-control">
+            <button
+              className="btn btn-small"
+              onClick={() => {
+                close()
+                runCommand('home.editLayout')
+              }}
+            >
+              Edit layout
+            </button>
+            <button
+              className="btn btn-small btn-danger"
+              onClick={() =>
+                useUi.getState().showConfirm({
+                  title: 'Reset this board?',
+                  body: 'The widgets you arranged are replaced by the starter board. Nothing in your notes changes.',
+                  confirmLabel: 'Reset board',
+                  danger: true,
+                  onConfirm: () => {
+                    const seed = defaultLayout()
+                    commit(seed.widgets, seed.columns)
+                  }
+                })
+              }
+            >
+              Reset to the starter board
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3 className="settings-heading">Available widgets</h3>
+        <p className="voice-blurb">
+          Every one of these reads what Lumina already has open. None of them reaches the network:
+          with link previews off, Lumina still makes no requests at all.
+        </p>
+        <ul className="settings-widget-list">
+          {WIDGETS.map((def) => (
+            <li key={def.type} className="settings-widget">
+              <Icon name={def.icon} size={15} className="settings-widget-icon" />
+              <div>
+                <div className="field-label">{def.name}</div>
+                <div className="field-hint">{def.description}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------------------- clipper */
+
+function ClipperTab(): React.JSX.Element {
+  const clipper = useSettings((s) => s.settings.clipper)
+  const patch = useSettings((s) => s.patch)
+  const set = (p: Partial<typeof clipper>): void => patch({ clipper: p })
+  const [status, setStatus] = useState<ClipperStatus | null>(null)
+  const [revealed, setRevealed] = useState(false)
+
+  const check = useCallback(() => {
+    void window.lumina.clipper.status().then(setStatus)
+  }, [])
+  // Re-checked after anything that restarts the listener, so the panel reflects
+  // what is actually bound rather than what was asked for.
+  useEffect(check, [check, clipper.enabled, clipper.port, clipper.token])
+
+  /** Turning it on for the first time is also what mints the token. */
+  const toggle = async (on: boolean): Promise<void> => {
+    if (on && !clipper.token) set({ enabled: true, token: await window.lumina.clipper.regenerateToken() })
+    else set({ enabled: on })
+  }
+
+  const regenerate = async (): Promise<void> => {
+    set({ token: await window.lumina.clipper.regenerateToken() })
+    setRevealed(true)
+    toast('New token — paste it into the extension again', 'info')
+  }
+
+  return (
+    <div className="settings-body">
+      <section className="settings-section">
+        <h3 className="settings-heading">Web clipper</h3>
+        <p className="voice-blurb">
+          Clip pages from your browser straight into this vault. Lumina listens
+          on <code>127.0.0.1</code> only, behind a token, and accepts nothing
+          from the open web — the listener is closed until you switch it on.
+        </p>
+
+        <ToggleRow
+          label="Accept clips"
+          hint="Opens a local port for the browser extension. The only inbound connection Lumina makes."
+          value={clipper.enabled}
+          defaultValue={false}
+          onChange={(v) => void toggle(v)}
+        />
+
+        {clipper.enabled ? (
+          <div className={`voice-status${status?.running ? ' is-ready' : ''}`}>
+            <Icon name={status?.running ? 'check' : 'info'} size={15} />
+            <div>
+              <div className="voice-status-title">
+                {status === null
+                  ? 'Checking…'
+                  : status.running
+                    ? `Listening on 127.0.0.1:${status.port}`
+                    : 'Not listening'}
+              </div>
+              {status?.error ? <div className="voice-status-detail">{status.error}</div> : null}
+            </div>
+            <button className="voice-btn" onClick={check} data-tooltip="Check again">
+              <Icon name="refresh" size={13} />
+              Recheck
+            </button>
+          </div>
+        ) : null}
+
+        <NumberRow
+          label="Port"
+          hint="Must match the extension's Options page."
+          value={clipper.port}
+          defaultValue={41999}
+          onChange={(v) => set({ port: v })}
+        />
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">Token</div>
+            <div className="field-hint">
+              Paste this into the extension. Regenerating it locks out any browser still holding the old one.
+            </div>
+          </div>
+          <div className="field-control clip-token">
+            <input
+              readOnly
+              type={revealed ? 'text' : 'password'}
+              value={clipper.token}
+              placeholder="Switch the clipper on to generate one"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <button
+              className="voice-btn"
+              onClick={() => setRevealed((v) => !v)}
+              data-tooltip={revealed ? 'Hide the token' : 'Show the token'}
+            >
+              {revealed ? 'Hide' : 'Show'}
+            </button>
+            <button
+              className="voice-btn"
+              disabled={!clipper.token}
+              onClick={() => {
+                void navigator.clipboard.writeText(clipper.token)
+                toast('Token copied')
+              }}
+              data-tooltip="Copy the token"
+            >
+              Copy
+            </button>
+            <button className="voice-btn" onClick={() => void regenerate()} data-tooltip="Issue a new token">
+              New
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h3 className="settings-heading">Clips</h3>
+        <TextRow
+          label="Folder"
+          hint="Vault-relative folder clipped pages are filed in."
+          value={clipper.folder}
+          defaultValue="Clippings"
+          placeholder="Clippings"
+          onChange={(v) => set({ folder: v })}
+        />
+        <TextRow
+          label="Tags"
+          hint="Added to every clip, on top of whatever you type in the extension."
+          value={clipper.tags.join(', ')}
+          defaultValue="clipped"
+          placeholder="clipped"
+          onChange={(v) =>
+            set({ tags: v.split(',').map((t) => t.trim()).filter(Boolean) })
+          }
+        />
+        <ToggleRow
+          label="Download images"
+          hint="Copy a page's images into the vault so the clip still reads with no network."
+          value={clipper.downloadImages}
+          defaultValue
+          onChange={(v) => set({ downloadImages: v })}
+        />
+        <ToggleRow
+          label="Open each clip"
+          hint="Open a clipped page in a tab as it arrives."
+          value={clipper.openOnClip}
+          defaultValue
+          onChange={(v) => set({ openOnClip: v })}
+        />
+      </section>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------- voice */
+
+function VoiceTab(): React.JSX.Element {
+  const voice = useSettings((s) => s.settings.voice)
+  const patch = useSettings((s) => s.patch)
+  const set = (p: Partial<typeof voice>): void => patch({ voice: p })
+  const [status, setStatus] = useState<VoiceToolStatus | null>(null)
+
+  // Re-checked whenever the paths change, because the whole point of the panel
+  // is telling the user whether what they installed was actually found.
+  const check = useCallback(() => {
+    void window.lumina.voice.status().then(setStatus)
+  }, [])
+  useEffect(check, [check, voice.binaryPath, voice.modelPath])
+
+  return (
+    <div className="settings-body">
+      <section className="settings-section">
+        <h3 className="settings-heading">Input</h3>
+        <MicTester />
+      </section>
+
+      <section className="settings-section">
+        <h3 className="settings-heading">Recording</h3>
+        <TextRow
+          label="Recordings folder"
+          hint="Vault-relative folder voice notes are saved into."
+          value={voice.folder}
+          defaultValue="attachments/voice"
+          placeholder="attachments/voice"
+          onChange={(v) => set({ folder: v })}
+        />
+        <ToggleRow
+          label="Keep the audio"
+          hint="Save the recording and embed a player. With this off a voice note leaves only its transcript."
+          value={voice.keepAudio}
+          defaultValue
+          onChange={(v) => set({ keepAudio: v })}
+        />
+        <ToggleRow
+          label="Write as I speak"
+          hint="Dictation inserts each sentence as you pause, instead of everything when you stop. Keeps a speech process running while you dictate."
+          value={voice.liveDictation}
+          defaultValue
+          onChange={(v) => set({ liveDictation: v })}
+        />
+        <ToggleRow
+          label="Transcribe recordings"
+          hint="Run a voice note through the local speech model and write the text under the player."
+          value={voice.transcribe}
+          defaultValue
+          onChange={(v) => set({ transcribe: v })}
+        />
+        <SelectRow
+          label="Language"
+          hint="Naming the language is more accurate than letting the model guess, especially on short clips."
+          value={voice.language || 'auto'}
+          defaultValue="auto"
+          options={[
+            { value: 'auto', label: 'Detect automatically' },
+            ...WHISPER_LANGUAGES.map((lang) => ({ value: lang.code, label: lang.name }))
+          ]}
+          onChange={(v) => set({ language: v })}
+        />
+      </section>
+
+      <ReadAloudSection />
+
+      <SpeechPacks onChanged={check} />
+
+      <section className="settings-section">
+        <h3 className="settings-heading">Speech model</h3>
+        <p className="voice-blurb">
+          Transcription runs entirely on this machine through a local{' '}
+          <code>whisper.cpp</code> build, so nothing you record is ever sent
+          anywhere. Lumina does not ship one: put the executable and a{' '}
+          <code>.bin</code> model in the folder below, or point at them directly.
+        </p>
+
+        <div className={`voice-status${status?.available ? ' is-ready' : ''}`}>
+          <Icon name={status?.available ? 'check' : 'info'} size={15} />
+          <div>
+            <div className="voice-status-title">
+              {status === null
+                ? 'Checking…'
+                : status.available
+                  ? 'Speech model ready'
+                  : 'No speech model installed'}
+            </div>
+            {status ? (
+              <div className="voice-status-detail">
+                {status.available ? status.model : status.reason}
+              </div>
+            ) : null}
+            {status && !status.available ? (
+              <div className="voice-status-detail">{status.folder}</div>
+            ) : null}
+          </div>
+          <button className="voice-btn" onClick={check} data-tooltip="Look again">
+            <Icon name="refresh" size={13} />
+            Recheck
+          </button>
+        </div>
+
+        <TextRow
+          label="Whisper executable"
+          hint="Leave empty to look in the folder above."
+          value={voice.binaryPath}
+          defaultValue=""
+          placeholder="Auto-detect"
+          onChange={(v) => set({ binaryPath: v.trim() })}
+        />
+        <TextRow
+          label="Model file"
+          hint="Leave empty to use the largest .bin found in the folder above."
+          value={voice.modelPath}
+          defaultValue=""
+          placeholder="Auto-detect"
+          onChange={(v) => set({ modelPath: v.trim() })}
+        />
+      </section>
+    </div>
+  )
+}
+
+/**
+ * Read aloud, which is the half of "voice" that needs nothing installed: the
+ * voices listed here are the operating system's own.
+ */
+function ReadAloudSection(): React.JSX.Element {
+  const readAloud = useSettings((s) => s.settings.voice.readAloud)
+  const patch = useSettings((s) => s.patch)
+  const set = (p: Partial<typeof readAloud>): void => patch({ voice: { readAloud: p } })
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+
+  // Chromium fills the voice list asynchronously, so a first read right after a
+  // cold start legitimately comes back empty — hence the subscription rather
+  // than a single call.
+  useEffect(() => {
+    const load = (): void => setVoices(listVoices())
+    load()
+    return onVoicesChanged(load)
+  }, [])
+
+  // Stop any preview on the way out, or closing settings leaves a voice
+  // talking to an empty screen.
+  useEffect(() => stopReading, [])
+
+  const available = speechAvailable()
+
+  return (
+    <section className="settings-section">
+      <h3 className="settings-heading">Read aloud</h3>
+      <p className="voice-blurb">
+        Select text anywhere — the editor, read mode — and press{' '}
+        <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> to hear it, or right-click
+        the selection. With nothing selected the whole note is read. The voices
+        are the ones installed on this computer, so this works offline and needs
+        no speech model.
+      </p>
+
+      <SelectRow
+        label="Voice"
+        hint={
+          available
+            ? 'Windows adds more under Settings › Time & language › Speech.'
+            : 'This build has no speech voices available.'
+        }
+        value={readAloud.voice}
+        defaultValue=""
+        options={[
+          { value: '', label: 'System default' },
+          ...voices.map((voice) => ({
+            value: voice.voiceURI,
+            label: `${voice.name} (${voice.lang})`
+          }))
+        ]}
+        onChange={(v) => set({ voice: v })}
+      />
+      <SliderRow
+        label="Speed"
+        hint="1 is the voice's own pace."
+        value={readAloud.rate}
+        min={0.5}
+        max={2}
+        step={0.05}
+        suffix="×"
+        defaultValue={1}
+        onChange={(v) => set({ rate: v })}
+      />
+      <SliderRow
+        label="Pitch"
+        hint="Some system voices ignore this."
+        value={readAloud.pitch}
+        min={0}
+        max={2}
+        step={0.1}
+        defaultValue={1}
+        onChange={(v) => set({ pitch: v })}
+      />
+      <SliderRow
+        label="Volume"
+        value={readAloud.volume}
+        min={0}
+        max={1}
+        step={0.05}
+        defaultValue={1}
+        onChange={(v) => set({ volume: v })}
+      />
+
+      <div className="settings-row-buttons">
+        <button className="voice-btn" onClick={previewVoice} disabled={!available}>
+          <Icon name="play" size={13} />
+          Preview
+        </button>
+        <button className="voice-btn" onClick={stopReading}>
+          <Icon name="stop" size={13} />
+          Stop
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -565,6 +1054,25 @@ function VaultSettingsTab(): React.JSX.Element {
 
       <section className="settings-section">
         <h3 className="settings-heading">Explorer</h3>
+        <SegmentedRow
+          label="Size"
+          hint="Row height, label and icon size in the file explorer."
+          value={settings.explorerSize}
+          defaultValue={FALLBACK_SETTINGS.explorerSize}
+          options={[
+            { value: 'compact' as const, label: 'Compact' },
+            { value: 'default' as const, label: 'Default' },
+            { value: 'large' as const, label: 'Large' }
+          ]}
+          onChange={(v) => patch({ explorerSize: v })}
+        />
+        <ToggleRow
+          label="Always show folder counts"
+          hint="Keep the note count beside a folder visible instead of only while hovering it."
+          value={settings.alwaysShowFolderCount}
+          defaultValue={FALLBACK_SETTINGS.alwaysShowFolderCount}
+          onChange={(v) => patch({ alwaysShowFolderCount: v })}
+        />
         <ToggleRow
           label="Show file types"
           hint="Show extensions such as .md beside note names in the explorer."
@@ -945,6 +1453,105 @@ function TextRow({
           onBlur={() => onChange(draft.trim())}
           onKeyDown={(e) => {
             if (e.key === 'Enter') onChange(draft.trim())
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A bounded integer, committed on blur like `TextRow`.
+ *
+ * Committing per keystroke would restart the clip listener on every digit of a
+ * port number, so the value only leaves here once the field is done with.
+ */
+/** A dropdown field row. Committed immediately — a select has no draft state. */
+function SelectRow<T extends string>({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+  defaultValue
+}: {
+  label: string
+  hint?: string
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (value: T) => void
+  defaultValue?: T
+}): React.JSX.Element {
+  return (
+    <div className="field-row">
+      <div>
+        <div className="field-label">{label}</div>
+        {hint ? <div className="field-hint">{hint}</div> : null}
+      </div>
+      <div className="field-control">
+        {defaultValue !== undefined ? <DefaultButton label={label} onClick={() => onChange(defaultValue)} /> : null}
+        <select
+          className="mic-select"
+          value={value}
+          onChange={(e) => onChange(e.target.value as T)}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
+function NumberRow({
+  label,
+  hint,
+  value,
+  min = 1024,
+  max = 65535,
+  onChange,
+  defaultValue
+}: {
+  label: string
+  hint?: string
+  value: number
+  min?: number
+  max?: number
+  onChange: (value: number) => void
+  defaultValue?: number
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(String(value))
+  useEffect(() => setDraft(String(value)), [value])
+
+  const commit = (): void => {
+    const parsed = Number(draft)
+    // An out-of-range or non-numeric entry snaps back rather than being stored;
+    // a port of 0 would bind to something arbitrary.
+    if (!Number.isInteger(parsed) || parsed < min || parsed > max) setDraft(String(value))
+    else if (parsed !== value) onChange(parsed)
+  }
+
+  return (
+    <div className="field-row">
+      <div>
+        <div className="field-label">{label}</div>
+        {hint ? <div className="field-hint">{hint}</div> : null}
+      </div>
+      <div className="field-control">
+        {defaultValue !== undefined ? <DefaultButton label={label} onClick={() => onChange(defaultValue)} /> : null}
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={draft}
+          style={{ width: 110 }}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
           }}
         />
       </div>

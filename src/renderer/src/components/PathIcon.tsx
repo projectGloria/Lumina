@@ -29,7 +29,11 @@ export default function PathIcon({
       <img
         src={vaultUrl(customIcon)}
         className={`path-icon-custom${className ? ` ${className}` : ''}`}
-        style={{ width: size, height: size }}
+        // Width/height as attributes rather than inline style, so a CSS rule on
+        // the class can still size it — `.tree-icon` scales with the explorer
+        // size token, and an inline style would outrank it.
+        width={size}
+        height={size}
         alt=""
         draggable={false}
       />

@@ -1,0 +1,102 @@
+import { useEffect } from 'react'
+import { Icon } from '@/components/Icon'
+import { ensureNote, openNote, releaseNote } from '@/lib/actions'
+import { useEditor } from '@/store/editorStore'
+import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
+
+interface ScratchConfig extends Record<string, unknown> {
+  /** Vault-relative note this pad edits. */
+  path: string
+}
+
+const DEFAULT_PATH = 'Scratch.md'
+
+/**
+ * A note edited in place on the board.
+ *
+ * It goes through `editorStore` rather than writing the file, so the pad and a
+ * tab showing the same note share one buffer and one debounced autosave —
+ * two writers on one path is how a note loses a paragraph.
+ */
+function Scratch({ config }: WidgetProps<ScratchConfig>): React.JSX.Element {
+  const path = config.path || DEFAULT_PATH
+  const buffer = useEditor((s) => s.buffers[path])
+
+  useEffect(() => {
+    void useEditor.getState().open(path)
+    // The buffer is only released if no tab is holding the note, so closing
+    // the board never drops text the editor still has on screen.
+    return () => void releaseNote(path)
+  }, [path])
+
+  if (buffer?.error) {
+    return (
+      <div className="home-scratch-missing">
+        <p className="home-widget-empty">
+          <code>{path}</code> is not in this vault yet.
+        </p>
+        <button
+          className="btn btn-small"
+          onClick={() => {
+            void (async () => {
+              if (await ensureNote(path)) await useEditor.getState().open(path)
+            })()
+          }}
+        >
+          <Icon name="plus" size={14} />
+          <span>Create it</span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="home-scratch">
+      <textarea
+        className="home-scratch-input"
+        value={buffer?.content ?? ''}
+        disabled={!buffer || buffer.loading}
+        aria-label={`Scratch pad: ${path}`}
+        placeholder="Anything you do not want to file yet…"
+        onChange={(e) => useEditor.getState().setContent(path, e.target.value)}
+      />
+      <button
+        className="home-scratch-open"
+        data-tooltip={`Open ${path}`}
+        onClick={() => openNote(path)}
+      >
+        <Icon name="external" size={13} />
+        <span className="truncate">{path}</span>
+      </button>
+    </div>
+  )
+}
+
+function ScratchSettings({
+  config,
+  setConfig
+}: WidgetSettingsProps<ScratchConfig>): React.JSX.Element {
+  return (
+    <label className="home-setting">
+      <span>Note</span>
+      <input
+        type="text"
+        value={config.path}
+        placeholder={DEFAULT_PATH}
+        onChange={(e) => setConfig({ path: e.target.value })}
+      />
+    </label>
+  )
+}
+
+export const scratchWidget = defineWidget<ScratchConfig>({
+  type: 'scratch',
+  name: 'Scratch pad',
+  description: 'One note, edited straight from the board',
+  icon: 'edit',
+  defaultSize: { w: 2, h: 3 },
+  minSize: { w: 1, h: 2 },
+  defaultConfig: { path: DEFAULT_PATH },
+  Component: Scratch,
+  Settings: ScratchSettings
+})

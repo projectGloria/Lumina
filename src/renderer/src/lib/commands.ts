@@ -24,6 +24,14 @@ import {
   toggleStar
 } from './actions'
 import { renderToHtml } from './render'
+import { cancelVoice, isRecording, stopVoice, toggleVoice } from './voice'
+import {
+  isReading,
+  skipReading,
+  stopReading,
+  togglePauseReading,
+  toggleReadAloud
+} from './readAloud'
 import { getActiveView } from '../editor/activeView'
 import {
   insertLink,
@@ -39,7 +47,8 @@ import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
 import { titleOf, useVault } from '../store/vaultStore'
-import { activePath, useWorkspace } from '../store/workspaceStore'
+import { useHome } from '../store/homeStore'
+import { activePath, isHomeActive, useWorkspace } from '../store/workspaceStore'
 
 export interface Command {
   id: string
@@ -294,7 +303,129 @@ export const COMMANDS: Command[] = [
     })
   },
 
+  /* ------------------------------------------------------------ voice */
+  {
+    id: 'voice.record',
+    title: 'Record voice note',
+    section: 'Editor',
+    icon: 'mic',
+    keywords: ['audio', 'microphone', 'dictate', 'memo'],
+    description: 'Record audio into the vault and embed a player in this note',
+    hotkey: 'Ctrl+Shift+R',
+    // Toggling means one hotkey both starts and finishes, which is what a hand
+    // already holding the keyboard wants; the bar's Done button does the same.
+    enabled: hasNote,
+    run: () => toggleVoice('note')
+  },
+  {
+    id: 'voice.dictate',
+    title: 'Dictate text',
+    section: 'Editor',
+    icon: 'waveform',
+    keywords: ['speech', 'transcribe', 'voice', 'microphone'],
+    description: 'Speak, and insert the transcript at the caret without saving audio',
+    hotkey: 'Ctrl+Shift+D',
+    enabled: hasNote,
+    run: () => toggleVoice('dictate')
+  },
+  {
+    id: 'voice.stop',
+    title: 'Finish recording',
+    section: 'Editor',
+    icon: 'stop',
+    description: 'Stop the running recording and insert the result',
+    enabled: isRecording,
+    run: () => void stopVoice()
+  },
+  {
+    id: 'voice.cancel',
+    title: 'Discard recording',
+    section: 'Editor',
+    icon: 'micOff',
+    description: 'Throw away the running recording',
+    enabled: isRecording,
+    run: cancelVoice
+  },
+
+  /* -------------------------------------------------------- read aloud */
+  {
+    id: 'voice.read',
+    title: 'Read aloud',
+    section: 'Editor',
+    icon: 'speaker',
+    keywords: ['speak', 'listen', 'tts', 'text to speech', 'voice', 'narrate'],
+    description: 'Speak the selected text, or the whole note when nothing is selected',
+    hotkey: 'Ctrl+Shift+L',
+    // Toggling, like recording: the same key that started the reading stops it,
+    // which is what a hand already on the keyboard reaches for.
+    run: toggleReadAloud
+  },
+  {
+    id: 'voice.readPause',
+    title: 'Pause or resume reading',
+    section: 'Editor',
+    icon: 'pause',
+    keywords: ['speak', 'listen', 'tts'],
+    description: 'Hold the reading where it is, and pick it up again',
+    enabled: isReading,
+    run: togglePauseReading
+  },
+  {
+    id: 'voice.readNext',
+    title: 'Skip to the next sentence',
+    section: 'Editor',
+    icon: 'skipForward',
+    keywords: ['speak', 'listen', 'tts'],
+    enabled: isReading,
+    run: () => skipReading(1)
+  },
+  {
+    id: 'voice.readPrev',
+    title: 'Back to the previous sentence',
+    section: 'Editor',
+    icon: 'skipBack',
+    keywords: ['speak', 'listen', 'tts'],
+    enabled: isReading,
+    run: () => skipReading(-1)
+  },
+  {
+    id: 'voice.readStop',
+    title: 'Stop reading aloud',
+    section: 'Editor',
+    icon: 'stop',
+    keywords: ['speak', 'listen', 'tts', 'silence'],
+    description: 'Stop speaking and dismiss the player',
+    enabled: isReading,
+    run: stopReading
+  },
+
   /* ------------------------------------------------------------- view */
+  {
+    id: 'view.home',
+    title: 'Open Home',
+    section: 'View',
+    icon: 'home',
+    keywords: ['dashboard', 'widgets', 'board', 'start'],
+    description: 'Show the dashboard of widgets for this vault',
+    hotkey: 'Ctrl+Shift+H',
+    run: () => useWorkspace.getState().openHome()
+  },
+  {
+    id: 'home.editLayout',
+    title: 'Edit Home layout',
+    section: 'View',
+    icon: 'grid',
+    keywords: ['widgets', 'dashboard', 'arrange', 'board'],
+    description: 'Move, resize, add and remove the widgets on Home',
+    run: () => {
+      // Reachable from anywhere: from Home it toggles, from a note it takes
+      // you there and puts the board straight into edit mode.
+      const wasHome = isHomeActive()
+      useWorkspace.getState().openHome()
+      const home = useHome.getState()
+      home.setEditing(wasHome ? !home.editing : true)
+    }
+  },
   {
     id: 'settings.open',
     title: 'Open settings',

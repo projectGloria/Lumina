@@ -5,6 +5,7 @@
  * created the same way whether it came from the sidebar, a broken link, or the
  * command palette.
  */
+import { isNoteTab } from '@shared/types'
 import {
   basename,
   dirname,
@@ -42,11 +43,11 @@ export function openNote(path: string, opts: OpenOptions = {}): void {
   // History navigation can still replace a tab. Diffing the strip rather than
   // re-deriving which path was displaced keeps buffer cleanup correct for
   // append, activate, replace and explicit duplicate opens.
-  const before = useWorkspace.getState().tabs.map((tab) => tab.path)
+  const before = useWorkspace.getState().tabs.filter(isNoteTab).map((tab) => tab.path)
   useWorkspace.getState().openNote(path, opts)
   void useEditor.getState().open(path)
 
-  const after = new Set(useWorkspace.getState().tabs.map((tab) => tab.path))
+  const after = new Set(useWorkspace.getState().tabs.filter(isNoteTab).map((tab) => tab.path))
   for (const displaced of before) {
     if (!after.has(displaced)) void releaseNote(displaced)
   }
@@ -76,14 +77,15 @@ export async function saveNoteWithFeedback(path: string): Promise<void> {
  * seconds after typing would drop those keystrokes on the floor.
  */
 export async function closeTab(index: number): Promise<void> {
-  const path = useWorkspace.getState().tabs[index]?.path
+  const tab = useWorkspace.getState().tabs[index]
   useWorkspace.getState().closeTab(index)
-  if (path) await releaseNote(path)
+  // Home holds no buffer, so there is nothing behind it to release.
+  if (tab && isNoteTab(tab) && tab.path) await releaseNote(tab.path)
 }
 
 /** Close every tab but one, releasing the notes that are no longer open. */
 export async function closeOtherTabs(index: number): Promise<void> {
-  const before = useWorkspace.getState().tabs.map((tab) => tab.path)
+  const before = useWorkspace.getState().tabs.filter(isNoteTab).map((tab) => tab.path)
   useWorkspace.getState().closeOthers(index)
   await Promise.all(before.map((path) => releaseNote(path)))
 }
@@ -94,7 +96,7 @@ export async function closeOtherTabs(index: number): Promise<void> {
  * The same note can sit in two tabs, so the check is against what is left
  * rather than against the tab that just went away.
  */
-async function releaseNote(path: string): Promise<void> {
+export async function releaseNote(path: string): Promise<void> {
   if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
   await useEditor.getState().save(path)
   if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
@@ -112,6 +114,17 @@ export async function createNote(folder = '', title = 'Untitled', content = ''):
   }
   openNote(res.data)
   // Land in the title so the first thing typed names the note.
+  return res.data
+}
+
+/** Create a note at `path` if it is not there yet, without opening a tab. */
+export async function ensureNote(path: string, content = ''): Promise<string | null> {
+  if (await window.lumina.notes.exists(path)) return path
+  const res = await window.lumina.notes.create(path, content)
+  if (!res.ok || !res.data) {
+    toast(res.error ?? 'Could not create the note', 'error')
+    return null
+  }
   return res.data
 }
 
@@ -191,6 +204,16 @@ async function reusableGeneratedNote(folder: string): Promise<string | null> {
 // check-and-create pair makes the second call see and reuse the first note.
 let generatedNoteChain: Promise<void> = Promise.resolve()
 
+/** File a timestamp-named note, without opening it. */
+async function newGeneratedNote(folder: string, content = ''): Promise<string | null> {
+  const res = await window.lumina.notes.create(joinPath(folder, `${quickNoteName()}.md`), content)
+  if (!res.ok || !res.data) {
+    toast(res.error ?? 'Could not create the note', 'error')
+    return null
+  }
+  return res.data
+}
+
 async function createOrReuseGeneratedNote(folder: string): Promise<string | null> {
   const reusable = await reusableGeneratedNote(folder)
   if (reusable) {
@@ -198,13 +221,9 @@ async function createOrReuseGeneratedNote(folder: string): Promise<string | null
     return reusable
   }
 
-  const res = await window.lumina.notes.create(joinPath(folder, `${quickNoteName()}.md`), '')
-  if (!res.ok || !res.data) {
-    toast(res.error ?? 'Could not create the note', 'error')
-    return null
-  }
-  openNote(res.data, { newTab: true })
-  return res.data
+  const path = await newGeneratedNote(folder)
+  if (path) openNote(path, { newTab: true })
+  return path
 }
 
 /** Create a timestamped blank note, unless an open generated one is still blank. */
@@ -217,10 +236,64 @@ export function createGeneratedNote(folder = ''): Promise<string | null> {
   return operation
 }
 
+/** Where quick notes are filed, falling back when the setting is blank. */
+export function quickNoteFolder(): string {
+  return useSettings.getState().settings.quickNote.folder || DEFAULT_QUICK_NOTE_FOLDER
+}
+
 /** The OS-wide quick note uses the configured folder and the shared reuse rules. */
 export function createQuickNote(): Promise<string | null> {
-  const folder = useSettings.getState().settings.quickNote.folder || DEFAULT_QUICK_NOTE_FOLDER
-  return createGeneratedNote(folder)
+  return createGeneratedNote(quickNoteFolder())
+}
+
+/**
+ * File a captured line without leaving what you were doing.
+ *
+ * Home's capture widget is the only caller so far, and it deliberately does
+ * not open what it writes — the point of capturing from a dashboard is that
+ * the dashboard is still in front of you afterwards.
+ */
+export async function captureText(
+  text: string,
+  target: 'quick' | 'daily' = 'quick'
+): Promise<boolean> {
+  const body = text.trim()
+  if (!body) return false
+
+  if (target === 'daily') {
+    const path = await ensureDailyNote()
+    if (!path) return false
+    return updateNoteContent(path, (content) => `${content.trimEnd()}\n\n${body}\n`)
+  }
+
+  return !!(await newGeneratedNote(quickNoteFolder(), `${body}\n`))
+}
+
+/**
+ * Change a note's text through the same buffer the editor writes.
+ *
+ * Writing the file directly would come back through the watcher as an
+ * external edit — reloaded over a clean buffer, refused on a dirty one — so
+ * anything that edits a note the user may also have open goes through the
+ * store instead. The buffer is released again unless a tab is holding it, so
+ * a board full of widgets does not end up carrying half the vault in memory.
+ */
+export async function updateNoteContent(
+  path: string,
+  edit: (content: string) => string
+): Promise<boolean> {
+  await useEditor.getState().open(path)
+  const buffer = useEditor.getState().buffers[path]
+  if (!buffer || buffer.loading || buffer.error) {
+    toast(buffer?.error ?? `Could not read ${basename(path)}`, 'error')
+    await releaseNote(path)
+    return false
+  }
+
+  useEditor.getState().setContent(path, edit(buffer.content))
+  await useEditor.getState().save(path)
+  await releaseNote(path)
+  return true
 }
 
 export function promptNewNote(folder = ''): void {
@@ -339,15 +412,24 @@ export function confirmDelete(path: string): void {
 // because this is where callers have always found them.
 export { applyTemplate, formatDate }
 
-export async function openDailyNote(): Promise<void> {
+/** Where a day's note lives, whether or not it has been written yet. */
+export function dailyNotePath(day = new Date()): string {
+  const { dailyNotes } = useSettings.getState().settings
+  return joinPath(dailyNotes.folder, `${formatDate(dailyNotes.format || 'YYYY-MM-DD', day)}.md`)
+}
+
+/**
+ * Today's daily note, created from the template if it is not there yet.
+ *
+ * Split out of `openDailyNote` so Home's daily widget can offer today's note
+ * without the command's side effect of opening a tab.
+ */
+export async function ensureDailyNote(): Promise<string | null> {
   const { dailyNotes } = useSettings.getState().settings
   const name = formatDate(dailyNotes.format || 'YYYY-MM-DD')
-  const path = joinPath(dailyNotes.folder, `${name}.md`)
+  const path = dailyNotePath()
 
-  if (await window.lumina.notes.exists(path)) {
-    openNote(path)
-    return
-  }
+  if (await window.lumina.notes.exists(path)) return path
 
   let body = `# ${name}\n\n`
   if (dailyNotes.template) {
@@ -358,9 +440,14 @@ export async function openDailyNote(): Promise<void> {
   const res = await window.lumina.notes.create(path, body)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the daily note', 'error')
-    return
+    return null
   }
-  openNote(res.data)
+  return res.data
+}
+
+export async function openDailyNote(): Promise<void> {
+  const path = await ensureDailyNote()
+  if (path) openNote(path)
 }
 
 /* ------------------------------------------------------------- starring */
@@ -501,6 +588,47 @@ export function removeCustomIcons(parent: string): void {
   if (entries.length !== Object.keys(settings.customIcons).length) {
     patch({ customIcons: Object.fromEntries(entries) })
   }
+}
+
+/** Vault-relative folder Home's cover pictures are copied into. */
+const HOME_COVER_FOLDER = '.lumina/home'
+
+/**
+ * Pick a picture for the top of the Home board and copy it into the vault.
+ *
+ * Copied rather than linked, for the same reason clipped images are: a board
+ * that points at a file somewhere else on this machine stops working the
+ * moment the vault is opened anywhere else. Resolves the vault-relative path,
+ * or null when the user cancelled or the copy failed.
+ */
+export async function pickHomeCover(): Promise<string | null> {
+  const file = await pickImageFile()
+  if (!file) return null
+
+  const res = await window.lumina.files.saveAttachment(
+    HOME_COVER_FOLDER,
+    file.name,
+    await file.arrayBuffer()
+  )
+  if (!res.ok || !res.data) {
+    toast(res.error ?? 'Could not save the picture', 'error')
+    return null
+  }
+  return res.data
+}
+
+/** One image from the OS file picker, or null if the dialog was dismissed. */
+function pickImageFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    // `cancel` fires on dismissal in Chromium; without it the promise from a
+    // dialog the user closed would never settle.
+    input.oncancel = () => resolve(null)
+    input.onchange = () => resolve(input.files?.[0] ?? null)
+    input.click()
+  })
 }
 
 /**

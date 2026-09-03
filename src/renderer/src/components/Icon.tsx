@@ -43,6 +43,9 @@ const PATHS: Record<string, string> = {
   palette: '<path d="M12 3a9 9 0 000 18c1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.7 1.7-1.7h2A4.6 4.6 0 0021 10.6C21 6.4 16.9 3 12 3z" /><circle cx="7.5" cy="11" r="1.2" /><circle cx="10.5" cy="7" r="1.2" /><circle cx="15.5" cy="7.5" r="1.2" />',
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M6.5 13.5h.01M17 13.5h.01M9.5 13.5h5" />',
   info: '<circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />',
+  home: '<path d="M3.6 10.7L12 4l8.4 6.7V19a1.5 1.5 0 01-1.5 1.5h-3.4V14H8.5v6.5H5.1A1.5 1.5 0 013.6 19v-8.3z" />',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="10" r="1.5" /><path d="M4 17l4.5-4.5 3 3L15.5 11l4.5 4.5" />',
+  grid: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.5" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.5" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />',
   book: '<path d="M4 4.5A1.5 1.5 0 015.5 3H19v18H5.5A1.5 1.5 0 014 19.5v-15z" /><path d="M4 17.5A1.5 1.5 0 015.5 16H19" />',
   clock: '<circle cx="12" cy="12" r="9" /><path d="M12 7v5.2l3.2 2" />',
   hash: '<path d="M6 9h13M5 15h13M10.5 4l-2 16M16.5 4l-2 16" />',
@@ -51,7 +54,16 @@ const PATHS: Record<string, string> = {
   vault: '<rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="12" cy="12" r="3.5" /><path d="M12 8.5V6M12 18v-2.5" />',
   pin: '<path d="M14.5 3.5l6 6-3.2 1.6-3.3 5.2-1.4-1.4-4 4-1-1 4-4-1.4-1.4 5.2-3.3L14.5 3.5z" />',
   slash: '<path d="M14.5 4.5l-5 15" />',
-  bolt: '<path d="M13 3L5.5 13.5H11l-1 7.5 8-11H12l1-7z" />'
+  bolt: '<path d="M13 3L5.5 13.5H11l-1 7.5 8-11H12l1-7z" />',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v3M9 21h6" />',
+  micOff: '<path d="M9 5a3 3 0 016 0v5m-.9 3.1A3 3 0 019 11V9" /><path d="M5.5 11.5a6.5 6.5 0 009.9 5.6M18.5 11.5a6.4 6.4 0 01-.5 2.5M12 18v3M9 21h6" /><path d="M4 4l16 16" />',
+  stop: '<rect x="6.5" y="6.5" width="11" height="11" rx="2" />',
+  waveform: '<path d="M4 11v2M8 8v8M12 5v14M16 8.5v7M20 11v2" />',
+  speaker: '<path d="M4 9.5h3.5L12.5 5v14L7.5 14.5H4v-5z" /><path d="M16 9.5a4 4 0 010 5M18.5 7a7.5 7.5 0 010 10" />',
+  play: '<path d="M8 5.5l10 6.5-10 6.5v-13z" />',
+  pause: '<path d="M9.5 5.5v13M14.5 5.5v13" />',
+  skipBack: '<path d="M17 6.5v11L9 12l8-5.5z" /><path d="M6.5 6v12" />',
+  skipForward: '<path d="M7 6.5L15 12l-8 5.5v-11z" /><path d="M17.5 6v12" />'
 }
 
 export type IconName = keyof typeof PATHS

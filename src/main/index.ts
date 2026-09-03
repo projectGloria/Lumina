@@ -8,9 +8,13 @@ import {
   pushQuickNote,
   registerIpc,
   reportQuickNoteStatus,
+  setClipArrivedHandler,
   setMainWindow,
+  syncClipServer,
   teardown
 } from './ipc'
+import { stopClipServer } from './clipServer'
+import { stopWhisperServer } from './whisperServer'
 import { saveCache } from './indexer'
 import { fileArgsFrom } from './paths'
 import { handleProtocol, registerScheme } from './protocol'
@@ -207,6 +211,21 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc()
     onSettingsChanged((settings: Settings) => applyQuickNote(settings.quickNote, true))
 
+    // The clip listener is app-level, so it comes up here rather than when a
+    // vault opens: the extension should reach Lumina whenever Lumina is
+    // running, including on the profile picker and from the tray. A clip that
+    // arrives before a vault is open waits in the renderer.
+    void syncClipServer(state.clipper)
+
+    // A clip can land while Lumina is idling in the tray with no window, so
+    // one has to exist for the renderer to write the note. Deliberately
+    // `ensureWindow(false)` rather than `showWindow()`: the user is in their
+    // browser and clipping is meant to be something they barely notice. The
+    // clip itself is already queued in `ipc.ts` and drains on mount.
+    setClipArrivedHandler(() => {
+      ensureWindow(false)
+    })
+
     // A file on the command line is a request for a window, whatever the login
     // item asked for.
     if (!startedHidden || pendingFiles.length) ensureWindow(true)
@@ -240,6 +259,8 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return
     releaseQuickNoteShortcut()
     destroyTray()
+    void stopClipServer()
+    void stopWhisperServer()
     if (!getRoot()) return
     event.preventDefault()
     quitting = true

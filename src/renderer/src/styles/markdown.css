@@ -468,6 +468,34 @@
   border: 1px solid var(--lum-border);
 }
 
+/* ------------------------------------------------------- voice notes */
+
+/* Padding rather than margin, for the reason block widgets must avoid margins:
+   CodeMirror measures line boxes from `getBoundingClientRect().height`, which
+   excludes margins, so a margin here drifts the caret away from where clicks
+   land. Padding is inside the border box and measures correctly. */
+.cm-embed-audio {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-2) 0;
+  max-width: 100%;
+}
+.cm-embed-audio audio {
+  height: 34px;
+  max-width: min(420px, 100%);
+  border-radius: var(--lum-radius-lg);
+}
+.cm-embed-audio-label {
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+.cm-embed-audio.is-missing audio {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
 /* ------------------------------------------------- autocomplete popup */
 
 .cm-tooltip.cm-tooltip-autocomplete {

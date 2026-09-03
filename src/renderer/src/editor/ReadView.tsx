@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { createFromLink, openNote } from '../lib/actions'
+import { speak } from '../lib/readAloud'
 import { renderNoteFragment } from '../lib/render'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
@@ -32,33 +33,40 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
     return () => el.removeEventListener('scroll', onScroll)
   }, [path, html])
 
-  /* ------------------------------------------------- images that guessed wrong */
-  // `render.ts` can only guess which folder an image lives in, so it leaves the
-  // remaining candidates behind and the first one that loads wins — the same
-  // fallback the editor's image widget does.
+  /* --------------------------------------- attachments that guessed wrong */
+  // `render.ts` can only guess which folder an attachment lives in, so it
+  // leaves the remaining candidates behind and the first one that loads wins —
+  // the same fallback the editor's image and audio widgets do. Recordings are
+  // included: a voice note is written with the image syntax and becomes an
+  // `<audio>` there, and it has exactly the same folder problem.
   useEffect(() => {
     const el = host.current
     if (!el) return
-    const images = Array.from(el.querySelectorAll<HTMLImageElement>('img[data-candidates]'))
+    const media = Array.from(
+      el.querySelectorAll<HTMLImageElement | HTMLAudioElement>('[data-candidates]')
+    )
     const onError = (event: Event): void => {
-      const img = event.currentTarget as HTMLImageElement
+      const node = event.currentTarget as HTMLImageElement | HTMLAudioElement
       let rest: string[] = []
       try {
-        rest = JSON.parse(img.dataset.candidates ?? '[]') as string[]
+        rest = JSON.parse(node.dataset.candidates ?? '[]') as string[]
       } catch {
         // Malformed list: nothing left to try.
       }
       const next = rest.shift()
       if (!next) {
-        img.removeAttribute('data-candidates')
+        node.removeAttribute('data-candidates')
         return
       }
-      img.dataset.candidates = JSON.stringify(rest)
-      img.src = `lumina://vault/${next.split('/').map(encodeURIComponent).join('/')}`
+      node.dataset.candidates = JSON.stringify(rest)
+      node.src = `lumina://vault/${next.split('/').map(encodeURIComponent).join('/')}`
+      // An `<audio>` will not retry a new `src` on its own the way an `<img>`
+      // does; without this the second candidate is never actually requested.
+      if (node instanceof HTMLAudioElement) node.load()
     }
-    for (const img of images) img.addEventListener('error', onError)
+    for (const node of media) node.addEventListener('error', onError)
     return () => {
-      for (const img of images) img.removeEventListener('error', onError)
+      for (const node of media) node.removeEventListener('error', onError)
     }
   }, [html])
 
@@ -140,8 +148,37 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
     if (/^(?:https?|mailto):/i.test(href)) void window.lumina.files.openExternal(href)
   }
 
+  /**
+   * Read aloud, from the one gesture that leaves a selection intact.
+   *
+   * Read mode is where listening is most likely to be what someone wants, and
+   * it has no editor to hang the menu off — so it gets its own, using the same
+   * `showContextMenu` mechanism as everywhere else.
+   */
+  const onContextMenu = (event: React.MouseEvent): void => {
+    const selected = window.getSelection()?.toString().trim() ?? ''
+    const source = content ?? ''
+    event.preventDefault()
+    useUi.getState().showContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          label: selected ? 'Read selection aloud' : 'Read note aloud',
+          onSelect: () => speak(selected || source, selected ? 'Selection' : 'This note')
+        },
+        {
+          label: 'Copy',
+          onSelect: () => {
+            if (selected) void navigator.clipboard.writeText(selected)
+          }
+        }
+      ]
+    })
+  }
+
   return (
-    <div className="note-view" ref={host} onClick={onClick}>
+    <div className="note-view" ref={host} onClick={onClick} onContextMenu={onContextMenu}>
       <div className="note-view-content" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   )

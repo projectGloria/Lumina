@@ -13,8 +13,8 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { net } from 'electron'
 import { parseOgTags, type LinkMetadata } from '@shared/linkPreview'
+import { fetchWithTimeout, isHttp, readCapped, IMAGE_EXTENSIONS } from './net'
 import { luminaDir, readJson, writeJson } from './settings'
 import { getRoot } from './vault'
 
@@ -24,7 +24,6 @@ const CACHE_VERSION = 2
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000
 const HTML_BYTE_CAP = 512 * 1024
 const IMAGE_BYTE_CAP = 2 * 1024 * 1024
-const TIMEOUT_MS = 6000
 
 interface CacheShape {
   version: number
@@ -58,72 +57,6 @@ function saveCache(vault: string): void {
 
 /** Everything in flight, so ten notes referencing one URL fetch it once. */
 const inFlight = new Map<string, Promise<LinkMetadata | null>>()
-
-function isHttp(url: string): boolean {
-  try {
-    const scheme = new URL(url).protocol
-    return scheme === 'http:' || scheme === 'https:'
-  } catch {
-    return false
-  }
-}
-
-async function fetchWithTimeout(url: string, headers: Record<string, string>): Promise<Response> {
-  const abort = new AbortController()
-  const timer = setTimeout(() => abort.abort(), TIMEOUT_MS)
-  try {
-    return await net.fetch(url, {
-      headers,
-      signal: abort.signal,
-      // Redirects stay inside http(s): `net.fetch` will not follow a redirect
-      // to another scheme, and this keeps credentials out of the request.
-      credentials: 'omit'
-    })
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-/** Read at most `cap` bytes of a response body, then let go of the rest. */
-async function readCapped(response: Response, cap: number): Promise<Uint8Array> {
-  const reader = response.body?.getReader()
-  if (!reader) return new Uint8Array()
-
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      chunks.push(value)
-      total += value.byteLength
-      if (total >= cap) {
-        await reader.cancel().catch(() => {})
-        break
-      }
-    }
-  }
-
-  const out = new Uint8Array(Math.min(total, cap))
-  let offset = 0
-  for (const chunk of chunks) {
-    if (offset >= out.length) break
-    const slice = chunk.subarray(0, out.length - offset)
-    out.set(slice, offset)
-    offset += slice.length
-  }
-  return out
-}
-
-const IMAGE_EXTENSIONS: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/avif': 'avif',
-  'image/x-icon': 'ico',
-  'image/vnd.microsoft.icon': 'ico'
-}
 
 /**
  * Cache a preview image inside the vault.

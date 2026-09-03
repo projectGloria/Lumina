@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Settings, ThemeFile, TokenOverrides } from '@shared/types'
+import { EXPLORER_SIZES, type Settings, type ThemeFile, type TokenOverrides } from '@shared/types'
 import type { Snippet } from '../../../preload'
 
 /** Mirrors DEFAULT_SETTINGS in the main process, for first paint before IPC. */
@@ -42,7 +42,31 @@ export const FALLBACK_SETTINGS: Settings = {
   customIcons: {},
   pinned: [],
   sortOrder: 'name',
-  showFileTypes: false
+  showFileTypes: false,
+  explorerSize: 'default',
+  alwaysShowFolderCount: false,
+  voice: {
+    folder: 'attachments/voice',
+    transcribe: true,
+    keepAudio: true,
+    language: 'auto',
+    deviceId: '',
+    liveDictation: true,
+    setupPrompted: false,
+    binaryPath: '',
+    modelPath: '',
+    readAloud: { voice: '', rate: 1, pitch: 1, volume: 1 }
+  },
+  clipper: {
+    enabled: false,
+    port: 41999,
+    token: '',
+    folder: 'Clippings',
+    tags: ['clipped'],
+    downloadImages: true,
+    openOnClip: true
+  },
+  home: { openOnLaunch: false }
 }
 
 const FALLBACK_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }
@@ -280,6 +304,15 @@ export function applyTheme(
   if (e.serifFamily) root.style.setProperty('--lum-font-serif', e.serifFamily)
   if (e.monoFamily) root.style.setProperty('--lum-font-mono', e.monoFamily)
   root.style.setProperty('--lum-font-heading', e.serifHeadings ? 'var(--lum-font-serif)' : 'var(--lum-font-editor)')
+
+  // The file explorer's scale, for the same reason: a preference beats whatever
+  // the theme file carries, and a snippet still beats both.
+  const tree = EXPLORER_SIZES[settings.explorerSize] ?? EXPLORER_SIZES.default
+  root.style.setProperty('--lum-tree-row-height', `${tree.row}px`)
+  root.style.setProperty('--lum-tree-font-size', `${tree.font}px`)
+  root.style.setProperty('--lum-tree-icon-size', `${tree.icon}px`)
+  root.style.setProperty('--lum-tree-gap', `${tree.gap}px`)
+  root.style.setProperty('--lum-tree-indent', `${tree.indent}px`)
 
   // Snippets, in a single stylesheet appended last.
   if (!snippetStyleEl) {

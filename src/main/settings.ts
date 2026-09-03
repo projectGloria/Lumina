@@ -6,18 +6,54 @@ import type {
   CustomSlashCommand,
   Profile,
   QuickNoteSettings,
+  ClipperSettings,
   Settings,
   SettingsPreset,
+  VoiceSettings,
   ThemeFile,
+  HomeLayout,
+  HomeSettings,
   VaultInfo,
   WorkspaceState
 } from '@shared/types'
+import { HOME_LAYOUT_VERSION } from '@shared/types'
 import { luminaDir } from './paths'
 import { DEFAULT_QUICK_NOTE } from './quickNote'
+import { DEFAULT_CLIP_PORT } from './clipServer'
 
 /* --------------------------------------------------------------- defaults */
 
-export const DEFAULT_SETTINGS: Settings = {
+const DEFAULT_VOICE: VoiceSettings = {
+  folder: 'attachments/voice',
+  transcribe: true,
+  keepAudio: true,
+  language: 'auto',
+  deviceId: '',
+  liveDictation: true,
+  setupPrompted: false,
+  binaryPath: '',
+  modelPath: '',
+  readAloud: { voice: '', rate: 1, pitch: 1, volume: 1 }
+}
+
+export /**
+ * The clipper starts closed and with no token. A token is generated the first
+ * time the user turns it on, so an install that never touches the feature has
+ * no secret sitting in its config and never opens a socket.
+ */
+const DEFAULT_CLIPPER: ClipperSettings = {
+  enabled: false,
+  port: DEFAULT_CLIP_PORT,
+  token: '',
+  folder: 'Clippings',
+  tags: ['clipped'],
+  downloadImages: true,
+  openOnClip: true
+}
+
+const DEFAULT_HOME_SETTINGS: HomeSettings = { openOnLaunch: false }
+
+const DEFAULT_SETTINGS: Settings = {
   themeMode: 'system',
   editor: {
     fontSize: 16,
@@ -56,7 +92,12 @@ export const DEFAULT_SETTINGS: Settings = {
   customIcons: {},
   pinned: [],
   sortOrder: 'name',
-  showFileTypes: false
+  showFileTypes: false,
+  explorerSize: 'default',
+  alwaysShowFolderCount: false,
+  voice: DEFAULT_VOICE,
+  clipper: DEFAULT_CLIPPER,
+  home: DEFAULT_HOME_SETTINGS
 }
 
 export const DEFAULT_THEME: ThemeFile = { preset: 'claude', light: {}, dark: {} }
@@ -148,6 +189,13 @@ export interface AppState {
    * (a global accelerator, a tray icon, a login item) with no vault involved.
    */
   quickNote: QuickNoteSettings
+  /**
+   * Voice preferences. App-level because the whisper build and the model file
+   * they point at are installed on this machine, not inside a vault.
+   */
+  voice: VoiceSettings
+  /** Web clipper preferences: a port and a token belong to this machine. */
+  clipper: ClipperSettings
   profiles: Profile[]
   activeProfileId: string | null
   settingsProfiles: SettingsPreset[]
@@ -180,6 +228,8 @@ const APP_STATE_DEFAULT: AppState = {
   hotkeys: {},
   slashCommands: STARTER_SLASH_COMMANDS,
   quickNote: DEFAULT_QUICK_NOTE,
+  voice: DEFAULT_VOICE,
+  clipper: DEFAULT_CLIPPER,
   profiles: [],
   activeProfileId: null,
   settingsProfiles: []
@@ -222,6 +272,7 @@ export { luminaDir }
 const settingsFile = (v: string): string => path.join(luminaDir(v), 'settings.json')
 const themeFile = (v: string): string => path.join(luminaDir(v), 'theme.json')
 const workspaceFile = (v: string): string => path.join(luminaDir(v), 'workspace.json')
+const homeFile = (v: string): string => path.join(luminaDir(v), 'home.json')
 
 export const cacheFile = (v: string): string => path.join(luminaDir(v), 'cache.json')
 export const snippetsDir = (v: string): string => path.join(luminaDir(v), 'snippets')
@@ -269,7 +320,9 @@ export async function loadSettings(v: string): Promise<Settings> {
   const appLevel = {
     hotkeys: appState.hotkeys,
     slashCommands: appState.slashCommands,
-    quickNote: appState.quickNote
+    quickNote: appState.quickNote,
+    voice: appState.voice,
+    clipper: appState.clipper
   }
 
   const legacy = raw.hotkeys
@@ -288,12 +341,16 @@ export async function saveSettings(v: string, s: Settings): Promise<void> {
       ...s,
       hotkeys: {},
       slashCommands: [],
-      quickNote: DEFAULT_QUICK_NOTE
+      quickNote: DEFAULT_QUICK_NOTE,
+      voice: DEFAULT_VOICE,
+      clipper: DEFAULT_CLIPPER
     }),
     saveAppState({
       hotkeys: s.hotkeys,
       slashCommands: s.slashCommands,
-      quickNote: s.quickNote
+      quickNote: s.quickNote,
+      voice: s.voice,
+      clipper: s.clipper
     })
   ])
 }
@@ -307,5 +364,28 @@ export const loadWorkspace = (v: string): Promise<WorkspaceState> =>
 
 export const saveWorkspace = (v: string, w: WorkspaceState): Promise<void> =>
   writeJson(workspaceFile(v), w)
+
+export const DEFAULT_HOME: HomeLayout = { version: HOME_LAYOUT_VERSION, columns: 4, widgets: [] }
+
+/**
+ * The Home board's layout, or null when this vault has never had one.
+ *
+ * Null and an empty board are different answers: the renderer seeds a starter
+ * layout for the first, and leaves the second alone — a user who removed every
+ * widget should not find them back on the next launch. The file is only read
+ * when it exists rather than merged over a default, which is what keeps those
+ * two cases apart.
+ */
+export async function loadHome(v: string): Promise<HomeLayout | null> {
+  try {
+    await fs.access(homeFile(v))
+  } catch {
+    return null
+  }
+  return readJson(homeFile(v), DEFAULT_HOME)
+}
+
+export const saveHome = (v: string, layout: HomeLayout): Promise<void> =>
+  writeJson(homeFile(v), layout)
 
 export { readJson, writeJson }

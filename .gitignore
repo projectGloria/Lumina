@@ -7,3 +7,8 @@ release/
 .vite/
 *.tsbuildinfo
 test-vault/
+
+# Speech engines and models bundled into the installer. Gigabytes of upstream
+# binaries and model weights — fetched by scripts/fetch-speech-packs.ps1, never
+# committed.
+resources/speech/

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { FileOpenRequest } from '@shared/types'
+import { isNoteTab } from '@shared/types'
 import type { VaultPayload } from '../../preload'
 import CommandPalette from './components/CommandPalette'
 import ContextMenu from './components/ContextMenu'
@@ -15,7 +16,10 @@ import SettingsModal from './components/settings/SettingsModal'
 import Sidebar from './components/Sidebar'
 import StatusBar from './components/StatusBar'
 import TitleBar from './components/TitleBar'
+import SpeechSetup from './components/SpeechSetup'
 import Toasts from './components/Toasts'
+import VoiceRecorder from './components/VoiceRecorder'
+import SpeechPlayer from './components/SpeechPlayer'
 import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
 import { Icon } from './components/Icon'
@@ -29,9 +33,12 @@ import {
   removePinnedPaths,
   requestQuickNote
 } from './lib/actions'
+import { defaultLayout } from './home/widgets/defaults'
+import { drainClips, requestClip } from './lib/clipToNote'
 import { COMMANDS, hotkeyFor, runCommand } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
 import { useEditor } from './store/editorStore'
+import { flushHomePersistence, useHome } from './store/homeStore'
 import { useProfiles } from './store/profileStore'
 import { flushSettingsPersistence, useSettings } from './store/settingsStore'
 import { toast, useUi } from './store/uiStore'
@@ -40,6 +47,8 @@ import { activePath, flushWorkspacePersistence, useWorkspace } from './store/wor
 
 export default function App(): React.JSX.Element {
   const vault = useVault((s) => s.vault)
+  const settingsReady = useSettings((s) => s.ready)
+  const voiceSetupPrompted = useSettings((s) => s.settings.voice.setupPrompted)
   const profileStatus = useProfiles((s) => s.status)
   const modal = useUi((s) => s.modal)
   const leftOpen = useWorkspace((s) => s.leftOpen)
@@ -47,6 +56,11 @@ export default function App(): React.JSX.Element {
   const leftWidth = useWorkspace((s) => s.leftWidth)
   const rightWidth = useWorkspace((s) => s.rightWidth)
   const focusMode = useWorkspace((s) => s.focusMode)
+  // Home gives the board the width of the right sidebar while it is on
+  // screen. `rightOpen` itself is untouched, so a note tab gets the workspace
+  // back exactly as it was arranged. The file list stays: moving between the
+  // board and a note is the point of having both.
+  const homeActive = useWorkspace((s) => s.tabs[s.activeTab]?.kind === 'home')
 
   /* --------------------------------------------------------- profiles */
   useEffect(() => {
@@ -73,6 +87,9 @@ export default function App(): React.JSX.Element {
       if (useVault.getState().vault?.path !== payload.vault.path) {
         useEditor.getState().reset()
       }
+      // The board is per vault, so the outgoing one's widgets must not linger
+      // long enough to be saved into the incoming vault's `home.json`.
+      useHome.getState().reset()
 
       const starred = payload.settings.starred.filter((path) => !!payload.index.notes[path])
       useSettings
@@ -81,9 +98,12 @@ export default function App(): React.JSX.Element {
       if (starred.length !== payload.settings.starred.length) {
         useSettings.getState().patch({ starred })
       }
-      const activeTabPath = payload.workspace.tabs[payload.workspace.activeTab]?.path
-      const tabs = payload.workspace.tabs.filter((tab) => !!payload.index.notes[tab.path])
-      const activeTab = Math.max(0, tabs.findIndex((tab) => tab.path === activeTabPath))
+      // A tab whose note is gone is dropped; Home names no note and is kept.
+      const activeTabState = payload.workspace.tabs[payload.workspace.activeTab]
+      const tabs = payload.workspace.tabs.filter(
+        (tab) => !isNoteTab(tab) || !!payload.index.notes[tab.path]
+      )
+      const activeTab = Math.max(0, tabs.indexOf(activeTabState))
       const workspace = { ...payload.workspace, tabs, activeTab }
       useWorkspace.getState().hydrate(workspace)
       useVault.getState().setVault(payload.vault, payload.tree, payload.index)
@@ -91,11 +111,19 @@ export default function App(): React.JSX.Element {
 
       // Load the note that was open last time so the app resumes where it was.
       const active = workspace.tabs[workspace.activeTab]
-      if (active) void useEditor.getState().open(active.path)
+      if (active && isNoteTab(active)) void useEditor.getState().open(active.path)
+
+      void useHome.getState().load(defaultLayout)
+      // Opening on Home is only ever an offer to fill an empty workspace —
+      // never something that displaces the note the user left open.
+      if (!workspace.tabs.length && payload.settings.home.openOnLaunch) {
+        useWorkspace.getState().openHome()
+      }
 
       // A quick note asked for while the picker or the passlock was up has
       // been waiting for exactly this.
       void drainQuickNotes()
+      void drainClips()
     }
 
     // A note double-clicked in the file manager. The main process has already
@@ -149,6 +177,11 @@ export default function App(): React.JSX.Element {
       // holds it until there is one.
       window.lumina.quickNote.onRequest(() => requestQuickNote()),
 
+      // A page clipped from the browser. The window may have been built by the
+      // clip itself, so this can arrive before a vault is open — `requestClip`
+      // holds it until there is one.
+      window.lumina.clipper.onClip((clip) => requestClip(clip)),
+
       window.lumina.quickNote.onStatus(({ accelerator, registered }) => {
         if (!registered) {
           toast(`${accelerator} could not be registered — another app may own it`, 'error')
@@ -164,7 +197,8 @@ export default function App(): React.JSX.Element {
         void Promise.all([
           useEditor.getState().saveAll(),
           flushSettingsPersistence(),
-          flushWorkspacePersistence()
+          flushWorkspacePersistence(),
+          flushHomePersistence()
         ])
           .finally(() => window.lumina.app.flushed())
       }),
@@ -199,10 +233,47 @@ export default function App(): React.JSX.Element {
       } catch (err) {
         toast(`Could not create the quick note: ${(err as Error).message}`, 'error')
       }
+
+      // Clips that landed during the same cold start. Drained in their own
+      // block so a failed quick note does not swallow a clipped page.
+      try {
+        const clips = await window.lumina.clipper.takePending()
+        clips.forEach(requestClip)
+      } catch (err) {
+        toast(`Could not save the clip: ${(err as Error).message}`, 'error')
+      }
     })()
 
     return () => unsubscribers.forEach((off) => off())
   }, [])
+
+  /* ------------------------------------------- first-run speech setup */
+  // Offered once, and only when it can actually be acted on: this build has to
+  // carry packs, none may be installed yet, and there has to be a vault open —
+  // asking about dictation in front of the profile picker would be noise.
+  useEffect(() => {
+    if (!vault || !settingsReady || voiceSetupPrompted) return
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const packs = await window.lumina.voice.packs()
+        if (cancelled) return
+        const bundled = packs.some((pack) => pack.bundled)
+        const ready = packs.some((pack) => pack.kind === 'engine' && pack.installed)
+        if (bundled && !ready) useUi.getState().openModal('speechSetup')
+        // A build with nothing bundled has nothing to offer, so the question is
+        // answered by never asking it.
+        else if (!bundled) useSettings.getState().patch({ voice: { setupPrompted: true } })
+      } catch {
+        // Speech setup is an offer, not a requirement; a failure here is silent.
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [vault, settingsReady, voiceSetupPrompted])
 
   /* --------------------------------------------------- system dark mode */
   useEffect(() => {
@@ -314,7 +385,7 @@ export default function App(): React.JSX.Element {
 
         <Workspace />
 
-        {rightOpen && !focusMode ? (
+        {rightOpen && !focusMode && !homeActive ? (
           <>
             <Resizer
               side="right"
@@ -347,11 +418,14 @@ export default function App(): React.JSX.Element {
       {modal === 'switcher' ? <QuickSwitcher /> : null}
       {modal === 'settings' ? <SettingsModal /> : null}
       {modal === 'graph' ? <GraphModal /> : null}
+      {modal === 'speechSetup' ? <SpeechSetup /> : null}
 
       <PromptDialog />
       <ConfirmDialog />
       <ContextMenu />
       <SaveIndicator />
+      <VoiceRecorder />
+      <SpeechPlayer />
       <Toasts />
     </div>
   )

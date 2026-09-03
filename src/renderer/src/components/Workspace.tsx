@@ -1,7 +1,9 @@
+import { isNoteTab } from '@shared/types'
 import Editor from '../editor/Editor'
 import ReadView from '../editor/ReadView'
 import Resizer from './Resizer'
 import TabBar from './TabBar'
+import HomeView from '../home/HomeView'
 import { Icon } from './Icon'
 import { countWords } from '@shared/markdown-parse'
 import { promptNewNote } from '../lib/actions'
@@ -34,7 +36,9 @@ function PrimaryPane(): React.JSX.Element {
   const tabs = useWorkspace((s) => s.tabs)
   const activeTab = useWorkspace((s) => s.activeTab)
   const tab = tabs[activeTab]
-  const path = tab?.path
+  // Home shows no note, so `path` stays undefined for it and everything keyed
+  // to a note — the editor, read mode, the word count — stays out of its way.
+  const path = tab && isNoteTab(tab) ? tab.path : undefined
   const readMode = (tab?.mode ?? 'edit') === 'read'
 
   return (
@@ -44,7 +48,9 @@ function PrimaryPane(): React.JSX.Element {
           swaps state rather than rebuilding and losing the undo history. Kept
           mounted (just hidden) in read mode so its undo history and scroll
           position survive the round trip back to editing. */}
-      {path ? (
+      {tab?.kind === 'home' ? (
+        <HomeView />
+      ) : path ? (
         <>
           <div style={{ display: readMode ? 'none' : 'contents' }}>
             <Editor path={path} />

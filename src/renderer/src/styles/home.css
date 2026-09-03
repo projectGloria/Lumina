@@ -1,0 +1,862 @@
+/* The Home dashboard: page chrome, the widget grid, and the widget cards. */
+
+.home {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* The cover bleeds to both edges, so the page's own inset lives on the content
+   rather than on the scroller. */
+.home-content {
+  padding: var(--lum-space-6) var(--lum-space-5);
+}
+.home.has-cover .home-content {
+  padding-top: var(--lum-space-5);
+}
+
+.home-header,
+.home-toolbar,
+.home-board,
+.home-board-empty {
+  width: 100%;
+  max-width: var(--lum-home-width);
+  margin: 0 auto;
+}
+
+.home-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  flex: none;
+}
+
+/* ---------------------------------------------------------------- cover */
+
+.home-cover {
+  position: relative;
+}
+
+.home-cover-image {
+  height: var(--lum-home-cover-height);
+  background-color: var(--lum-surface-hover);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position-x: center;
+  border-bottom: 1px solid var(--lum-border);
+}
+.home-cover.is-editing .home-cover-image {
+  cursor: grab;
+}
+.home-cover.is-editing .home-cover-image.is-dragging {
+  cursor: grabbing;
+}
+
+.home-cover-actions {
+  position: absolute;
+  right: var(--lum-space-4);
+  bottom: var(--lum-space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+}
+
+.home-cover-hint {
+  padding: 3px 8px;
+  border-radius: var(--lum-radius-sm);
+  /* The hint sits on a photograph, so it carries its own ground rather than
+     trusting whatever pixels happen to be behind it. */
+  background: color-mix(in srgb, var(--lum-surface) 88%, transparent);
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+}
+
+.home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--lum-space-4);
+  margin-bottom: var(--lum-space-5);
+}
+
+.home-heading {
+  min-width: 0;
+}
+
+.home-greeting {
+  margin: 0;
+  font-family: var(--lum-font-heading);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--lum-text);
+}
+
+.home-date {
+  margin: var(--lum-space-1) 0 0;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-ui);
+}
+
+.home-edit-toggle {
+  flex: none;
+}
+.home-edit-toggle.is-active {
+  background: var(--lum-accent-soft);
+  border-color: var(--lum-accent-ring);
+  color: var(--lum-accent);
+}
+
+.home-board-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--lum-space-3);
+  padding: var(--lum-space-6) var(--lum-space-4);
+  border: 1px dashed var(--lum-border-strong);
+  border-radius: var(--lum-radius-lg);
+  color: var(--lum-text-faint);
+  text-align: center;
+}
+.home-board-empty p {
+  margin: 0;
+  font-size: var(--lum-font-size-ui);
+}
+
+/* ------------------------------------------------------------- toolbar */
+
+.home-toolbar {
+  margin-bottom: var(--lum-space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-3);
+}
+
+.home-toolbar-anchor {
+  position: relative;
+  flex: none;
+}
+
+.home-toolbar-hint {
+  margin: 0;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+
+.home-picker {
+  position: absolute;
+  top: calc(100% + var(--lum-space-2));
+  left: 0;
+  z-index: 30;
+  width: 280px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: var(--lum-space-1);
+  background: var(--lum-surface);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius);
+  box-shadow: var(--lum-shadow-lg);
+}
+
+.home-picker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lum-space-3);
+  width: 100%;
+  padding: var(--lum-space-2) var(--lum-space-3);
+  border-radius: var(--lum-radius-sm);
+  text-align: left;
+}
+.home-picker-row:hover,
+.home-picker-row:focus-visible {
+  background: var(--lum-surface-hover);
+}
+
+.home-picker-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--lum-text-muted);
+}
+
+.home-picker-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-picker-name {
+  font-size: var(--lum-font-size-ui);
+  font-weight: 500;
+}
+
+.home-picker-desc {
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+}
+
+/* --------------------------------------------------------------- board */
+
+.home-board {
+  display: grid;
+  gap: var(--lum-home-gap);
+  grid-auto-rows: var(--lum-home-row-height);
+  align-items: stretch;
+  position: relative;
+}
+
+/* The drop target, moved imperatively during a drag rather than through
+   React state — see the note at the top of HomeBoard.tsx. */
+.home-ghost {
+  border: 1px dashed var(--lum-accent);
+  border-radius: var(--lum-radius-lg);
+  background: var(--lum-accent-soft);
+  pointer-events: none;
+}
+
+/* -------------------------------------------------------------- widget */
+
+.home-widget {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--lum-home-widget-bg);
+  border: 1px solid var(--lum-home-widget-border);
+  border-radius: var(--lum-radius-lg);
+  transition: border-color var(--lum-transition), box-shadow var(--lum-transition);
+}
+.home-widget:focus-visible {
+  outline: 2px solid var(--lum-accent-ring);
+  outline-offset: 2px;
+}
+.home-widget.is-editing {
+  border-style: dashed;
+}
+.home-widget.is-dragging {
+  z-index: 10;
+  box-shadow: var(--lum-shadow-lg);
+  border-style: solid;
+  border-color: var(--lum-accent);
+  /* Position is previewed with a transform, so the card must not animate
+     toward each frame's value or it lags a few frames behind the pointer. */
+  transition: none;
+}
+
+.home-widget-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  flex: none;
+  padding: var(--lum-space-3) var(--lum-space-3) var(--lum-space-2);
+  color: var(--lum-text-muted);
+}
+.home-widget.is-editing .home-widget-head {
+  cursor: grab;
+}
+.home-widget.is-dragging .home-widget-head {
+  cursor: grabbing;
+}
+
+.home-widget-icon {
+  flex: none;
+}
+
+.home-widget-grip {
+  flex: none;
+  display: inline-flex;
+  color: var(--lum-text-faint);
+  cursor: grab;
+}
+.home-widget-grip:hover {
+  color: var(--lum-text);
+}
+
+.home-widget-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--lum-font-size-small);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.home-widget-menu {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  opacity: 0;
+}
+.home-widget:hover .home-widget-menu,
+.home-widget:focus-within .home-widget-menu {
+  opacity: 1;
+}
+
+.home-widget-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--lum-space-3) var(--lum-space-3);
+  color: var(--lum-text);
+}
+
+.home-widget-empty {
+  margin: 0;
+  padding: var(--lum-space-2) 0;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-ui);
+}
+
+.home-widget-unknown {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-3);
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-ui);
+}
+.home-widget-unknown p {
+  margin: 0;
+}
+
+.home-widget-settings {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--lum-space-2);
+  margin: 0 var(--lum-space-3) var(--lum-space-2);
+  padding: var(--lum-space-3);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  background: var(--lum-bg);
+}
+
+.home-setting {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  font-size: var(--lum-font-size-ui);
+  color: var(--lum-text-muted);
+}
+.home-setting input[type='number'] {
+  width: 5ch;
+}
+
+/* The resize corner. A triangle drawn with a border keeps it to one element. */
+.home-widget-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    var(--lum-border-strong) 50%,
+    var(--lum-border-strong) 62%,
+    transparent 62%,
+    transparent 74%,
+    var(--lum-border-strong) 74%,
+    var(--lum-border-strong) 86%,
+    transparent 86%
+  );
+}
+.home-widget.is-editing {
+  position: relative;
+}
+
+/* ---------------------------------------------------------- widget bits */
+
+.home-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.home-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  width: 100%;
+  padding: var(--lum-space-1) var(--lum-space-2);
+  border-radius: var(--lum-radius-sm);
+  font-size: var(--lum-font-size-ui);
+  text-align: left;
+}
+.home-row:hover,
+.home-row:focus-visible {
+  background: var(--lum-surface-hover);
+}
+
+.home-row-icon {
+  flex: none;
+  color: var(--lum-text-muted);
+}
+
+.home-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home-row-meta {
+  flex: none;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-clock {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+}
+
+.home-clock-time {
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-clock-suffix {
+  margin-left: var(--lum-space-1);
+  font-size: var(--lum-font-size-ui);
+  color: var(--lum-text-muted);
+}
+
+.home-clock-date {
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-ui);
+}
+
+/* ------------------------------------------------------- daily note card */
+
+.home-daily {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  height: 100%;
+}
+
+.home-daily-date {
+  margin: 0;
+  font-size: var(--lum-font-size-ui);
+  font-weight: 500;
+}
+
+.home-daily-excerpt {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-ui);
+  line-height: 1.5;
+}
+
+.home-daily-action {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+/* ----------------------------------------------------------- capture card */
+
+.home-capture,
+.home-scratch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  height: 100%;
+}
+
+.home-capture-input,
+.home-scratch-input {
+  flex: 1 1 auto;
+  min-height: 48px;
+  resize: none;
+  background: var(--lum-bg);
+  font-size: var(--lum-font-size-ui);
+  line-height: 1.5;
+}
+
+.home-capture-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lum-space-2);
+}
+
+.home-capture-hint {
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+
+.home-scratch-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  align-self: flex-start;
+  max-width: 100%;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+.home-scratch-open:hover {
+  color: var(--lum-accent);
+}
+
+.home-scratch-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--lum-space-2);
+}
+
+/* -------------------------------------------------------------- tags card */
+
+.home-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lum-space-1) var(--lum-space-2);
+}
+
+.home-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--lum-tag-bg);
+  color: var(--lum-tag-text);
+  font-size: var(--lum-font-size-small);
+}
+.home-tag:hover,
+.home-tag:focus-visible {
+  background: var(--lum-accent-soft);
+  color: var(--lum-accent);
+}
+
+.home-tag-count {
+  color: var(--lum-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- stats card */
+
+.home-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: var(--lum-space-3);
+  margin: 0;
+}
+
+.home-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-stat-value {
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.home-stat-label {
+  margin: 0;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+}
+
+/* -------------------------------------------------------------- tasks card */
+
+.home-tasks {
+  gap: 2px;
+}
+
+.home-task {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-1) var(--lum-space-2);
+  border-radius: var(--lum-radius-sm);
+  font-size: var(--lum-font-size-ui);
+}
+.home-task:hover {
+  background: var(--lum-surface-hover);
+}
+
+.home-task-box {
+  flex: none;
+  margin: 0;
+  accent-color: var(--lum-accent);
+}
+
+.home-task-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+.home-task-text:hover {
+  color: var(--lum-accent);
+}
+
+.home-task.is-done .home-task-text {
+  color: var(--lum-text-faint);
+  text-decoration: line-through;
+}
+
+/* -------------------------------------------- the Home tab in settings */
+
+.settings-widget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--lum-space-3);
+}
+
+.settings-widget {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-3);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-sm);
+  background: var(--lum-bg);
+}
+
+.settings-widget-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--lum-text-muted);
+}
+
+/* --------------------------------------------------------- cover, edit in */
+
+.home-cover-edit {
+  position: absolute;
+  right: var(--lum-space-4);
+  bottom: var(--lum-space-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  padding: 4px 10px;
+  border-radius: var(--lum-radius-sm);
+  background: color-mix(in srgb, var(--lum-surface) 88%, transparent);
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+  opacity: 0;
+  transition: opacity var(--lum-transition);
+}
+.home-cover:hover .home-cover-edit,
+.home-cover-edit:focus-visible {
+  opacity: 1;
+}
+.home-cover-edit:hover {
+  color: var(--lum-text);
+}
+
+/* ----------------------------------------------------------- calendar card */
+
+.home-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  height: 100%;
+}
+
+.home-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lum-space-2);
+}
+
+.home-calendar-month {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: var(--lum-font-size-ui);
+  font-weight: 500;
+}
+.home-calendar-month:hover {
+  color: var(--lum-accent);
+}
+
+.home-calendar-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.home-calendar-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+
+.home-calendar-day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 22px;
+  border-radius: var(--lum-radius-sm);
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+.home-calendar-day:hover {
+  background: var(--lum-surface-hover);
+  color: var(--lum-text);
+}
+.home-calendar-day.is-outside {
+  color: var(--lum-text-faint);
+  opacity: 0.55;
+}
+.home-calendar-day.has-notes {
+  background: color-mix(in srgb, var(--lum-accent) 12%, transparent);
+  color: var(--lum-text);
+}
+.home-calendar-day.is-today {
+  outline: 1px solid var(--lum-accent);
+  color: var(--lum-accent);
+  font-weight: 600;
+}
+
+.home-calendar-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--lum-accent);
+}
+
+/* ------------------------------------------------------------ activity card */
+
+.home-heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  height: 100%;
+}
+
+.home-heatmap-grid {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 3px;
+  min-height: 0;
+}
+
+.home-heatmap-week {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  min-height: 0;
+}
+
+.home-heatmap-cell {
+  border-radius: 2px;
+  background: var(--lum-home-heat-0);
+  min-height: 6px;
+}
+.home-heatmap-cell[data-level='1'] { background: var(--lum-home-heat-1); }
+.home-heatmap-cell[data-level='2'] { background: var(--lum-home-heat-2); }
+.home-heatmap-cell[data-level='3'] { background: var(--lum-home-heat-3); }
+.home-heatmap-cell[data-level='4'] { background: var(--lum-home-heat-4); }
+/* Days that have not happened yet are drawn, so the week keeps its shape. */
+.home-heatmap-cell.is-ahead {
+  opacity: 0.35;
+}
+
+.home-heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+.home-heatmap-legend .home-heatmap-cell {
+  width: 9px;
+  height: 9px;
+  min-height: 0;
+}
+.home-heatmap-legend span:first-child {
+  margin-right: var(--lum-space-1);
+}
+.home-heatmap-legend span:last-child {
+  margin-left: var(--lum-space-1);
+}
+
+/* ------------------------------------------------------------ progress card */
+
+.home-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lum-space-3);
+  flex-wrap: wrap;
+  height: 100%;
+}
+
+.home-progress-ring {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  /* The arc starts at the top rather than at three o'clock. */
+  transform: rotate(-90deg);
+}
+
+.home-progress-track,
+.home-progress-value {
+  fill: none;
+  stroke-width: 8;
+}
+.home-progress-track {
+  stroke: var(--lum-border);
+}
+.home-progress-value {
+  stroke: var(--lum-accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--lum-transition);
+}
+
+.home-progress-percent {
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.home-progress-label {
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-small);
+}
+
+/* --------------------------------------------------------------- graph card */
+
+/* `GraphView` sizes itself from its host and expects to be a flex child. */
+.home-graph {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  border-radius: var(--lum-radius-sm);
+  overflow: hidden;
+}
+.home-graph .graph-host {
+  background: transparent;
+}

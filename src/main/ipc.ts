@@ -1,16 +1,22 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { isMarkdownPath } from '@shared/markdown-parse'
+import type { ClipPayload } from '@shared/clip'
 import type {
+  ClipperSettings,
+  ClipperStatus,
   FileOpenRequest,
   SearchOptions,
   Settings,
   SettingsPreset,
   ThemeFile,
+  TranscribeResponse,
   VaultChange,
+  VoiceToolStatus,
+  HomeLayout,
   WorkspaceState
 } from '@shared/types'
 import {
@@ -24,6 +30,23 @@ import {
 } from './indexer'
 import { forgetLinkPreviews, linkPreview } from './linkPreview'
 import { listSystemFonts } from './fonts'
+import { describeMissing, locateVoiceTools, transcribe, type VoiceTools } from './transcribe'
+import { ensureWhisperServer, stopWhisperServer, transcribeLive } from './whisperServer'
+import {
+  importSpeechPack,
+  installSpeechPack,
+  listSpeechPacks,
+  removeSpeechPack,
+  type SpeechPack
+} from './speechPacks'
+import {
+  clipServerRunning,
+  DEFAULT_CLIP_PORT,
+  generateClipToken,
+  startClipServer,
+  stopClipServer
+} from './clipServer'
+import { saveClipImage } from './clipImages'
 import { resolveFile, toRequest } from './openFile'
 import { samePath } from './paths'
 import {
@@ -43,6 +66,7 @@ import {
   ensureLuminaDir,
   loadAppState,
   loadSettings,
+  loadHome,
   loadTheme,
   loadWorkspace,
   normalizeSettings,
@@ -50,6 +74,7 @@ import {
   rememberVault,
   saveSettings,
   saveAppState,
+  saveHome,
   saveTheme,
   saveWorkspace
 } from './settings'
@@ -78,6 +103,48 @@ let win: BrowserWindow | null = null
  * them that live outside the renderer. Set once at startup.
  */
 let onSettingsSaved: ((settings: Settings) => void) | null = null
+
+/**
+ * Why the clip listener is not up, kept so settings can show it.
+ *
+ * The usual cause is a port already taken, which is a thing the user has to be
+ * told about — a clipper that silently is not listening looks like a broken
+ * extension.
+ */
+let clipStartError: string | null = null
+
+/**
+ * Bring the clip listener in line with the settings.
+ *
+ * Takes `ClipperSettings` rather than the whole `Settings` because these are
+ * app-level: the listener comes up at boot from `lumina.json`, before any vault
+ * is open and even when the app started into the tray with no window. That is
+ * the point — the extension can reach Lumina whenever Lumina is running, and a
+ * clip arriving with no vault yet is held by `drainClips` in the renderer
+ * rather than refused at the socket.
+ *
+ * Called again after every settings save, so toggling it takes effect without
+ * a restart and turning it off actually closes the socket.
+ */
+export async function syncClipServer(clipper: ClipperSettings): Promise<void> {
+  const { enabled, port, token } = clipper
+  if (!enabled || !token) {
+    clipStartError = null
+    await stopClipServer()
+    return
+  }
+  clipStartError = await startClipServer({
+    port,
+    token,
+    onClip: async (clip) => {
+      pushClip(clip)
+      // The extension is told the clip was accepted, not that the note was
+      // written: the renderer may still be starting, and making the browser
+      // wait on that would time out the popup for no benefit.
+      return { ok: true }
+    }
+  })
+}
 
 export function onSettingsChanged(handler: (settings: Settings) => void): void {
   onSettingsSaved = handler
@@ -124,6 +191,30 @@ export function pushQuickNote(): void {
 /** Tell the renderer a shortcut change did or did not take, so it can say so. */
 export function reportQuickNoteStatus(accelerator: string, registered: boolean): void {
   send(CH.quickNoteStatus, { accelerator, registered })
+}
+
+/**
+ * Clips waiting for the renderer.
+ *
+ * Same shape as the quick note and for the same reason: a clip can land while
+ * Lumina is idling in the tray with no window at all. These are queued rather
+ * than counted, because unlike a keypress each one carries a page — dropping
+ * the second of two clips would silently lose a note the user watched the
+ * browser say it had sent.
+ */
+const pendingClips: ClipPayload[] = []
+
+/** Raised by `index.ts` so a clip can build the window before it is delivered. */
+let onClipArrived: (() => void) | null = null
+
+export function setClipArrivedHandler(handler: () => void): void {
+  onClipArrived = handler
+}
+
+export function pushClip(clip: ClipPayload): void {
+  if (rendererListening && win && !win.isDestroyed()) send(CH.clipArrived, clip)
+  else pendingClips.push(clip)
+  onClipArrived?.()
 }
 
 function pushFileRequest(request: FileOpenRequest): void {
@@ -442,10 +533,103 @@ export function registerIpc(): void {
     // main process (a global accelerator, a tray icon, a login item), so they
     // have to be re-applied on every save rather than only at startup.
     linkPreviewsEnabled = settings.editor.linkPreviews
+    await syncClipServer(settings.clipper)
     onSettingsSaved?.(settings)
     return true
   })
   ipcMain.handle(CH.fontsList, () => listSystemFonts())
+
+  /* ---------------------------------------------------------- web clipper */
+
+  ipcMain.handle(CH.clipPending, () => {
+    const drained = pendingClips.splice(0)
+    return drained
+  })
+
+  ipcMain.handle(CH.clipStatus, async (): Promise<ClipperStatus> => {
+    const root = getRoot()
+    const settings = root ? await loadSettings(root) : null
+    const port = settings?.clipper.port ?? DEFAULT_CLIP_PORT
+    return { running: clipServerRunning(), port, error: clipStartError }
+  })
+
+  /**
+   * A new token, which also invalidates whatever the extension is holding.
+   * Returned rather than pushed so the settings panel can show it immediately.
+   */
+  ipcMain.handle(CH.clipRegenerateToken, () => generateClipToken())
+
+  ipcMain.handle(CH.clipSaveImage, (_e, folder: string, url: string) =>
+    saveClipImage(folder, url)
+  )
+
+  /* ------------------------------------------------ voice notes and dictation */
+
+  const voiceTools = async (): Promise<VoiceTools> => {
+    const root = getRoot()
+    const settings = root ? await loadSettings(root) : null
+    const voice = settings?.voice
+    return locateVoiceTools(app.getPath('userData'), {
+      binaryPath: voice?.binaryPath || undefined,
+      modelPath: voice?.modelPath || undefined
+    })
+  }
+
+  ipcMain.handle(CH.voiceStatus, async (): Promise<VoiceToolStatus> => {
+    const tools = await voiceTools()
+    const reason = describeMissing(tools)
+    return { available: !reason, reason, folder: tools.folder, binary: tools.binary, model: tools.model }
+  })
+
+  ipcMain.handle(
+    CH.voiceTranscribe,
+    async (_e, wav: ArrayBuffer, language?: string): Promise<TranscribeResponse> =>
+      transcribe(wav, await voiceTools(), { language })
+  )
+
+  /* Live dictation keeps the model resident; see `whisperServer.ts` for why a
+     process per phrase cannot keep up. */
+  ipcMain.handle(CH.voiceLiveStart, async (): Promise<string | null> =>
+    ensureWhisperServer(await voiceTools())
+  )
+  ipcMain.handle(CH.voiceLiveChunk, async (_e, wav: ArrayBuffer, language?: string) => {
+    const settings = getRoot() ? await loadSettings(getRoot() as string) : null
+    return transcribeLive(wav, language ?? settings?.voice.language)
+  })
+  ipcMain.handle(CH.voiceLiveStop, () => stopWhisperServer())
+
+  /* ------------------------------------------------ bundled speech packs */
+
+  // `resourcesPath` is the packaged app's resources folder. In development it
+  // points inside node_modules/electron, where nothing is bundled — so a dev
+  // run correctly reports no packs rather than pretending.
+  const packRoot = (): string => process.resourcesPath
+
+  ipcMain.handle(CH.speechPacks, (): Promise<SpeechPack[]> =>
+    listSpeechPacks(app.getPath('userData'), packRoot())
+  )
+
+  ipcMain.handle(CH.speechInstall, (_e, id: string) =>
+    installSpeechPack(id, app.getPath('userData'), packRoot(), (progress) =>
+      send(CH.speechProgress, progress)
+    )
+  )
+
+  ipcMain.handle(CH.speechImport, async () => {
+    if (!win) return 'No window'
+    const picked = await dialog.showOpenDialog(win, {
+      title: 'Choose a folder holding a speech engine or model',
+      properties: ['openDirectory']
+    })
+    if (picked.canceled || !picked.filePaths[0]) return null
+    return importSpeechPack(picked.filePaths[0], app.getPath('userData'), (progress) =>
+      send(CH.speechProgress, progress)
+    )
+  })
+
+  ipcMain.handle(CH.speechRemove, (_e, id: string) =>
+    removeSpeechPack(id, app.getPath('userData'))
+  )
 
   ipcMain.handle(CH.settingsProfilesList, async () => (await loadAppState()).settingsProfiles)
   ipcMain.handle(
@@ -545,6 +729,20 @@ export function registerIpc(): void {
   ipcMain.handle(CH.workspaceSet, async (_e, ws: WorkspaceState) => {
     const root = getRoot()
     if (root) await saveWorkspace(root, ws)
+    return true
+  })
+
+  /* home dashboard ------------------------------------------------------ */
+  // Null means this vault has never had a board, which is the renderer's cue
+  // to seed a starter layout rather than show an empty page.
+  ipcMain.handle(CH.homeGet, async () => {
+    const root = getRoot()
+    return root ? loadHome(root) : null
+  })
+
+  ipcMain.handle(CH.homeSet, async (_e, layout: HomeLayout) => {
+    const root = getRoot()
+    if (root) await saveHome(root, layout)
     return true
   })
 

@@ -51,6 +51,10 @@ export const CH = {
   workspaceGet: 'workspace:get',
   workspaceSet: 'workspace:set',
 
+  // the home dashboard's widget layout
+  homeGet: 'home:get',
+  homeSet: 'home:set',
+
   // files handed to us by the OS (double-click, "open with")
   fileOpen: 'file:open',
   fileOpened: 'file:opened',
@@ -78,6 +82,26 @@ export const CH = {
   profileUnlock: 'profile:unlock',
   profileSwitch: 'profile:switch',
   profileSignOut: 'profile:signOut',
+
+  // the web clipper
+  clipArrived: 'clip:arrived',
+  clipPending: 'clip:pending',
+  clipStatus: 'clip:status',
+  clipRegenerateToken: 'clip:regenerateToken',
+  clipSaveImage: 'clip:saveImage',
+  clipDone: 'clip:done',
+
+  // voice notes and dictation
+  voiceStatus: 'voice:status',
+  voiceTranscribe: 'voice:transcribe',
+  voiceLiveStart: 'voice:liveStart',
+  voiceLiveChunk: 'voice:liveChunk',
+  voiceLiveStop: 'voice:liveStop',
+  speechPacks: 'speech:packs',
+  speechInstall: 'speech:install',
+  speechImport: 'speech:import',
+  speechRemove: 'speech:remove',
+  speechProgress: 'speech:progress',
 
   // misc
   attachmentSave: 'attachment:save',

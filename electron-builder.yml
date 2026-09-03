@@ -15,6 +15,15 @@ files:
 extraResources:
   - from: resources/icon.ico
     to: icon.ico
+  # Speech engines and models, carried inside the installer so a machine with
+  # no network can still dictate. Populated by scripts/fetch-speech-packs.ps1;
+  # when the folder is absent the app simply reports no packs bundled and the
+  # build is ~1.8 GB smaller, which is what a CI build without them produces.
+  - from: resources/speech
+    to: speech
+    filter:
+      - "**/*"
+
 
 asar: true
 compression: normal

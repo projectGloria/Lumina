@@ -7,6 +7,7 @@ import './styles/tokens.css'
 import './styles/base.css'
 import './styles/markdown.css'
 import './styles/panels.css'
+import './styles/home.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

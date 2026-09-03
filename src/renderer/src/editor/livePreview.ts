@@ -38,7 +38,8 @@ import {
   standaloneLink,
   type LinkMetadata
 } from '@shared/linkPreview'
-import { parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { decodeTarget, parseFrontmatter, resolveLink } from '@shared/markdown-parse'
+import { isAudioTarget } from '@shared/audio'
 import { createIconElement, type IconName } from '../components/Icon'
 import { useSettings } from '../store/settingsStore'
 import { aliasMap, knownPaths } from '../store/vaultStore'
@@ -199,6 +200,62 @@ class ImageWidget extends WidgetType {
     img.addEventListener('error', next)
     next()
     return img
+  }
+}
+
+/**
+ * A voice note, drawn as a player.
+ *
+ * Audio has no markdown syntax of its own, so a recording is written with the
+ * image form — `![0:14](attachments/voice/Voice ….webm)` — and separated from a
+ * real image here by extension, the same way `ImageWidget` guesses which folder
+ * an attachment lives in. The alt text carries the duration, which is the only
+ * thing worth reading when the file will not load.
+ */
+class AudioWidget extends WidgetType {
+  constructor(
+    readonly target: string,
+    readonly label: string,
+    readonly from: string
+  ) {
+    super()
+  }
+  eq(other: AudioWidget): boolean {
+    return other.target === this.target && other.label === this.label
+  }
+  // Clicks, drags on the scrubber and the keyboard all belong to the player.
+  ignoreEvent(): boolean {
+    return true
+  }
+  toDOM(): HTMLElement {
+    const wrap = document.createElement('span')
+    wrap.className = 'cm-embed-audio'
+
+    const audio = document.createElement('audio')
+    audio.controls = true
+    audio.preload = 'metadata'
+
+    const candidates = attachmentCandidates(this.target, this.from)
+    let attempt = 0
+    const next = (): void => {
+      if (attempt >= candidates.length) {
+        wrap.classList.add('is-missing')
+        wrap.title = `${this.target} (not found)`
+        return
+      }
+      audio.src = vaultUrl(candidates[attempt++])
+    }
+    audio.addEventListener('error', next)
+    next()
+
+    wrap.appendChild(audio)
+    if (this.label) {
+      const caption = document.createElement('span')
+      caption.className = 'cm-embed-audio-label'
+      caption.textContent = this.label
+      wrap.appendChild(caption)
+    }
+    return wrap
   }
 }
 
@@ -908,11 +965,12 @@ function buildDecorations(view: EditorView): DecorationSet {
           const target = inner.split('|')[0].split('#')[0].trim()
           const embed = state.sliceDoc(start, start + 1) === '!'
 
-          if (embed && isImageTarget(target) && !isRaw(start)) {
+          if (embed && !isRaw(start) && (isImageTarget(target) || isAudioTarget(target))) {
             const alias = inner.includes('|') ? inner.split('|')[1] : ''
-            ranges.push(
-              Decoration.replace({ widget: new ImageWidget(target, alias, from) }).range(start, end)
-            )
+            const widget = isAudioTarget(target)
+              ? new AudioWidget(target, alias, from)
+              : new ImageWidget(target, alias, from)
+            ranges.push(Decoration.replace({ widget }).range(start, end))
             return false
           }
 
@@ -957,11 +1015,18 @@ function buildDecorations(view: EditorView): DecorationSet {
         if (name === 'Image') {
           if (isRaw(start)) return undefined
           const text = state.sliceDoc(start, end)
-          const m = text.match(/^!\[([^\]]*)\]\(([^)\s]+)/)
-          if (m && !/^[a-z][a-z0-9+.-]*:/i.test(m[2])) {
-            ranges.push(
-              Decoration.replace({ widget: new ImageWidget(m[2], m[1], from) }).range(start, end)
-            )
+          // Two destination forms reach here: the bare one this editor writes,
+          // percent-encoded so a space cannot end it early, and the `<...>`
+          // form CommonMark allows, which other editors emit for the same
+          // reason. Both are URLs, so both are decoded back to a vault path.
+          const m = text.match(/^!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^)\s]+))/)
+          const target = m ? (m[2] ?? m[3]) : undefined
+          if (target && !/^[a-z][a-z0-9+.-]*:/i.test(target)) {
+            const path = decodeTarget(target)
+            const widget = isAudioTarget(path)
+              ? new AudioWidget(path, m![1], from)
+              : new ImageWidget(path, m![1], from)
+            ranges.push(Decoration.replace({ widget }).range(start, end))
             return false
           }
           return undefined

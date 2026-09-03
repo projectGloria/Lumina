@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lumina Web Clipper</title>
+    <link rel="stylesheet" href="popup.css" />
+    <style>
+      body {
+        width: auto;
+        max-width: 520px;
+        padding: 26px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 17px;
+      }
+      .lede {
+        margin: 0 0 20px;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      ol {
+        margin: 0 0 20px;
+        padding-left: 20px;
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.7;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+      }
+      .row .field {
+        flex: 1 1 auto;
+      }
+      .secondary {
+        padding: 7px 13px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Lumina Web Clipper</h1>
+    <p class="lede">
+      Clips go straight to Lumina on this machine. Nothing is sent anywhere else.
+    </p>
+
+    <ol>
+      <li>In Lumina, open <strong>Settings → Web clipper</strong> and switch it on.</li>
+      <li>Copy the token it shows and paste it below.</li>
+      <li>Press <strong>Test connection</strong>.</li>
+    </ol>
+
+    <label class="field">
+      <span>Port</span>
+      <input id="port" type="number" min="1024" max="65535" />
+    </label>
+
+    <label class="field">
+      <span>Token</span>
+      <input id="token" type="password" autocomplete="off" spellcheck="false" />
+    </label>
+
+    <div class="row">
+      <button id="test" class="secondary">Test connection</button>
+      <button id="save" class="primary" style="width: auto">Save</button>
+    </div>
+    <p id="status" class="status" role="status"></p>
+
+    <script src="lumina.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

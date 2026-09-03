@@ -307,6 +307,38 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
     return best
   }
 
+  /**
+   * Zoom, attached by hand rather than through `onWheel`.
+   *
+   * React registers `wheel` at its root container as a *passive* listener, so
+   * `preventDefault()` inside a synthetic `onWheel` is refused — Chromium logs
+   * "Unable to preventDefault inside passive event listener invocation" and
+   * the surface scrolls instead of zooming. Only a listener registered with
+   * `{ passive: false }` may cancel the event, which is what makes the modal's
+   * "scroll to zoom" true.
+   */
+  useEffect(() => {
+    const el = canvas.current
+    if (!el) return
+
+    const onWheel = (e: WheelEvent): void => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      const factor = Math.exp(-e.deltaY * 0.0015)
+      const k = Math.max(0.15, Math.min(5, view.current.k * factor))
+      // Zoom toward the pointer rather than the canvas centre.
+      view.current.x = mx - ((mx - view.current.x) * k) / view.current.k
+      view.current.y = my - ((my - view.current.y) * k) / view.current.k
+      view.current.k = k
+      draw()
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [draw])
+
   return (
     <div className="graph-host" ref={host}>
       <canvas
@@ -376,19 +408,6 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
           hovered.current = null
           setHoverLabel(null)
           panning.current = null
-          draw()
-        }}
-        onWheel={(e) => {
-          e.preventDefault()
-          const rect = canvas.current!.getBoundingClientRect()
-          const mx = e.clientX - rect.left
-          const my = e.clientY - rect.top
-          const factor = Math.exp(-e.deltaY * 0.0015)
-          const k = Math.max(0.15, Math.min(5, view.current.k * factor))
-          // Zoom toward the pointer rather than the canvas centre.
-          view.current.x = mx - ((mx - view.current.x) * k) / view.current.k
-          view.current.y = my - ((my - view.current.y) * k) / view.current.k
-          view.current.k = k
           draw()
         }}
       />

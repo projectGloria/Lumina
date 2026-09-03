@@ -7,7 +7,9 @@ import { cacheFile, readJson, writeJson } from './settings'
 import { getRoot, listNotes, requireRoot } from './vault'
 import { loadSearch, removeDoc, resetSearch, serializeSearch, upsertDoc } from './search'
 
-const CACHE_VERSION = 4
+// 5: `NoteIndexEntry.tasks`. A stale entry would read back without the field,
+// so every bump here is what stops the index serving half a note.
+const CACHE_VERSION = 5
 
 interface CacheShape {
   version: number
