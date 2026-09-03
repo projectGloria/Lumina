@@ -92,15 +92,50 @@ export async function closeOtherTabs(index: number): Promise<void> {
 }
 
 /**
- * Drop a note's buffer once no tab shows it any more.
+ * Buffers something other than a tab is keeping open.
+ *
+ * A tab is not the only reason a note has to stay loaded: the Home board's
+ * scratch pad edits one for as long as its card is on screen, and
+ * `updateNoteContent` needs one for the length of a write. Without this,
+ * `releaseNote` closed any buffer no *tab* held — so ticking a task that lives
+ * in the scratch note closed the pad's buffer out from under it, leaving a
+ * blank disabled box until the widget was remounted.
+ *
+ * Counted rather than flagged, because holders come and go independently and
+ * only the last one out should let the buffer close.
+ */
+const holds = new Map<string, number>()
+
+/** Keep `path`'s buffer open until the matching `dropNote`. */
+export function holdNote(path: string): void {
+  holds.set(path, (holds.get(path) ?? 0) + 1)
+}
+
+/** Give up one hold on `path`. Does not itself close anything. */
+export function dropNote(path: string): void {
+  const left = (holds.get(path) ?? 0) - 1
+  if (left > 0) holds.set(path, left)
+  else holds.delete(path)
+}
+
+/** Whether anything still needs this buffer: a tab, or a holder. */
+function wanted(path: string): boolean {
+  if ((holds.get(path) ?? 0) > 0) return true
+  return useWorkspace.getState().tabs.some((tab) => tab.path === path)
+}
+
+/**
+ * Drop a note's buffer once nothing shows it any more.
  *
  * The same note can sit in two tabs, so the check is against what is left
- * rather than against the tab that just went away.
+ * rather than against the tab that just went away — and it is made again after
+ * the save, because a tab can open or a widget mount while the write is in
+ * flight.
  */
 export async function releaseNote(path: string): Promise<void> {
-  if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
+  if (wanted(path)) return
   await useEditor.getState().save(path)
-  if (useWorkspace.getState().tabs.some((tab) => tab.path === path)) return
+  if (wanted(path)) return
   useEditor.getState().close(path)
 }
 
@@ -283,18 +318,26 @@ export async function updateNoteContent(
   path: string,
   edit: (content: string) => string
 ): Promise<boolean> {
-  await useEditor.getState().open(path)
-  const buffer = useEditor.getState().buffers[path]
-  if (!buffer || buffer.loading || buffer.error) {
-    toast(buffer?.error ?? `Could not read ${basename(path)}`, 'error')
-    await releaseNote(path)
-    return false
-  }
+  // Held for the length of the write. A tab closing or a widget unmounting
+  // part way through must not close the buffer being written through, and two
+  // of these running on one note must not close it under each other.
+  holdNote(path)
+  try {
+    await useEditor.getState().open(path)
+    const buffer = useEditor.getState().buffers[path]
+    if (!buffer || buffer.loading || buffer.error) {
+      toast(buffer?.error ?? `Could not read ${basename(path)}`, 'error')
+      return false
+    }
 
-  useEditor.getState().setContent(path, edit(buffer.content))
-  await useEditor.getState().save(path)
-  await releaseNote(path)
-  return true
+    useEditor.getState().setContent(path, edit(buffer.content))
+    await useEditor.getState().save(path)
+    return true
+  } finally {
+    // The hold goes first, or the release below finds the note still held.
+    dropNote(path)
+    await releaseNote(path)
+  }
 }
 
 export function promptNewNote(folder = ''): void {

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Icon } from '@/components/Icon'
-import { ensureNote, openNote, releaseNote } from '@/lib/actions'
+import { dropNote, ensureNote, holdNote, openNote, releaseNote } from '@/lib/actions'
 import { useEditor } from '@/store/editorStore'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
@@ -23,10 +23,19 @@ function Scratch({ config }: WidgetProps<ScratchConfig>): React.JSX.Element {
   const buffer = useEditor((s) => s.buffers[path])
 
   useEffect(() => {
+    // Held for as long as the card is on screen: this pad is a reason for the
+    // buffer to stay open in its own right, and without the hold anything that
+    // released the note — ticking one of its tasks from the board, say —
+    // closed the buffer this textarea is bound to.
+    holdNote(path)
     void useEditor.getState().open(path)
-    // The buffer is only released if no tab is holding the note, so closing
-    // the board never drops text the editor still has on screen.
-    return () => void releaseNote(path)
+    // Released on the way out, which only closes the buffer if no tab and no
+    // other holder still wants it, so closing the board never drops text the
+    // editor has on screen.
+    return () => {
+      dropNote(path)
+      void releaseNote(path)
+    }
   }, [path])
 
   if (buffer?.error) {
