@@ -22,7 +22,12 @@ export default function AddWidgetPicker({
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      // The board listens for Escape on `window`, which is downstream of
+      // `document` — without this, one press closes the picker *and* leaves
+      // edit mode.
+      e.stopPropagation()
+      onClose()
     }
     // Deferred a tick, or the click that opened the picker closes it again.
     const timer = setTimeout(() => document.addEventListener('mousedown', onDown))

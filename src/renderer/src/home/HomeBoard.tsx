@@ -42,6 +42,16 @@ const columnsFor = (width: number): number =>
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), Math.max(min, max))
 
+/**
+ * Whether a control owns the keys being pressed inside it.
+ *
+ * Edit mode binds the arrow keys and Delete on the card, and a card's key
+ * events include everything that bubbled up from inside it — so Backspace in
+ * the scratch pad or the capture box used to delete the widget being typed in.
+ */
+const ownsKeys = (el: HTMLElement): boolean =>
+  el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
+
 interface Drag {
   mode: 'move' | 'resize'
   pointerId: number
@@ -274,6 +284,8 @@ export default function HomeBoard(): React.JSX.Element {
 
   const nudge = (event: React.KeyboardEvent, widget: HomeWidget): void => {
     if (!editing) return
+    const from = event.target as HTMLElement
+    if (from !== event.currentTarget && ownsKeys(from)) return
     const steps: Record<string, [number, number]> = {
       ArrowLeft: [-1, 0],
       ArrowRight: [1, 0],
