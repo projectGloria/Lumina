@@ -55,10 +55,21 @@ Note that `tests/starter-vault.test.ts` asserts that every wikilink in
 starter notes can turn the suite red for reasons that have nothing to do with the
 parser.
 
-The `@shared/*` and `@/*` aliases are declared in four places —
-`electron.vite.config.ts` (once per bundle), `tsconfig.node.json`,
-`tsconfig.web.json` and `vitest.config.ts`. A new alias has to be added to all
-of them or something (usually the tests, usually last) breaks.
+`@shared/*` is declared in four places — `electron.vite.config.ts` (once per
+bundle), `tsconfig.node.json`, `tsconfig.web.json` and `vitest.config.ts`. A
+new alias of that kind has to be added to all of them or something (usually the
+tests, usually last) breaks.
+
+`@/*` is deliberately **not** in all four. Only the renderer bundle,
+`tsconfig.web.json` and `vitest.config.ts` declare it; `tsconfig.node.json`
+covers main, preload, shared *and* `tests/`, so giving it `@/*` would make
+`import … from '@/store/…'` typecheck inside the main process, where the
+renderer must never be reached. The price is an asymmetry worth knowing about
+before you plan a test: vitest would resolve `@/` from `tests/`, but the
+typecheck would not, so `tests/` cannot import renderer code even when it needs
+no DOM. A rule worth testing therefore belongs in `src/shared` — which is where
+the pure half is meant to live anyway. `homeLayout.withWidgets` is a layout rule
+rather than a method on `homeStore` for exactly this reason.
 
 `npm run verify:release` (`scripts/verify-release.ps1`, pwsh) refuses unsigned
 artifacts unless `LUMINA_ALLOW_UNSIGNED=1`, which is for local diagnostics only.
