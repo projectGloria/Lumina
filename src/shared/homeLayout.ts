@@ -26,6 +26,15 @@ export interface GridSize {
 /** Widest board anyone can author, so a hand-edited `columns` cannot explode the grid. */
 export const MAX_COLUMNS = 12
 
+/**
+ * Tallest a single widget may be, for the same reason.
+ *
+ * `home.json` is a file a user can edit, and an `h` of 99999 is not only an
+ * absurd card — it makes `findFreeSpot` scan a hundred thousand rows on every
+ * add, because the board's bottom edge is derived from it.
+ */
+export const MAX_ROWS = 24
+
 export function rectsOverlap(a: GridRect, b: GridRect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
 }
@@ -43,7 +52,10 @@ export function clampToColumns(
 ): HomeWidget {
   const cols = Math.max(1, Math.round(columns))
   const w = Math.min(Math.max(Math.round(widget.w), Math.max(1, min.w)), cols)
-  const h = Math.max(Math.round(widget.h), Math.max(1, min.h))
+  const h = Math.min(
+    Math.max(Math.round(widget.h), Math.max(1, min.h)),
+    Math.max(MAX_ROWS, min.h)
+  )
   const x = Math.min(Math.max(Math.round(widget.x), 0), cols - w)
   const y = Math.max(Math.round(widget.y), 0)
   if (widget.x === x && widget.y === y && widget.w === w && widget.h === h) return widget

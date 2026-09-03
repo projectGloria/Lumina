@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { HomeLayout, HomeWidget } from '@shared/types'
 import { HOME_LAYOUT_VERSION } from '@shared/types'
 import {
+  MAX_ROWS,
   canArrange,
   clampToColumns,
   compact,
@@ -276,5 +277,25 @@ describe('canArrange', () => {
     // Widening the stored board instead keeps every rectangle intact.
     expect(fitToColumns(wide, 4)).toEqual(wide)
     expect(canArrange(4, 4)).toBe(true)
+  })
+})
+
+describe('clampToColumns, hand-edited extremes', () => {
+  it('bounds a widget height a person typed into the file', () => {
+    expect(clampToColumns(widget('a', 0, 0, 1, 99999), 4).h).toBe(MAX_ROWS)
+  })
+
+  it('still honours a minimum taller than the bound, if one is ever declared', () => {
+    expect(clampToColumns(widget('a', 0, 0, 1, 99999), 4, { w: 1, h: 40 }).h).toBe(40)
+  })
+
+  it('leaves an ordinary height alone', () => {
+    expect(clampToColumns(widget('a', 0, 0, 2, 3), 4).h).toBe(3)
+  })
+
+  // The bound is what keeps this scan from running a hundred thousand rows.
+  it('keeps the board bottom finite, so placing a widget stays cheap', () => {
+    const board = [clampToColumns(widget('a', 0, 0, 4, 99999), 4)]
+    expect(findFreeSpot(board, { w: 1, h: 1 }, 4)).toEqual({ x: 0, y: MAX_ROWS })
   })
 })

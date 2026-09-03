@@ -57,6 +57,16 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingLayout: HomeLayout | null = null
 let persistChain: Promise<void> = Promise.resolve()
 
+/**
+ * Which vault the board in the store belongs to.
+ *
+ * Bumped by `reset()`, and captured by `load()` across its await — the same
+ * guard `editorStore` keeps, for the same reason. Without it a read still in
+ * flight when a second vault opens lands as the second vault's hydrated board,
+ * and the next commit writes one vault's widgets into the other's `home.json`.
+ */
+let vaultGeneration = 0
+
 /** Save the board back to `.lumina/home.json`, coalesced. */
 function persist(state: HomeStore): void {
   if (!state.hydrated) return
@@ -103,6 +113,7 @@ export const useHome = create<HomeStore>((set, get) => {
      * file with no widgets in it, and stays empty.
      */
     load: async (seed) => {
+      const generation = vaultGeneration
       let stored: HomeLayout | null = null
       try {
         stored = await window.lumina.home.get()
@@ -110,6 +121,9 @@ export const useHome = create<HomeStore>((set, get) => {
         // A board that cannot be read is a board the user rearranges again,
         // not a reason to fail opening the vault.
       }
+      // A different vault opened while this read was in flight; its own load
+      // is the one that gets to say what the board is.
+      if (generation !== vaultGeneration) return
 
       if (stored) {
         // `home.json` is a plain file a user may have edited, so nothing about
@@ -126,7 +140,15 @@ export const useHome = create<HomeStore>((set, get) => {
 
     /** Drop the board on the way out of a vault; layouts are not shared. */
     reset: () => {
+      vaultGeneration++
       pendingLayout = null
+      // The timer would only find `pendingLayout` empty and write nothing, but
+      // leaving it armed means a stray write scheduled against the vault being
+      // left can fire while the next one is loading.
+      if (persistTimer) {
+        clearTimeout(persistTimer)
+        persistTimer = null
+      }
       set({ layout: emptyLayout(), hydrated: false, editing: false })
     },
 
