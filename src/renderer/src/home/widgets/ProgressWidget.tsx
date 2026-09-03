@@ -88,6 +88,7 @@ export const progressWidget = defineWidget<ProgressConfig>({
   defaultConfig: { folder: '' },
   Component: Progress,
   Settings: ProgressSettings,
+  // Moved by a rename, and left alone by a delete, for the reason the tasks
+  // card gives.
   rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to)
-  // No `forgetPaths`, for the reason the tasks card gives.
 })

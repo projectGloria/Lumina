@@ -449,7 +449,6 @@ export function confirmDelete(path: string): void {
       removeColorOverrides(path)
       removeCustomIcons(path)
       removePinnedPaths(path)
-      removeWidgetPaths(path)
     }
   })
 }
@@ -629,36 +628,26 @@ export function registerWidgetPathHooks(lookup: (type: string) => WidgetPathHook
 }
 
 /**
- * Ask every widget on the board to update the vault paths it stores.
+ * Ask every widget on the board to move the vault paths it stores.
  *
  * `home.json` holds paths — a scratch pad's note, a task list's folder — so a
  * board is one more thing a rename has to move, alongside buffers, tabs and
  * the path-keyed settings maps. Which of its options are paths is the widget's
- * own business, declared as `rebasePaths` / `forgetPaths` on its definition,
- * so a widget added later is covered by having said so rather than by someone
- * remembering to come back here.
+ * own business, declared as `rebasePaths` on its definition, so a widget added
+ * later is covered by having said so rather than by someone remembering to
+ * come back here.
  *
- * `patch` returning null for every widget writes nothing at all, which is what
- * keeps a rename elsewhere in the vault from touching the board.
+ * A widget returning null writes nothing, which is what keeps a rename
+ * elsewhere in the vault from touching the board at all. There is no delete
+ * counterpart on purpose: a path that has gone is shown by the card that
+ * stored it, not quietly edited out from under it.
  */
-function walkWidgetPaths(
-  patch: (hooks: WidgetPathHooks, config: Record<string, unknown>) => Record<string, unknown> | null
-): void {
+export function renameWidgetPaths(from: string, to: string): void {
   const { layout, setWidgetConfig } = useHome.getState()
   for (const widget of layout.widgets) {
-    const hooks = widgetPathHooks(widget.type)
-    if (!hooks) continue
-    const change = patch(hooks, widget.config)
+    const change = widgetPathHooks(widget.type)?.rebasePaths?.(widget.config, from, to)
     if (change) setWidgetConfig(widget.id, change)
   }
-}
-
-export function renameWidgetPaths(from: string, to: string): void {
-  walkWidgetPaths((hooks, config) => hooks.rebasePaths?.(config, from, to) ?? null)
-}
-
-export function removeWidgetPaths(deleted: string): void {
-  walkWidgetPaths((hooks, config) => hooks.forgetPaths?.(config, deleted) ?? null)
 }
 
 /** Vault-relative folder uploaded icon images are copied into. */

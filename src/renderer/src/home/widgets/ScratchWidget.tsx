@@ -124,9 +124,9 @@ export const scratchWidget = defineWidget<ScratchConfig>({
   defaultConfig: { path: DEFAULT_PATH },
   Component: Scratch,
   Settings: ScratchSettings,
-  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'path', from, to),
-  // No `forgetPaths` on purpose. Clearing the path would fall back to
-  // `DEFAULT_PATH` and silently point the pad at a different note; the widget
-  // says the note is missing and offers to create it, which is a state the
-  // user can see and undo.
+  // A rename moves the pad's note with it. A delete does not clear the path:
+  // that would fall back to `DEFAULT_PATH` and silently point the pad at a
+  // different note, where saying the note is missing and offering to create it
+  // is a state the user can see and undo.
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'path', from, to)
 })

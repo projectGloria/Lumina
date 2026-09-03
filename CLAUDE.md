@@ -398,22 +398,19 @@ path forever.
 
 The board is the one entry in that list that is not a map here. `home.json`
 holds paths too — the scratch pad's note, a task list's folder — and a widget
-declares them as `rebasePaths` / `forgetPaths` on its own `WidgetDef`, using
-`rebaseConfigPath` / `forgetConfigPath` from `@shared/homePaths`;
-`renameWidgetPaths` / `removeWidgetPaths` walk the board through whatever each
-widget declared. So a **new widget that stores a path owes those hooks and
-nothing else**, and a widget that stores none declares neither. Patching one
-widget from `actions.ts` instead would re-arm the trap for the next one.
+declares them as `rebasePaths` on its own `WidgetDef`, using `rebaseConfigPath`
+from `@shared/homePaths`; `renameWidgetPaths` walks the board through whatever
+each widget declared. So a **new widget that stores a path owes that one hook
+and nothing else**, and a widget that stores none declares nothing. Patching
+one widget from `actions.ts` instead would re-arm the trap for the next one.
 
 A rename and a delete do not deserve the same answer, and only the rename is a
-silent edit worth making. **A path that has gone is shown, not cleared**: the
-scratch pad draws its "not in this vault yet" state, and a folder filter that
-names nothing says so with a control to widen the scope
-(`home/widgets/FolderScope.tsx`) — because clearing a filter repoints the card
-at every note in the vault, which reads as a working card with forty rows and
-no stated reason. So nothing declares `forgetPaths` at present; it is for a
-widget holding a *list* of paths, where dropping a dead entry is invisible and
-correct the way it is for `starred` and `pinned`.
+silent edit worth making — which is why there is no delete counterpart to that
+hook. **A path that has gone is shown, not cleared**: the scratch pad draws its
+"not in this vault yet" state, and a folder filter that names nothing says so
+with a control to widen the scope (`home/widgets/FolderScope.tsx`), because
+clearing a filter repoints the card at every note in the vault, which reads as
+a working card with forty rows and no stated reason.
 
 That walk finds the hooks through a lookup the registry hands over
 (`registerWidgetPathHooks`, called from `home/widgets/index.ts`) rather than by

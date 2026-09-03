@@ -207,8 +207,8 @@ export const tasksWidget = defineWidget<TasksConfig>({
   defaultConfig: { count: 12, folder: '', showDone: false },
   Component: Tasks,
   Settings: TasksSettings,
+  // A rename moves the filter with the folder. A delete leaves it alone:
+  // giving it up would repoint this card at the whole vault silently, so the
+  // card says the folder names nothing — see `FolderScope`.
   rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to)
-  // No `forgetPaths`, for the reason the scratch pad declares none: giving the
-  // filter up would repoint this card at the whole vault, silently. The card
-  // says the folder has gone and offers to widen the scope — see `FolderScope`.
 })

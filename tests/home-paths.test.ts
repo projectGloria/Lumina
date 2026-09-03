@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { forgetConfigPath, rebaseConfigPath, vaultFolders } from '@shared/homePaths'
+import { rebaseConfigPath, vaultFolders } from '@shared/homePaths'
 import type { TreeNode } from '@shared/types'
 
 describe('rebaseConfigPath, a stored note path', () => {
@@ -86,43 +86,6 @@ describe('rebaseConfigPath, options it should not touch', () => {
     const config = { path: 'Notes/Todo.md' }
     rebaseConfigPath(config, 'path', 'Notes', 'Archive')
     expect(config).toEqual({ path: 'Notes/Todo.md' })
-  })
-})
-
-describe('forgetConfigPath', () => {
-  it('gives up a folder that was deleted', () => {
-    expect(forgetConfigPath({ folder: 'Projects' }, 'folder', 'Projects', '')).toEqual({
-      folder: ''
-    })
-  })
-
-  it('gives up a folder inside a deleted folder', () => {
-    expect(forgetConfigPath({ folder: 'Projects/Live' }, 'folder', 'Projects', '')).toEqual({
-      folder: ''
-    })
-  })
-
-  it('keeps a folder that only looks like it was inside the deleted one', () => {
-    expect(forgetConfigPath({ folder: 'Projects archive' }, 'folder', 'Projects', '')).toBeNull()
-  })
-
-  it('keeps a folder an unrelated delete did not touch', () => {
-    expect(forgetConfigPath({ folder: 'Projects' }, 'folder', 'Notes/Old.md', '')).toBeNull()
-  })
-
-  it('says nothing when the option is already the fallback', () => {
-    expect(forgetConfigPath({ folder: '' }, 'folder', 'Projects', '')).toBeNull()
-  })
-
-  it('says nothing about a key it does not hold, or holds wrongly', () => {
-    expect(forgetConfigPath({}, 'folder', 'Projects', '')).toBeNull()
-    expect(forgetConfigPath({ folder: [] }, 'folder', 'Projects', '')).toBeNull()
-  })
-
-  it('does not mutate the config it was given', () => {
-    const config = { folder: 'Projects' }
-    forgetConfigPath(config, 'folder', 'Projects', '')
-    expect(config).toEqual({ folder: 'Projects' })
   })
 })
 
