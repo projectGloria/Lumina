@@ -1,17 +1,27 @@
 import { isMarkdownPath } from '@shared/markdown-parse'
+import type { IconName } from '@/components/Icon'
 import PathIcon from '@/components/PathIcon'
 import { openNote } from '@/lib/actions'
 import { useSettings } from '@/store/settingsStore'
 import { titleOf } from '@/store/vaultStore'
 import { useWorkspace } from '@/store/workspaceStore'
+import { EmptyCard } from './CardState'
 import { defineWidget } from './types'
 
 /**
  * Starred and pinned are the same card over two different lists, so they share
  * a component and differ only in their registry entries.
  */
-function PathList({ paths, empty }: { paths: string[]; empty: string }): React.JSX.Element {
-  if (!paths.length) return <p className="home-widget-empty">{empty}</p>
+function PathList({
+  paths,
+  empty,
+  icon
+}: {
+  paths: string[]
+  empty: string
+  icon: IconName
+}): React.JSX.Element {
+  if (!paths.length) return <EmptyCard icon={icon} line={empty} />
 
   return (
     <ul className="home-list">
@@ -49,12 +59,12 @@ function reveal(path: string): void {
 
 function Starred(): React.JSX.Element {
   const starred = useSettings((s) => s.settings.starred)
-  return <PathList paths={starred} empty="Star a note to keep it here." />
+  return <PathList paths={starred} icon="star" empty="Star a note to keep it here." />
 }
 
 function Pinned(): React.JSX.Element {
   const pinned = useSettings((s) => s.settings.pinned)
-  return <PathList paths={pinned} empty="Pin a note or folder to keep it here." />
+  return <PathList paths={pinned} icon="pin" empty="Pin a note or folder to keep it here." />
 }
 
 export const starredWidget = defineWidget<Record<string, unknown>>({
@@ -65,6 +75,7 @@ export const starredWidget = defineWidget<Record<string, unknown>>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 1, h: 1 },
   defaultConfig: {},
+  accent: 'keep',
   Component: Starred
 })
 
@@ -76,5 +87,6 @@ export const pinnedWidget = defineWidget<Record<string, unknown>>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 1, h: 1 },
   defaultConfig: {},
+  accent: 'primary',
   Component: Pinned
 })

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { addDays, dayKey, heatmapDays, startOfDay } from '@shared/homeDates'
+import { addDays, dayKey, dayPartOf, heatmapDays, startOfDay } from '@shared/homeDates'
 
 /**
  * These are timezone questions, so the timezone is part of the fixture. Node
@@ -106,5 +106,37 @@ describe('heatmapDays', () => {
   it('survives a nonsense week count from a hand-edited board', () => {
     expect(heatmapDays(new Date(2025, 5, 11), Number.NaN)).toHaveLength(1)
     expect(heatmapDays(new Date(2025, 5, 11), 0)).toHaveLength(1)
+  })
+})
+
+describe('dayPartOf', () => {
+  const at = (hour: number, minute = 0): string =>
+    dayPartOf(new Date(2025, 5, 11, hour, minute))
+
+  it('names each band', () => {
+    expect(at(2)).toBe('night')
+    expect(at(8)).toBe('morning')
+    expect(at(14)).toBe('afternoon')
+    expect(at(21)).toBe('evening')
+  })
+
+  it('changes on the hour the band changes, not before it', () => {
+    expect(at(4, 59)).toBe('night')
+    expect(at(5, 0)).toBe('morning')
+    expect(at(11, 59)).toBe('morning')
+    expect(at(12, 0)).toBe('afternoon')
+    expect(at(17, 59)).toBe('afternoon')
+    expect(at(18, 0)).toBe('evening')
+  })
+
+  it('covers midnight and the last minute of the day', () => {
+    expect(at(0, 0)).toBe('night')
+    expect(at(23, 59)).toBe('evening')
+  })
+
+  it('covers all twenty-four hours with no gap', () => {
+    const parts = Array.from({ length: 24 }, (_, hour) => at(hour))
+    expect(parts.filter(Boolean)).toHaveLength(24)
+    expect(new Set(parts).size).toBe(4)
   })
 })

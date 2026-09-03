@@ -374,7 +374,14 @@ export default function HomeBoard(): React.JSX.Element {
       <div
         className={`home-board${editing ? ' is-editing' : ''}`}
         ref={boardRef}
-        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        // The column count reaches CSS as well as the grid, so edit mode can
+        // paint the cell boundaries the cards are being dropped onto.
+        style={
+          {
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+            '--lum-home-columns': columns
+          } as React.CSSProperties
+        }
       >
         {widgets.map((widget) => (
           <WidgetFrame

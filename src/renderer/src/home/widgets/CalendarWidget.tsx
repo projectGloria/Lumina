@@ -167,6 +167,7 @@ export const calendarWidget = defineWidget<CalendarConfig>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 2, h: 2 },
   defaultConfig: { weekStart: 'monday' },
+  accent: 'time',
   Component: Calendar,
   Settings: CalendarSettings
 })

@@ -93,6 +93,9 @@ export default function WidgetFrame({
         editing && !movable ? ' is-locked' : ''
       }`}
       data-widget-id={widget.id}
+      // Picks the card's `--lum-widget-tint`, which the chip and anything the
+      // widget draws read from. Decorative only — see `WidgetAccent`.
+      data-accent={def.accent ?? 'primary'}
       style={style}
       tabIndex={editing ? 0 : -1}
       onKeyDown={onKeyDown}
@@ -111,7 +114,9 @@ export default function WidgetFrame({
             <Icon name="dots" size={14} />
           </button>
         ) : (
-          <Icon name={def.icon} size={14} className="home-widget-icon" />
+          <span className="home-widget-chip">
+            <Icon name={def.icon} size={14} />
+          </span>
         )}
         <h2 className="home-widget-title truncate">{def.name}</h2>
         {hasMenu ? (

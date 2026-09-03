@@ -122,6 +122,7 @@ export const scratchWidget = defineWidget<ScratchConfig>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 1, h: 2 },
   defaultConfig: { path: DEFAULT_PATH },
+  accent: 'keep',
   Component: Scratch,
   Settings: ScratchSettings,
   // A rename moves the pad's note with it. A delete does not clear the path:

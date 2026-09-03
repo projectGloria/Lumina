@@ -38,6 +38,9 @@ const PATHS: Record<string, string> = {
   edit: '<path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17v3z" /><path d="M15.5 6.5l3 3" />',
   external: '<path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M18 14v5.5A1.5 1.5 0 0116.5 21h-11A1.5 1.5 0 014 19.5v-11A1.5 1.5 0 015.5 7H11" />',
   check: '<path d="M4.5 12.5l5 5 10-11" />',
+  // A finished list, as distinct from an empty one — the tasks card needs to
+  // say "everything is ticked off" without reusing the glyph for a bare tick.
+  checkCircle: '<circle cx="12" cy="12" r="9" /><path d="M8.2 12.3l2.6 2.6 5-5.4" />',
   focus: '<path d="M4 9V5.5A1.5 1.5 0 015.5 4H9M15 4h3.5A1.5 1.5 0 0120 5.5V9M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15M9 20H5.5A1.5 1.5 0 014 18.5V15" />',
   lock: '<rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 018 0v3M12 14v3" />',
   palette: '<path d="M12 3a9 9 0 000 18c1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.7 1.7-1.7h2A4.6 4.6 0 0021 10.6C21 6.4 16.9 3 12 3z" /><circle cx="7.5" cy="11" r="1.2" /><circle cx="10.5" cy="7" r="1.2" /><circle cx="15.5" cy="7.5" r="1.2" />',

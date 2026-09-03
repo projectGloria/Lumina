@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import PathIcon from '@/components/PathIcon'
 import { openNote } from '@/lib/actions'
 import { useVault } from '@/store/vaultStore'
+import { EmptyCard } from './CardState'
 import { defineWidget } from './types'
 
 /**
@@ -30,7 +31,7 @@ function OnThisDay(): React.JSX.Element {
   }, [index])
 
   if (!notes.length) {
-    return <p className="home-widget-empty">Nothing from this day in earlier years.</p>
+    return <EmptyCard icon="refresh" line="Nothing from this day in earlier years — yet." />
   }
 
   return (
@@ -56,5 +57,6 @@ export const onThisDayWidget = defineWidget<Record<string, unknown>>({
   defaultSize: { w: 2, h: 2 },
   minSize: { w: 1, h: 1 },
   defaultConfig: {},
+  accent: 'time',
   Component: OnThisDay
 })

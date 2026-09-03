@@ -31,5 +31,6 @@ export const graphWidget = defineWidget<Record<string, unknown>>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 1, h: 2 },
   defaultConfig: {},
+  accent: 'quiet',
   Component: Graph
 })

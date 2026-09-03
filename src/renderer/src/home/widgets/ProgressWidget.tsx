@@ -86,6 +86,7 @@ export const progressWidget = defineWidget<ProgressConfig>({
   defaultSize: { w: 1, h: 2 },
   minSize: { w: 1, h: 1 },
   defaultConfig: { folder: '' },
+  accent: 'progress',
   Component: Progress,
   Settings: ProgressSettings,
   // Moved by a rename, and left alone by a delete, for the reason the tasks

@@ -107,7 +107,14 @@
    * Claude leans on flat surfaces and 1px warm borders rather than shadow.
    * The two shadows here are only for things that genuinely float. */
   --lum-shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05);
+  /* Between the two: enough to lift a card under the pointer, not enough to
+     make a board look like it is hovering. */
+  --lum-shadow-md: 0 4px 12px rgba(20, 20, 19, 0.08), 0 1px 3px rgba(20, 20, 19, 0.05);
   --lum-shadow-lg: 0 12px 32px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+
+  /* --------------------------------------------------------- skeleton */
+  --lum-skeleton-bg: color-mix(in srgb, var(--lum-text) 7%, var(--lum-surface));
+  --lum-skeleton-sheen: color-mix(in srgb, var(--lum-text) 13%, var(--lum-surface));
 
   /* ------------------------------------------------------------- home
    * The dashboard's grid. The row height and gutter are tokens because the
@@ -129,6 +136,69 @@
   --lum-home-heat-4: var(--lum-accent);
   --lum-home-widget-bg: var(--lum-surface);
   --lum-home-widget-border: var(--lum-border);
+  --lum-home-widget-bg-hover: color-mix(in srgb, var(--lum-surface-hover) 45%, var(--lum-surface));
+  --lum-home-widget-border-hover: var(--lum-border-strong);
+  --lum-home-widget-shadow: var(--lum-shadow-sm);
+  --lum-home-widget-shadow-hover: var(--lum-shadow-md);
+  --lum-home-widget-pad: var(--lum-space-3);
+
+  /* ------------------------------------------- decorative widget accents
+   * A card's chip colour, and nothing else. Deliberately *not* the semantic
+   * set: `--lum-warning` means caution everywhere it is used, and borrowing
+   * it to make a gold chip leaves two cards looking like a warning under any
+   * theme that takes that word seriously.
+   *
+   * Hue-rotated from the accent in OKLCH so they keep the accent's lightness
+   * and saturation and follow a retheme instead of drifting away from it. A
+   * theme that wants different ones overrides these five names. */
+  --lum-widget-accent-1: var(--lum-accent);
+  --lum-widget-accent-2: oklch(from var(--lum-accent) l c calc(h + 105));
+  --lum-widget-accent-3: oklch(from var(--lum-accent) l c calc(h + 215));
+  --lum-widget-accent-4: oklch(from var(--lum-accent) l c calc(h + 50));
+  --lum-widget-accent-5: var(--lum-text-muted);
+
+  /* Only the two that do not depend on a card's own tint live here. The ones
+     that do are declared on `.home-widget` instead: a custom property is
+     substituted where it is *declared*, not where it is used, so a chip colour
+     mixed here would resolve once against the root's tint and inherit down as
+     that one colour — every card's chip the same, whatever its accent. */
+  --lum-home-chip-size: 24px;
+  --lum-home-chip-radius: var(--lum-radius-sm);
+
+  /* ------------------------------------------------------- home type
+   * Three sizes and no more: the card's label, its rows, and the meta column.
+   * The meta width is fixed so "just now" becoming "12 min ago" cannot shove
+   * the title it sits beside. */
+  --lum-home-greeting-size: 28px;
+  --lum-home-title-size: 12.5px;
+  --lum-home-title-tracking: 0.05em;
+  --lum-home-row-size: var(--lum-font-size-ui);
+  --lum-home-meta-size: var(--lum-font-size-small);
+  --lum-home-meta-width: 5.5rem;
+  --lum-home-figure-size: 27px;
+
+  /* ------------------------------------------------------- home ground
+   * The wash behind the greeting, tinted by the hour. Four bands, the same
+   * four `dayPartOf` names. Only drawn when there is no cover picture — see
+   * the note in home.css. */
+  --lum-home-wash-height: 340px;
+  --lum-home-wash-morning: color-mix(in srgb, var(--lum-widget-accent-4) 15%, var(--lum-bg));
+  --lum-home-wash-afternoon: color-mix(in srgb, var(--lum-accent) 11%, var(--lum-bg));
+  --lum-home-wash-evening: color-mix(in srgb, var(--lum-accent) 20%, var(--lum-bg));
+  --lum-home-wash-night: color-mix(in srgb, var(--lum-widget-accent-3) 16%, var(--lum-bg));
+
+  /* --------------------------------------------------------- home drawn
+   * The colours here are on `.home-widget` for the reason above; these are the
+   * dimensions, which no card varies. */
+  --lum-home-ring-width: 7px;
+  --lum-home-spark-height: 34px;
+  --lum-home-heat-cell-radius: 3px;
+  --lum-home-heat-gap: 3px;
+
+  /* ---------------------------------------------------- home edit mode */
+  --lum-home-edit-bg: color-mix(in srgb, var(--lum-text) 6%, var(--lum-bg));
+  --lum-home-edit-grid: color-mix(in srgb, var(--lum-border-strong) 90%, transparent);
+  --lum-home-edit-card-bg: color-mix(in srgb, var(--lum-surface) 70%, var(--lum-bg));
 
   /* ---------------------------------------------------------- chrome */
   --lum-titlebar-height: 38px;
@@ -183,11 +253,27 @@
   --lum-graph-edge-active: rgba(217, 119, 87, 0.6);
 
   --lum-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --lum-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.28);
   --lum-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  /* A dark ground swallows a tint, so each band takes more of it to read as
+     the same amount of colour. */
+  --lum-home-wash-morning: color-mix(in srgb, var(--lum-widget-accent-4) 22%, var(--lum-bg));
+  --lum-home-wash-afternoon: color-mix(in srgb, var(--lum-accent) 17%, var(--lum-bg));
+  --lum-home-wash-evening: color-mix(in srgb, var(--lum-accent) 27%, var(--lum-bg));
+  --lum-home-wash-night: color-mix(in srgb, var(--lum-widget-accent-3) 23%, var(--lum-bg));
 }
 
 /* A deliberately plain, maximum-contrast alternative to the warm default. */
+/* This preset is deliberately plain, and rotating its accent produces four
+   arbitrary hues — a blue accent gives magenta, olive and purple chips. So the
+   decorative set collapses to the accent here: the chips stay tinted, and the
+   board stays monochrome. */
 [data-preset='contrast'] {
+  --lum-widget-accent-2: var(--lum-accent);
+  --lum-widget-accent-3: var(--lum-accent);
+  --lum-widget-accent-4: var(--lum-accent);
+
   --lum-bg: #ffffff;
   --lum-bg-sidebar: #f4f4f4;
   --lum-bg-titlebar: #f4f4f4;

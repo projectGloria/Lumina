@@ -10,6 +10,37 @@
    rather than on the scroller. */
 .home-content {
   padding: var(--lum-space-6) var(--lum-space-5);
+  position: relative;
+}
+
+/* The ground behind the greeting: a wash tinted by the hour, fading out well
+   before the first row of cards so the page has no edge in it.
+
+   A cover picture wins outright. The two occupy the same band at the top of
+   the page, and a photograph is already a ground — laying a tint over it, or
+   sliding it down under the header, would be two grounds fighting. So this is
+   what fills that space when there is no picture, and nothing more. */
+.home:not(.has-cover) .home-content::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--lum-home-wash-height);
+  background: linear-gradient(to bottom, var(--lum-home-wash), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+.home[data-daypart='morning'] { --lum-home-wash: var(--lum-home-wash-morning); }
+.home[data-daypart='afternoon'] { --lum-home-wash: var(--lum-home-wash-afternoon); }
+.home[data-daypart='evening'] { --lum-home-wash: var(--lum-home-wash-evening); }
+.home[data-daypart='night'] { --lum-home-wash: var(--lum-home-wash-night); }
+
+/* Everything the wash sits behind. */
+.home-header,
+.home-toolbar,
+.home-board,
+.home-board-empty {
+  position: relative;
+  z-index: 1;
 }
 .home.has-cover .home-content {
   padding-top: var(--lum-space-5);
@@ -86,7 +117,7 @@
 .home-greeting {
   margin: 0;
   font-family: var(--lum-font-heading);
-  font-size: 28px;
+  font-size: var(--lum-home-greeting-size);
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--lum-text);
@@ -210,6 +241,27 @@
   position: relative;
 }
 
+/* Edit mode reads as a different mode: the board drops half a tone and the
+   cells the cards are being dropped onto are drawn behind them. The step comes
+   from `--lum-home-columns`, which the board sets alongside its own template,
+   so the painted grid and the real one cannot disagree. */
+.home-board.is-editing {
+  background-color: var(--lum-home-edit-bg);
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--lum-home-edit-grid) 0 1px,
+      transparent 1px calc((100% + var(--lum-home-gap)) / var(--lum-home-columns))
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--lum-home-edit-grid) 0 1px,
+      transparent 1px calc(var(--lum-home-row-height) + var(--lum-home-gap))
+    );
+  border-radius: var(--lum-radius-lg);
+  box-shadow: 0 0 0 var(--lum-space-3) var(--lum-home-edit-bg);
+}
+
 /* The drop target, moved imperatively during a drag rather than through
    React state — see the note at the top of HomeBoard.tsx. */
 .home-ghost {
@@ -222,6 +274,20 @@
 /* -------------------------------------------------------------- widget */
 
 .home-widget {
+  /* Each card's own tint, which the chip and anything it draws read. Only the
+     decorative set is ever mapped here — never a semantic colour.
+
+     Everything mixed from the tint is declared here too, not in `tokens.css`:
+     a custom property is substituted where it is declared, so a chip colour
+     mixed at the root would resolve there once and inherit down as that single
+     colour, leaving every card's chip identical whatever its accent. */
+  --lum-widget-tint: var(--lum-widget-accent-1);
+  --lum-home-chip-bg: color-mix(in srgb, var(--lum-widget-tint) 14%, var(--lum-surface));
+  --lum-home-chip-fg: var(--lum-widget-tint);
+  --lum-home-ring-track: color-mix(in srgb, var(--lum-widget-tint) 16%, var(--lum-surface));
+  --lum-home-ring-value: var(--lum-widget-tint);
+  --lum-home-spark-line: var(--lum-widget-tint);
+  --lum-home-spark-fill: color-mix(in srgb, var(--lum-widget-tint) 14%, transparent);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -230,7 +296,19 @@
   background: var(--lum-home-widget-bg);
   border: 1px solid var(--lum-home-widget-border);
   border-radius: var(--lum-radius-lg);
-  transition: border-color var(--lum-transition), box-shadow var(--lum-transition);
+  box-shadow: var(--lum-home-widget-shadow);
+  transition: border-color var(--lum-transition), box-shadow var(--lum-transition),
+    background-color var(--lum-transition);
+}
+.home-widget[data-accent='progress'] { --lum-widget-tint: var(--lum-widget-accent-2); }
+.home-widget[data-accent='time'] { --lum-widget-tint: var(--lum-widget-accent-3); }
+.home-widget[data-accent='keep'] { --lum-widget-tint: var(--lum-widget-accent-4); }
+.home-widget[data-accent='quiet'] { --lum-widget-tint: var(--lum-widget-accent-5); }
+
+.home-widget:hover {
+  background: var(--lum-home-widget-bg-hover);
+  border-color: var(--lum-home-widget-border-hover);
+  box-shadow: var(--lum-home-widget-shadow-hover);
 }
 .home-widget:focus-visible {
   outline: 2px solid var(--lum-accent-ring);
@@ -238,6 +316,12 @@
 }
 .home-widget.is-editing {
   border-style: dashed;
+  background: var(--lum-home-edit-card-bg);
+  box-shadow: none;
+}
+.home-widget.is-editing:hover {
+  background: var(--lum-home-edit-card-bg);
+  box-shadow: var(--lum-home-widget-shadow);
 }
 .home-widget.is-dragging {
   z-index: 10;
@@ -254,7 +338,7 @@
   align-items: center;
   gap: var(--lum-space-2);
   flex: none;
-  padding: var(--lum-space-3) var(--lum-space-3) var(--lum-space-2);
+  padding: var(--lum-home-widget-pad) var(--lum-home-widget-pad) var(--lum-space-2);
   color: var(--lum-text-muted);
 }
 .home-widget.is-editing .home-widget-head {
@@ -270,8 +354,34 @@
   cursor: default;
 }
 
-.home-widget-icon {
+/* The widget's own glyph, in a tint that means something at board scale: what
+   is finished, what is about time, what is being kept, and the quiet rest. */
+.home-widget-chip {
   flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--lum-home-chip-size);
+  height: var(--lum-home-chip-size);
+  border-radius: var(--lum-home-chip-radius);
+  background: var(--lum-home-chip-bg);
+  color: var(--lum-home-chip-fg);
+}
+
+/* The handles appear on approach rather than sitting on every card: still
+   focusable while invisible, and `:focus-within` brings them back for the
+   keyboard. */
+.home-widget-grip,
+.home-widget-resize {
+  opacity: 0;
+  transition: opacity var(--lum-transition);
+}
+.home-widget:hover .home-widget-grip,
+.home-widget:focus-within .home-widget-grip,
+.home-widget.is-dragging .home-widget-grip,
+.home-widget:hover .home-widget-resize,
+.home-widget:focus-within .home-widget-resize,
+.home-widget.is-dragging .home-widget-resize {
+  opacity: 1;
 }
 
 .home-widget-grip {
@@ -288,9 +398,9 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  font-size: var(--lum-font-size-small);
+  font-size: var(--lum-home-title-size);
   font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--lum-home-title-tracking);
   text-transform: uppercase;
 }
 
@@ -309,15 +419,97 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 0 var(--lum-space-3) var(--lum-space-3);
+  padding: 0 var(--lum-home-widget-pad) var(--lum-home-widget-pad);
   color: var(--lum-text);
+  font-size: var(--lum-home-row-size);
 }
 
 .home-widget-empty {
   margin: 0;
   padding: var(--lum-space-2) 0;
   color: var(--lum-text-faint);
-  font-size: var(--lum-font-size-ui);
+  font-size: var(--lum-home-row-size);
+}
+
+/* An empty card says what is missing in the card's own glyph, and offers the
+   thing that fixes it where there is one. */
+.home-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lum-space-2);
+  height: 100%;
+  min-height: 0;
+  padding: var(--lum-space-3) var(--lum-space-2);
+  text-align: center;
+}
+
+.home-empty-glyph {
+  color: var(--lum-widget-tint);
+  opacity: 0.55;
+}
+
+.home-empty-line {
+  margin: 0;
+  max-width: 30ch;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-home-row-size);
+  text-wrap: balance;
+}
+
+/* Only ever seen while a *different* vault's board is being replaced — see
+   `LoadingCard`. */
+.home-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-2) 0;
+}
+
+.home-skeleton-row {
+  height: 12px;
+  border-radius: var(--lum-radius-sm);
+  background: linear-gradient(
+      90deg,
+      var(--lum-skeleton-bg) 0%,
+      var(--lum-skeleton-sheen) 50%,
+      var(--lum-skeleton-bg) 100%
+    )
+    0 0 / 200% 100%;
+  animation: home-skeleton-sweep 1.4s ease-in-out infinite;
+}
+/* Staggered, so the rows read as one surface catching the light rather than
+   as three bars blinking together. */
+.home-skeleton-row:nth-child(2) {
+  width: 84%;
+  animation-delay: 0.12s;
+}
+.home-skeleton-row:nth-child(3) {
+  width: 62%;
+  animation-delay: 0.24s;
+}
+.home-skeleton-row:nth-child(4) {
+  width: 73%;
+  animation-delay: 0.36s;
+}
+
+@keyframes home-skeleton-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* `--lum-transition` already collapses to zero here, but a keyframe animation
+   is not a transition and has to be stood down on its own. */
+@media (prefers-reduced-motion: reduce) {
+  .home-skeleton-row {
+    animation: none;
+    background: var(--lum-skeleton-bg);
+  }
 }
 
 .home-widget-unknown {
@@ -417,10 +609,15 @@
   min-width: 0;
 }
 
+/* Fixed width and right-aligned: a relative time changing from "just now" to
+   "12 min ago" would otherwise shove the label beside it a few pixels left on
+   every index update. */
 .home-row-meta {
+  width: var(--lum-home-meta-width);
   flex: none;
+  text-align: right;
   color: var(--lum-text-faint);
-  font-size: var(--lum-font-size-small);
+  font-size: var(--lum-home-meta-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -579,7 +776,7 @@
 }
 
 .home-stat-value {
-  font-size: 22px;
+  font-size: var(--lum-home-figure-size);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
@@ -588,7 +785,37 @@
 .home-stat-label {
   margin: 0;
   color: var(--lum-text-muted);
-  font-size: var(--lum-font-size-small);
+  font-size: var(--lum-home-meta-size);
+}
+
+/* The figures, with the fortnight behind them. */
+.home-stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-3);
+  height: 100%;
+}
+
+.home-spark {
+  width: 100%;
+  height: var(--lum-home-spark-height);
+  flex: none;
+  margin-top: auto;
+  overflow: visible;
+}
+.home-spark-area {
+  fill: var(--lum-home-spark-fill);
+  stroke: none;
+}
+.home-spark-line {
+  fill: none;
+  stroke: var(--lum-home-spark-line);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* The viewBox is stretched to the card, so a plain stroke would be scaled
+     wide and thin with it. */
+  vector-effect: non-scaling-stroke;
 }
 
 /* -------------------------------------------------------------- tasks card */
@@ -786,21 +1013,24 @@
 .home-heatmap-grid {
   flex: 1 1 auto;
   display: grid;
-  gap: 3px;
+  gap: var(--lum-home-heat-gap);
   min-height: 0;
 }
 
 .home-heatmap-week {
   display: grid;
   grid-template-rows: repeat(7, 1fr);
-  gap: 3px;
+  gap: var(--lum-home-heat-gap);
   min-height: 0;
 }
 
 .home-heatmap-cell {
-  border-radius: 2px;
+  border-radius: var(--lum-home-heat-cell-radius);
   background: var(--lum-home-heat-0);
   min-height: 6px;
+  /* A hairline of the page showing through, so the cells read as a grid of
+     days rather than as one block of colour with variations in it. */
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lum-bg) 55%, transparent);
 }
 .home-heatmap-cell[data-level='1'] { background: var(--lum-home-heat-1); }
 .home-heatmap-cell[data-level='2'] { background: var(--lum-home-heat-2); }
@@ -815,9 +1045,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 3px;
+  gap: var(--lum-home-heat-gap);
   color: var(--lum-text-faint);
-  font-size: var(--lum-font-size-small);
+  font-size: var(--lum-home-meta-size);
 }
 .home-heatmap-legend .home-heatmap-cell {
   width: 9px;
@@ -853,19 +1083,19 @@
 .home-progress-track,
 .home-progress-value {
   fill: none;
-  stroke-width: 8;
+  stroke-width: var(--lum-home-ring-width);
 }
 .home-progress-track {
-  stroke: var(--lum-border);
+  stroke: var(--lum-home-ring-track);
 }
 .home-progress-value {
-  stroke: var(--lum-accent);
+  stroke: var(--lum-home-ring-value);
   stroke-linecap: round;
   transition: stroke-dasharray var(--lum-transition);
 }
 
 .home-progress-percent {
-  font-size: 22px;
+  font-size: var(--lum-home-figure-size);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;

@@ -100,6 +100,7 @@ export const heatmapWidget = defineWidget<HeatmapConfig>({
   defaultSize: { w: 4, h: 2 },
   minSize: { w: 2, h: 1 },
   defaultConfig: { weeks: 26 },
+  accent: 'primary',
   Component: Heatmap,
   Settings: HeatmapSettings
 })

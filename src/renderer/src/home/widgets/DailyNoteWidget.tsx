@@ -38,5 +38,6 @@ export const dailyWidget = defineWidget<Record<string, unknown>>({
   defaultSize: { w: 2, h: 2 },
   minSize: { w: 1, h: 2 },
   defaultConfig: {},
+  accent: 'time',
   Component: DailyNote
 })

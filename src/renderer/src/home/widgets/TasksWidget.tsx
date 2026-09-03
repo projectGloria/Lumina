@@ -15,6 +15,7 @@ import {
 import { openNote, updateNoteContent } from '@/lib/actions'
 import { toast } from '@/store/uiStore'
 import { titleOf, useVault } from '@/store/vaultStore'
+import { EmptyCard, LoadingCard } from './CardState'
 import { MissingFolderNotice, useMissingFolder } from './FolderScope'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
@@ -36,6 +37,7 @@ interface TasksConfig extends Record<string, unknown> {
  */
 function Tasks({ config, setConfig }: WidgetProps<TasksConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
+  const loading = useVault((s) => s.loading)
   const folderMissing = useMissingFolder(config.folder)
   /** Boxes ticked here, from the click until the board stops holding them. */
   const [ticks, setTicks] = useState<TaskTicks>({})
@@ -116,10 +118,16 @@ function Tasks({ config, setConfig }: WidgetProps<TasksConfig>): React.JSX.Eleme
   }
 
   if (!tasks.length) {
-    return (
-      <p className="home-widget-empty">
-        {config.showDone ? 'No tasks in this vault yet.' : 'Nothing outstanding.'}
-      </p>
+    if (loading) return <LoadingCard rows={4} />
+    // "Nothing outstanding" and "no tasks at all" are different answers, and
+    // only one of them is worth feeling good about.
+    return rows.length ? (
+      <EmptyCard icon="checkCircle" line="Nothing outstanding. Everything is ticked off." />
+    ) : (
+      <EmptyCard
+        icon="check"
+        line="No tasks yet. A line like “- [ ] buy milk” in any note shows up here."
+      />
     )
   }
 
@@ -205,6 +213,7 @@ export const tasksWidget = defineWidget<TasksConfig>({
   defaultSize: { w: 2, h: 3 },
   minSize: { w: 1, h: 2 },
   defaultConfig: { count: 12, folder: '', showDone: false },
+  accent: 'progress',
   Component: Tasks,
   Settings: TasksSettings,
   // A rename moves the filter with the folder. A delete leaves it alone:

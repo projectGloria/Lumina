@@ -28,6 +28,17 @@ export interface GridSpan {
 }
 
 /**
+ * Which decorative colour a card's icon chip is tinted with.
+ *
+ * The names describe what the *board* groups, not what a colour means
+ * elsewhere in the app — these map to `--lum-widget-accent-1..5`, which exist
+ * precisely so a chip never borrows `--lum-warning` and leaves two cards
+ * looking like they are in an error state under someone's theme. Nothing here
+ * carries status; a widget that has nothing to say picks `quiet`.
+ */
+export type WidgetAccent = 'primary' | 'progress' | 'time' | 'keep' | 'quiet'
+
+/**
  * `WidgetPathHooks` is part of a definition because a widget that stores a
  * vault path is data about that too: `lib/actions.ts` walks the board through
  * these on a rename, a move and a delete, so nothing has to be taught about
@@ -46,6 +57,8 @@ export interface WidgetDef<C = unknown> extends WidgetPathHooks {
   /** The board refuses to draw or store anything smaller. */
   minSize: GridSpan
   defaultConfig: C
+  /** The card's chip tint. Defaults to `primary` when a widget says nothing. */
+  accent?: WidgetAccent
   Component: React.ComponentType<WidgetProps<C>>
   /** Per-widget options, shown in the card's overflow menu. */
   Settings?: React.ComponentType<WidgetSettingsProps<C>>

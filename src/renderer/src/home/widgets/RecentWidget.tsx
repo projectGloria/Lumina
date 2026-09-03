@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import PathIcon from '@/components/PathIcon'
-import { openNote } from '@/lib/actions'
+import { openNote, promptNewNote } from '@/lib/actions'
 import { useVault } from '@/store/vaultStore'
+import { EmptyCard, LoadingCard } from './CardState'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 import { timeAgo } from './util'
 
@@ -11,6 +12,7 @@ interface RecentConfig extends Record<string, unknown> {
 
 function Recent({ config }: WidgetProps<RecentConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
+  const loading = useVault((s) => s.loading)
   const notes = useMemo(
     () =>
       Object.values(index.notes)
@@ -19,7 +21,16 @@ function Recent({ config }: WidgetProps<RecentConfig>): React.JSX.Element {
     [index, config.count]
   )
 
-  if (!notes.length) return <p className="home-widget-empty">Nothing written yet.</p>
+  if (!notes.length) {
+    if (loading) return <LoadingCard rows={3} />
+    return (
+      <EmptyCard
+        icon="file"
+        line="Nothing written yet."
+        action={{ label: 'New note', icon: 'plus', onSelect: () => promptNewNote() }}
+      />
+    )
+  }
 
   return (
     <ul className="home-list">
@@ -59,6 +70,7 @@ export const recentWidget = defineWidget<RecentConfig>({
   defaultSize: { w: 2, h: 2 },
   minSize: { w: 1, h: 1 },
   defaultConfig: { count: 6 },
+  accent: 'quiet',
   Component: Recent,
   Settings: RecentSettings
 })

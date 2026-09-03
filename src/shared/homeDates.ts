@@ -41,3 +41,20 @@ export function heatmapDays(today: Date, weeks: number): Date[][] {
     Array.from({ length: 7 }, (_, day) => addDays(start, week * 7 + day))
   )
 }
+
+/**
+ * Which of the four parts of the day it is.
+ *
+ * One source for the two things that follow the clock: the greeting's wording
+ * and the tint of the wash behind it. Split apart, a board left open overnight
+ * would end up wishing you good morning over an evening sky.
+ */
+export type DayPart = 'night' | 'morning' | 'afternoon' | 'evening'
+
+export function dayPartOf(date = new Date()): DayPart {
+  const hour = date.getHours()
+  if (hour < 5) return 'night'
+  if (hour < 12) return 'morning'
+  if (hour < 18) return 'afternoon'
+  return 'evening'
+}

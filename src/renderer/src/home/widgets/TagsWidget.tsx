@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useUi } from '@/store/uiStore'
 import { useVault } from '@/store/vaultStore'
 import { useWorkspace } from '@/store/workspaceStore'
+import { EmptyCard, LoadingCard } from './CardState'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
 interface TagsConfig extends Record<string, unknown> {
@@ -10,6 +11,7 @@ interface TagsConfig extends Record<string, unknown> {
 
 function Tags({ config }: WidgetProps<TagsConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
+  const loading = useVault((s) => s.loading)
   const tags = useMemo(
     () =>
       Object.entries(index.tags)
@@ -18,7 +20,10 @@ function Tags({ config }: WidgetProps<TagsConfig>): React.JSX.Element {
     [index, config.count]
   )
 
-  if (!tags.length) return <p className="home-widget-empty">No tags in this vault yet.</p>
+  if (!tags.length) {
+    if (loading) return <LoadingCard rows={2} />
+    return <EmptyCard icon="tag" line="No tags yet. Write #anything in a note." />
+  }
 
   return (
     <div className="home-tags">
@@ -65,6 +70,7 @@ export const tagsWidget = defineWidget<TagsConfig>({
   defaultSize: { w: 2, h: 2 },
   minSize: { w: 1, h: 1 },
   defaultConfig: { count: 14 },
+  accent: 'quiet',
   Component: Tags,
   Settings: TagsSettings
 })

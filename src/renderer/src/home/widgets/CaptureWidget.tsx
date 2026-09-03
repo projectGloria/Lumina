@@ -93,6 +93,7 @@ export const captureWidget = defineWidget<CaptureConfig>({
   defaultSize: { w: 2, h: 2 },
   minSize: { w: 1, h: 2 },
   defaultConfig: { target: 'quick' },
+  accent: 'primary',
   Component: Capture,
   Settings: CaptureSettings
 })

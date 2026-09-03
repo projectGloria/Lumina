@@ -8,6 +8,7 @@
  * filesystem or the network.
  */
 import { useEffect, useState } from 'react'
+import { dayPartOf } from '@shared/homeDates'
 import { formatDate } from '@shared/template'
 import { Icon } from '@/components/Icon'
 import { pickHomeCover } from '@/lib/actions'
@@ -17,13 +18,21 @@ import { useVault } from '@/store/vaultStore'
 import HomeBoard from './HomeBoard'
 import HomeCover from './HomeCover'
 
-/** Which half of the day it is, in the words someone would actually use. */
+const GREETINGS = {
+  night: 'Good night',
+  morning: 'Good morning',
+  afternoon: 'Good afternoon',
+  evening: 'Good evening'
+} as const
+
+/**
+ * Which half of the day it is, in the words someone would actually use.
+ *
+ * Off `dayPartOf`, which the wash behind the greeting also reads, so the two
+ * cannot disagree about what time it is.
+ */
 export function greetingFor(date = new Date()): string {
-  const hour = date.getHours()
-  if (hour < 5) return 'Good night'
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
+  return GREETINGS[dayPartOf(date)]
 }
 
 export default function HomeView(): React.JSX.Element {
@@ -69,7 +78,13 @@ export default function HomeView(): React.JSX.Element {
   }
 
   return (
-    <div className={`home${editing ? ' is-editing' : ''}${cover ? ' has-cover' : ''}`}>
+    <div
+      className={`home${editing ? ' is-editing' : ''}${cover ? ' has-cover' : ''}`}
+      // The wash rides the same minute tick as the greeting above it, so a
+      // board left open overnight cannot end up wishing you good morning over
+      // an evening sky.
+      data-daypart={dayPartOf(now)}
+    >
       {cover ? (
         <HomeCover
           cover={cover}

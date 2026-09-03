@@ -65,6 +65,7 @@ export const clockWidget = defineWidget<ClockConfig>({
   defaultSize: { w: 1, h: 1 },
   minSize: { w: 1, h: 1 },
   defaultConfig: { showSeconds: false, military: false },
+  accent: 'quiet',
   Component: Clock,
   Settings: ClockSettings
 })
