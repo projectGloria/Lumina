@@ -7,7 +7,7 @@
  * from the stores that already hold it, so nothing here reaches for the
  * filesystem or the network.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDate } from '@shared/template'
 import { Icon } from '@/components/Icon'
 import { pickHomeCover } from '@/lib/actions'
@@ -40,11 +40,22 @@ export default function HomeView(): React.JSX.Element {
    * also governs every widget on the board.
    */
   const [coverEditing, setCoverEditing] = useState(false)
+  /**
+   * The clock the greeting and the date are read off.
+   *
+   * Read once per render, nothing here re-rendered on its own, so a board left
+   * open past midnight said "Good evening" over yesterday's date beside a
+   * Clock widget showing the right time. A minute is as fine as this needs.
+   */
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
 
   // The profile's name is what the greeting is for; a vault with no profile
   // behind it still has a name worth using rather than a bare "Good evening".
   const name = profiles.find((p) => p.id === activeId)?.name ?? vault?.name ?? ''
-  const now = new Date()
 
   const addCover = (): void => {
     void (async () => {

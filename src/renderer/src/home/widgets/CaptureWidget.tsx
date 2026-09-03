@@ -20,8 +20,14 @@ function Capture({ config }: WidgetProps<CaptureConfig>): React.JSX.Element {
   const submit = async (): Promise<void> => {
     if (!text.trim() || busy) return
     setBusy(true)
-    const ok = await captureText(text, target)
-    setBusy(false)
+    // In a `finally`, or a rejected IPC call leaves the button disabled for
+    // the life of the card and the only way back is removing the widget.
+    let ok = false
+    try {
+      ok = await captureText(text, target)
+    } finally {
+      setBusy(false)
+    }
     if (!ok) return
     setText('')
     toast(target === 'daily' ? 'Added to today’s note' : 'Captured')
