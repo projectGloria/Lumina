@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { forgetConfigPath, rebaseConfigPath } from '@shared/homePaths'
+import { forgetConfigPath, rebaseConfigPath, vaultFolders } from '@shared/homePaths'
+import type { TreeNode } from '@shared/types'
 
 describe('rebaseConfigPath, a stored note path', () => {
   const config = { path: 'Notes/Todo.md' }
@@ -122,5 +123,53 @@ describe('forgetConfigPath', () => {
     const config = { folder: 'Projects' }
     forgetConfigPath(config, 'folder', 'Projects', '')
     expect(config).toEqual({ folder: 'Projects' })
+  })
+})
+
+describe('vaultFolders', () => {
+  const folder = (path: string, children: TreeNode[] = []): TreeNode => ({
+    kind: 'folder',
+    path,
+    name: path.split('/').pop() ?? path,
+    children
+  })
+  const file = (path: string): TreeNode => ({
+    kind: 'file',
+    path,
+    name: path.split('/').pop() ?? path,
+    title: 'x',
+    mtime: 0,
+    createdAt: 0,
+    size: 0
+  })
+
+  it('collects folders at every depth', () => {
+    const tree = [
+      folder('Projects', [folder('Projects/Live', [file('Projects/Live/a.md')])]),
+      folder('Notes'),
+      file('Top.md')
+    ]
+    expect([...vaultFolders(tree)].sort()).toEqual(['Notes', 'Projects', 'Projects/Live'])
+  })
+
+  // A folder is a folder whether or not it holds a note, which is why this
+  // reads the tree and not the index.
+  it('counts a folder with nothing in it', () => {
+    expect(vaultFolders([folder('Empty')]).has('Empty')).toBe(true)
+  })
+
+  it('holds no files, and nothing at all for an empty vault', () => {
+    expect(vaultFolders([file('a.md')]).size).toBe(0)
+    expect(vaultFolders([]).size).toBe(0)
+  })
+
+  it('is what tells a live folder filter from one that has gone', () => {
+    const folders = vaultFolders([folder('Projects')])
+    expect(folders.has('Projects')).toBe(true)
+    expect(folders.has('Projects archive')).toBe(false)
+    // A typo and a deleted folder are the same question, and get the same
+    // answer: this filter can never match anything.
+    expect(folders.has('projects')).toBe(false)
+    expect(folders.has('Projects/')).toBe(false)
   })
 })

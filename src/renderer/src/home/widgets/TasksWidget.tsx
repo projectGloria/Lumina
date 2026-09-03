@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { forgetConfigPath, rebaseConfigPath } from '@shared/homePaths'
+import { rebaseConfigPath } from '@shared/homePaths'
 import { findTaskLine, isPathAtOrBelow, setTaskDone, toPlainText } from '@shared/markdown-parse'
 import {
   drop,
@@ -15,6 +15,7 @@ import {
 import { openNote, updateNoteContent } from '@/lib/actions'
 import { toast } from '@/store/uiStore'
 import { titleOf, useVault } from '@/store/vaultStore'
+import { MissingFolderNotice, useMissingFolder } from './FolderScope'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
 interface TasksConfig extends Record<string, unknown> {
@@ -33,8 +34,9 @@ interface TasksConfig extends Record<string, unknown> {
  * stays on the board rather than being filtered away by the same click, and
  * the order is held still while the write bumps the note's mtime.
  */
-function Tasks({ config }: WidgetProps<TasksConfig>): React.JSX.Element {
+function Tasks({ config, setConfig }: WidgetProps<TasksConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
+  const folderMissing = useMissingFolder(config.folder)
   /** Boxes ticked here, from the click until the board stops holding them. */
   const [ticks, setTicks] = useState<TaskTicks>({})
   const [frozen, setFrozen] = useState<string[] | null>(null)
@@ -105,6 +107,12 @@ function Tasks({ config }: WidgetProps<TasksConfig>): React.JSX.Element {
     // Either the task is gone, or there are two of it and the same distance
     // from where it was — both are cases for the note rather than a guess.
     if (ok) toast('That task has moved — open the note to change it', 'error')
+  }
+
+  // Before the empty state, because "nothing outstanding" would be the wrong
+  // answer: this card cannot show anything until the filter names a folder.
+  if (folderMissing) {
+    return <MissingFolderNotice folder={config.folder} onClear={() => setConfig({ folder: '' })} />
   }
 
   if (!tasks.length) {
@@ -199,9 +207,8 @@ export const tasksWidget = defineWidget<TasksConfig>({
   defaultConfig: { count: 12, folder: '', showDone: false },
   Component: Tasks,
   Settings: TasksSettings,
-  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to),
-  // A filter naming a folder that no longer exists draws an empty card with
-  // nothing to explain it, and the filter shows nowhere but this widget's own
-  // settings — so the folder is given up and the list goes back to the vault.
-  forgetPaths: (config, deleted) => forgetConfigPath(config, 'folder', deleted, '')
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to)
+  // No `forgetPaths`, for the reason the scratch pad declares none: giving the
+  // filter up would repoint this card at the whole vault, silently. The card
+  // says the folder has gone and offers to widen the scope — see `FolderScope`.
 })

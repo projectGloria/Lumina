@@ -14,6 +14,7 @@
  * `Notes backup/Todo.md` exactly where it is.
  */
 import { isPathAtOrBelow, rebaseDescendantPath } from './markdown-parse'
+import type { TreeNode } from './types'
 
 /**
  * What a widget declares if it stores a vault path in its options.
@@ -30,7 +31,16 @@ export interface WidgetPathHooks {
     from: string,
     to: string
   ) => Record<string, unknown> | null
-  /** `deleted` — a note, or a whole folder — has gone to the recycle bin. */
+  /**
+   * `deleted` — a note, or a whole folder — has gone to the recycle bin.
+   *
+   * Only worth declaring where giving the path up is invisible *and* right: a
+   * widget holding a *list* of paths, where a dead entry is noise, the way
+   * `starred` and `pinned` drop theirs. A single option that decides what the
+   * card shows should keep what the user stored and say it points at nothing
+   * — see `useMissingFolder` in `home/widgets/FolderScope.tsx`. Clearing one
+   * silently repoints the card at something else. Nothing declares this today.
+   */
   forgetPaths?: (
     config: Record<string, unknown>,
     deleted: string
@@ -68,11 +78,16 @@ export function rebaseConfigPath(
 /**
  * Give up the path at `config[key]` if `deleted` took it away.
  *
- * `fallback` is what the option means when it holds nothing, so a widget only
- * declares this where that is an honest answer. A task list filtered to a
- * folder that no longer exists is the case it is for: the card draws an empty
- * list with nothing to say why, and the filter is not visible anywhere except
- * the widget's own settings.
+ * `fallback` is what the option means when it holds nothing, and a widget
+ * should only reach for this where that is an honest answer — which for the
+ * two folder filters on this board it is not, so neither uses it. Clearing a
+ * task list's folder repoints the card at the whole vault: forty rows arrive
+ * where four used to be, from a card that looks like it is working, with the
+ * reason discoverable only in the widget's own settings. They keep the folder
+ * and say it names nothing instead.
+ *
+ * What this is for is a stored *list* of paths, where dropping a dead entry is
+ * both invisible and correct, as `starred` and `pinned` already do.
  */
 export function forgetConfigPath(
   config: Record<string, unknown>,
@@ -83,4 +98,26 @@ export function forgetConfigPath(
   const value = storedPath(config, key)
   if (value === null || value === fallback) return null
   return isPathAtOrBelow(value, deleted) ? { [key]: fallback } : null
+}
+
+/**
+ * Every folder in the vault, by vault-relative path.
+ *
+ * The counterpart to rebasing: a widget scoped to a folder needs to know when
+ * that folder has stopped existing, so the card can say so instead of drawing
+ * an empty list that looks like an answer. Read off the tree rather than the
+ * index, so a real folder with nothing in it yet is still a folder — an index
+ * only knows about notes.
+ */
+export function vaultFolders(tree: TreeNode[]): Set<string> {
+  const found = new Set<string>()
+  const walk = (nodes: TreeNode[]): void => {
+    for (const node of nodes) {
+      if (node.kind !== 'folder') continue
+      found.add(node.path)
+      walk(node.children)
+    }
+  }
+  walk(tree)
+  return found
 }

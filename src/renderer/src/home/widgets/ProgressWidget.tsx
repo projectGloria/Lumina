@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
-import { forgetConfigPath, rebaseConfigPath } from '@shared/homePaths'
+import { rebaseConfigPath } from '@shared/homePaths'
 import { isPathAtOrBelow } from '@shared/markdown-parse'
 import { useVault } from '@/store/vaultStore'
+import { MissingFolderNotice, useMissingFolder } from './FolderScope'
 import { defineWidget, type WidgetProps, type WidgetSettingsProps } from './types'
 
 interface ProgressConfig extends Record<string, unknown> {
@@ -12,8 +13,9 @@ interface ProgressConfig extends Record<string, unknown> {
 const RADIUS = 34
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
-function Progress({ config }: WidgetProps<ProgressConfig>): React.JSX.Element {
+function Progress({ config, setConfig }: WidgetProps<ProgressConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
+  const folderMissing = useMissingFolder(config.folder)
 
   const { done, total } = useMemo(() => {
     let done = 0
@@ -30,6 +32,12 @@ function Progress({ config }: WidgetProps<ProgressConfig>): React.JSX.Element {
   }, [index, config.folder])
 
   const percent = total ? Math.round((done / total) * 100) : 0
+
+  // A ring at 0% would read as "nothing done yet" rather than "this card is
+  // counting a folder that is not there".
+  if (folderMissing) {
+    return <MissingFolderNotice folder={config.folder} onClear={() => setConfig({ folder: '' })} />
+  }
 
   return (
     <div className="home-progress">
@@ -80,7 +88,6 @@ export const progressWidget = defineWidget<ProgressConfig>({
   defaultConfig: { folder: '' },
   Component: Progress,
   Settings: ProgressSettings,
-  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to),
-  // Given up rather than kept, for the reason the tasks card gives.
-  forgetPaths: (config, deleted) => forgetConfigPath(config, 'folder', deleted, '')
+  rebasePaths: (config, from, to) => rebaseConfigPath(config, 'folder', from, to)
+  // No `forgetPaths`, for the reason the tasks card gives.
 })

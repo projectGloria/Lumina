@@ -524,7 +524,11 @@
   color: var(--lum-accent);
 }
 
-.home-scratch-missing {
+/* A card whose stored path points at nothing: the scratch pad's note, or a
+   folder filter on the tasks and progress cards. Same shape because it is the
+   same problem — say what is missing, offer the way out. */
+.home-scratch-missing,
+.home-scope-missing {
   display: flex;
   flex-direction: column;
   align-items: flex-start;

@@ -401,9 +401,19 @@ holds paths too — the scratch pad's note, a task list's folder — and a widge
 declares them as `rebasePaths` / `forgetPaths` on its own `WidgetDef`, using
 `rebaseConfigPath` / `forgetConfigPath` from `@shared/homePaths`;
 `renameWidgetPaths` / `removeWidgetPaths` walk the board through whatever each
-widget declared. So a **new widget that stores a path owes those two hooks and
+widget declared. So a **new widget that stores a path owes those hooks and
 nothing else**, and a widget that stores none declares neither. Patching one
 widget from `actions.ts` instead would re-arm the trap for the next one.
+
+A rename and a delete do not deserve the same answer, and only the rename is a
+silent edit worth making. **A path that has gone is shown, not cleared**: the
+scratch pad draws its "not in this vault yet" state, and a folder filter that
+names nothing says so with a control to widen the scope
+(`home/widgets/FolderScope.tsx`) — because clearing a filter repoints the card
+at every note in the vault, which reads as a working card with forty rows and
+no stated reason. So nothing declares `forgetPaths` at present; it is for a
+widget holding a *list* of paths, where dropping a dead entry is invisible and
+correct the way it is for `starred` and `pinned`.
 
 That walk finds the hooks through a lookup the registry hands over
 (`registerWidgetPathHooks`, called from `home/widgets/index.ts`) rather than by
