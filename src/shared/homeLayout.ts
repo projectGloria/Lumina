@@ -210,3 +210,24 @@ export function withWidgets(
 ): HomeLayout {
   return { ...layout, version: HOME_LAYOUT_VERSION, columns, widgets }
 }
+
+/**
+ * Whether an arrangement made at `columns` may be stored as the board.
+ *
+ * A board authored four columns wide is *displayed* at one column on a narrow
+ * window, with every widget clamped to a single cell. Storing that projection
+ * would store the clamped widths, and widening the window again could not
+ * recover them — so a rearrangement on a small window would quietly destroy
+ * the layout it was folded from. Widening is the safe direction: nothing was
+ * clamped away, so those coordinates are the ones the user actually arranged.
+ *
+ * A narrow projection cannot express a wide board either way. Two widgets side
+ * by side at four columns collapse to an arbitrary vertical order at one, so
+ * there is no reading of a drag there that maps back onto the stored board:
+ * keeping the stored widths makes the gesture do nothing, and honouring the
+ * new order turns the board into a single stack. The board refuses instead,
+ * and offers to re-author at this width on purpose.
+ */
+export function canArrange(authoredColumns: number, columns: number): boolean {
+  return columns >= authoredColumns
+}

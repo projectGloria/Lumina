@@ -11,6 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { HomeWidget } from '@shared/types'
 import {
+  canArrange,
   clampToColumns,
   fitToColumns,
   findFreeSpot,
@@ -117,6 +118,17 @@ export default function HomeBoard(): React.JSX.Element {
     [layout.widgets, columns]
   )
 
+  /**
+   * Whether what is on screen may be stored as the board.
+   *
+   * False on a window narrower than the board was authored for, where every
+   * widget has been clamped to fit — see `canArrange`. Moving and resizing are
+   * inert there rather than silently flattening a wide layout; adding,
+   * removing and per-widget settings all still work, because none of them has
+   * to write the displayed coordinates back.
+   */
+  const arrangeable = canArrange(layout.columns, columns)
+
   const metrics = (): { stepX: number; stepY: number; gapX: number; gapY: number } => {
     const board = boardRef.current
     if (!board) return { stepX: 1, stepY: 1, gapX: 0, gapY: 0 }
@@ -160,7 +172,7 @@ export default function HomeBoard(): React.JSX.Element {
   }
 
   const beginDrag = (event: React.PointerEvent, widget: HomeWidget, mode: Drag['mode']): void => {
-    if (!editing || event.button !== 0 || dragRef.current) return
+    if (!editing || !arrangeable || event.button !== 0 || dragRef.current) return
     const el = boardRef.current?.querySelector<HTMLElement>(`[data-widget-id="${widget.id}"]`)
     if (!el) return
     event.preventDefault()
@@ -274,8 +286,10 @@ export default function HomeBoard(): React.JSX.Element {
       return
     }
 
+    // Removal works at any width; moving and resizing do not — they would have
+    // to write the displayed coordinates back over the authored ones.
     const step = steps[event.key]
-    if (!step) return
+    if (!step || !arrangeable) return
     event.preventDefault()
 
     const [dx, dy] = step
@@ -287,8 +301,13 @@ export default function HomeBoard(): React.JSX.Element {
   }
 
   const addWidget = (def: AnyWidgetDef): void => {
-    const size = { w: Math.min(def.defaultSize.w, columns), h: def.defaultSize.h }
-    const spot = findFreeSpot(widgets, size, columns)
+    // Added into the board as authored rather than as displayed, so adding a
+    // widget on a narrow window does not re-author the stored width. On a
+    // window at least as wide as the board, the two are the same thing.
+    const into = arrangeable ? columns : layout.columns
+    const board = arrangeable ? widgets : layout.widgets
+    const size = { w: Math.min(def.defaultSize.w, into), h: def.defaultSize.h }
+    const spot = findFreeSpot(board, size, into)
     const widget: HomeWidget = {
       id: crypto.randomUUID(),
       type: def.type,
@@ -296,7 +315,7 @@ export default function HomeBoard(): React.JSX.Element {
       ...size,
       config: {}
     }
-    commit(placeWidget(widgets, widget, columns, def.minSize), columns)
+    commit(placeWidget(board, widget, into, def.minSize), into)
   }
 
   return (
@@ -310,10 +329,26 @@ export default function HomeBoard(): React.JSX.Element {
             </button>
             {picking ? <AddWidgetPicker onPick={addWidget} onClose={() => setPicking(false)} /> : null}
           </div>
-          <p className="home-toolbar-hint">
-            Drag a card to move it, its corner to resize. A focused card moves with the arrow keys,
-            resizes with Shift and an arrow, and goes away with Delete. Escape when you are done.
-          </p>
+          {arrangeable ? (
+            <p className="home-toolbar-hint">
+              Drag a card to move it, its corner to resize. A focused card moves with the arrow
+              keys, resizes with Shift and an arrow, and goes away with Delete. Escape when you are
+              done.
+            </p>
+          ) : (
+            <p className="home-toolbar-hint">
+              This board is arranged {layout.columns} columns wide and folded to {columns} to fit
+              this window, so moving and resizing are off — rearranging here would flatten it.
+              Widen the window to rearrange it, or re-arrange it at this width on purpose. Adding,
+              removing and widget settings all still work.
+              <button
+                className="btn btn-small home-toolbar-reauthor"
+                onClick={() => commit(widgets, columns)}
+              >
+                Rearrange at this width
+              </button>
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -327,6 +362,7 @@ export default function HomeBoard(): React.JSX.Element {
             key={widget.id}
             widget={widget}
             editing={editing}
+            movable={arrangeable}
             style={{
               gridColumn: `${widget.x + 1} / span ${widget.w}`,
               gridRow: `${widget.y + 1} / span ${widget.h}`

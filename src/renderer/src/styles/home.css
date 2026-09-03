@@ -137,6 +137,11 @@
   flex: none;
 }
 
+.home-toolbar-reauthor {
+  margin-left: var(--lum-space-2);
+  vertical-align: baseline;
+}
+
 .home-toolbar-hint {
   margin: 0;
   color: var(--lum-text-faint);
@@ -257,6 +262,12 @@
 }
 .home-widget.is-dragging .home-widget-head {
   cursor: grabbing;
+}
+/* Edit mode on a window narrower than the board was authored for: the card is
+   still focusable and removable, but nothing here offers a drag it would have
+   to refuse. */
+.home-widget.is-locked .home-widget-head {
+  cursor: default;
 }
 
 .home-widget-icon {

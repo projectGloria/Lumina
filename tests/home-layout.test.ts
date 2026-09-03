@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { HomeLayout, HomeWidget } from '@shared/types'
 import { HOME_LAYOUT_VERSION } from '@shared/types'
 import {
+  canArrange,
   clampToColumns,
   compact,
   findFreeSpot,
+  fitToColumns,
   normalizeLayout,
   placeWidget,
   rectsOverlap,
@@ -243,5 +245,36 @@ describe('withWidgets', () => {
       version: HOME_LAYOUT_VERSION,
       columns: 3
     })
+  })
+})
+
+describe('canArrange', () => {
+  it('allows an arrangement at the width the board was authored for', () => {
+    expect(canArrange(4, 4)).toBe(true)
+  })
+
+  it('allows one made wider, where nothing was clamped away', () => {
+    expect(canArrange(2, 4)).toBe(true)
+  })
+
+  it('refuses one made narrower', () => {
+    expect(canArrange(4, 2)).toBe(false)
+    expect(canArrange(4, 1)).toBe(false)
+  })
+
+  // Why it refuses: the narrow projection has lost the widths, so storing it
+  // would leave a board that widening the window cannot recover.
+  it('guards a projection that has already lost the widths', () => {
+    const wide = [widget('a', 0, 0, 2, 2), widget('b', 2, 0, 2, 2)]
+    const folded = fitToColumns(
+      wide.map((w) => clampToColumns(w, 1)),
+      1
+    )
+    expect(folded.map((w) => w.w)).toEqual([1, 1])
+    expect(canArrange(4, 1)).toBe(false)
+
+    // Widening the stored board instead keeps every rectangle intact.
+    expect(fitToColumns(wide, 4)).toEqual(wide)
+    expect(canArrange(4, 4)).toBe(true)
   })
 })

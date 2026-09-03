@@ -14,6 +14,12 @@ import { widgetDef } from './widgets'
 interface Props {
   widget: HomeWidget
   editing: boolean
+  /**
+   * Whether this board may be rearranged at the width it is drawn at. False on
+   * a window narrower than the board was authored for, where the move grip and
+   * the resize corner are left out rather than offered and ignored.
+   */
+  movable: boolean
   style: React.CSSProperties
   onRemove: () => void
   onMoveStart: (e: React.PointerEvent) => void
@@ -25,6 +31,7 @@ interface Props {
 export default function WidgetFrame({
   widget,
   editing,
+  movable,
   style,
   onRemove,
   onMoveStart,
@@ -77,15 +84,20 @@ export default function WidgetFrame({
 
   return (
     <article
-      className={`home-widget${editing ? ' is-editing' : ''}`}
+      className={`home-widget${editing ? ' is-editing' : ''}${
+        editing && !movable ? ' is-locked' : ''
+      }`}
       data-widget-id={widget.id}
       style={style}
       tabIndex={editing ? 0 : -1}
       onKeyDown={onKeyDown}
       aria-label={editing ? `${def.name} widget` : undefined}
     >
-      <header className="home-widget-head" onPointerDown={editing ? onMoveStart : undefined}>
-        {editing ? (
+      <header
+        className="home-widget-head"
+        onPointerDown={editing && movable ? onMoveStart : undefined}
+      >
+        {editing && movable ? (
           <button
             className="home-widget-grip"
             aria-label={`Move ${def.name}`}
@@ -119,7 +131,7 @@ export default function WidgetFrame({
         </WidgetErrorBoundary>
       </div>
 
-      {editing ? (
+      {editing && movable ? (
         <button
           className="home-widget-resize"
           aria-label={`Resize ${def.name}`}
