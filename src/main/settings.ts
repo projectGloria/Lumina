@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import type {
   CustomSlashCommand,
   Profile,
@@ -17,6 +17,7 @@ import type {
   WorkspaceState
 } from '@shared/types'
 import { HOME_LAYOUT_VERSION } from '@shared/types'
+import { HOME_COVER_DIR, sweepableCovers } from '@shared/homeCovers'
 import { luminaDir } from './paths'
 import { DEFAULT_QUICK_NOTE } from './quickNote'
 import { DEFAULT_CLIP_PORT } from './clipServer'
@@ -385,7 +386,58 @@ export async function loadHome(v: string): Promise<HomeLayout | null> {
   return readJson(homeFile(v), DEFAULT_HOME)
 }
 
-export const saveHome = (v: string, layout: HomeLayout): Promise<void> =>
-  writeJson(homeFile(v), layout)
+/** How new a cover may be and still be swept — see `SweepOptions.graceMs`. */
+const COVER_GRACE_MS = 60_000
+
+/**
+ * Delete the pictures under `.lumina/home` the board has stopped using.
+ *
+ * Covers are copies Lumina made, so nothing else refers to one and a replaced
+ * or removed picture is otherwise kept forever. It is still a destructive pass
+ * driven by a debounced save from the renderer, so it is deliberately timid:
+ * `sweepableCovers` decides (and is tested), the files go to the recycle bin
+ * like every other delete Lumina makes, only this one folder is ever read, and
+ * a board with no widgets in it is left alone — an empty list is what a
+ * renderer that has not loaded a board yet would send, and a picture is not
+ * worth losing on the strength of that.
+ */
+async function sweepCovers(v: string, layout: HomeLayout): Promise<void> {
+  if (!layout.widgets.length) return
+
+  const dir = path.join(v, HOME_COVER_DIR)
+  let entries
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true })
+  } catch {
+    // No cover has ever been chosen for this vault.
+    return
+  }
+
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      // `isFile` is false for a directory and for a symlink, so this can never
+      // follow a planted link out of the vault.
+      if (!entry.isFile()) return { name: entry.name, isFile: false, mtimeMs: 0 }
+      const stat = await fs.lstat(path.join(dir, entry.name)).catch(() => null)
+      return { name: entry.name, isFile: !!stat, mtimeMs: stat?.mtimeMs ?? Date.now() }
+    })
+  )
+
+  for (const name of sweepableCovers(files, {
+    coverPath: layout.cover?.path,
+    now: Date.now(),
+    graceMs: COVER_GRACE_MS
+  })) {
+    // A picture that will not move is not a reason to fail saving a board.
+    await shell.trashItem(path.join(dir, name)).catch(() => {})
+  }
+}
+
+export const saveHome = async (v: string, layout: HomeLayout): Promise<void> => {
+  // The layout lands first: a sweep interrupted half way leaves a board that
+  // still says what its cover is.
+  await writeJson(homeFile(v), layout)
+  await sweepCovers(v, layout)
+}
 
 export { readJson, writeJson }

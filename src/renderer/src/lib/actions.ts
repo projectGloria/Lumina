@@ -5,6 +5,7 @@
  * created the same way whether it came from the sidebar, a broken link, or the
  * command palette.
  */
+import { HOME_COVER_DIR } from '@shared/homeCovers'
 import { isNoteTab } from '@shared/types'
 import {
   basename,
@@ -590,8 +591,6 @@ export function removeCustomIcons(parent: string): void {
   }
 }
 
-/** Vault-relative folder Home's cover pictures are copied into. */
-const HOME_COVER_FOLDER = '.lumina/home'
 
 /**
  * Pick a picture for the top of the Home board and copy it into the vault.
@@ -606,7 +605,7 @@ export async function pickHomeCover(): Promise<string | null> {
   if (!file) return null
 
   const res = await window.lumina.files.saveAttachment(
-    HOME_COVER_FOLDER,
+    HOME_COVER_DIR,
     file.name,
     await file.arrayBuffer()
   )
