@@ -48,7 +48,9 @@ import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
 import { titleOf, useVault } from '../store/vaultStore'
 import { useHome } from '../store/homeStore'
+import { useMusic } from '../store/musicStore'
 import { activePath, isHomeActive, useWorkspace } from '../store/workspaceStore'
+import { step, togglePlay } from './musicPlayer'
 
 export interface Command {
   id: string
@@ -424,6 +426,46 @@ export const COMMANDS: Command[] = [
       useWorkspace.getState().openHome()
       const home = useHome.getState()
       home.setEditing(wasHome ? !home.editing : true)
+    }
+  },
+  /* ------------------------------------------------------------- music */
+  // In the registry like everything else, so they are in the palette and can
+  // be rebound. No OS-level media keys are registered: those belong to
+  // whatever the user considers their music player, which may not be this.
+  {
+    id: 'music.playPause',
+    title: 'Play or pause music',
+    section: 'View',
+    icon: 'play',
+    keywords: ['music', 'player', 'audio', 'song', 'track'],
+    run: () => togglePlay()
+  },
+  {
+    id: 'music.next',
+    title: 'Next track',
+    section: 'View',
+    icon: 'skipForward',
+    keywords: ['music', 'player', 'skip', 'forward'],
+    run: () => step('next')
+  },
+  {
+    id: 'music.previous',
+    title: 'Previous track',
+    section: 'View',
+    icon: 'skipBack',
+    keywords: ['music', 'player', 'back'],
+    run: () => step('prev')
+  },
+  {
+    id: 'music.toggle',
+    title: 'Show the music player',
+    section: 'View',
+    icon: 'speaker',
+    keywords: ['music', 'player', 'library', 'queue'],
+    description: 'The queue, the library, and what is playing',
+    run: () => {
+      const music = useMusic.getState()
+      music.setExpanded(!music.expanded)
     }
   },
   {

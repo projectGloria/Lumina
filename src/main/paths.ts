@@ -29,17 +29,23 @@ export function safeJoin(vaultRoot: string, relative: string): string | null {
 }
 
 /**
- * Resolve a vault path and verify its real filesystem location.
+ * Resolve a path under `root` and verify its real filesystem location.
  *
- * `safeJoin` prevents `..` traversal, but an in-vault symlink can still point
- * elsewhere. Existing targets are checked with `realpath`; for a new target,
- * its nearest existing parent is checked before creation.
+ * `safeJoin` prevents `..` traversal, but a symlink inside the root can still
+ * point elsewhere. Existing targets are checked with `realpath`; for a new
+ * target, its nearest existing parent is checked before creation.
+ *
+ * The root is a parameter rather than the vault because there is now more than
+ * one: the vault, and the music folder the `lumina://music` handler serves. A
+ * second copy of this reasoning is exactly the kind of thing that gets one of
+ * the two guards wrong later.
  */
-export async function safeVaultPath(
-  vaultRoot: string,
+export async function safePathUnder(
+  root: string,
   relative: string,
   allowMissing = false
 ): Promise<string | null> {
+  const vaultRoot = root
   const abs = safeJoin(vaultRoot, relative)
   if (!abs) return null
 
@@ -65,6 +71,18 @@ export async function safeVaultPath(
     }
   }
 }
+
+/**
+ * The same guard, named for the case nearly every caller means.
+ *
+ * Anything that opens a real file inside the vault goes through this — see the
+ * rule in CLAUDE.md.
+ */
+export const safeVaultPath = (
+  vaultRoot: string,
+  relative: string,
+  allowMissing = false
+): Promise<string | null> => safePathUnder(vaultRoot, relative, allowMissing)
 
 /** Absolute path back to vault-relative, forward-slash form. */
 export function toRelative(vaultRoot: string, absolute: string): string {

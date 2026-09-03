@@ -9,6 +9,7 @@ import type {
   ClipperSettings,
   Settings,
   SettingsPreset,
+  MusicSettings,
   VoiceSettings,
   ThemeFile,
   HomeLayout,
@@ -23,6 +24,20 @@ import { DEFAULT_QUICK_NOTE } from './quickNote'
 import { DEFAULT_CLIP_PORT } from './clipServer'
 
 /* --------------------------------------------------------------- defaults */
+
+/**
+ * No folder until one is chosen, and nothing playing.
+ *
+ * `lastTrack`/`lastPosition` are absent rather than empty: the player restores
+ * a track it recognises and starts paused, and "nothing was playing" is a
+ * different thing from "position zero".
+ */
+const DEFAULT_MUSIC: MusicSettings = {
+  folder: '',
+  volume: 0.8,
+  shuffle: false,
+  repeat: 'off'
+}
 
 const DEFAULT_VOICE: VoiceSettings = {
   folder: 'attachments/voice',
@@ -98,6 +113,7 @@ const DEFAULT_SETTINGS: Settings = {
   alwaysShowFolderCount: false,
   voice: DEFAULT_VOICE,
   clipper: DEFAULT_CLIPPER,
+  music: DEFAULT_MUSIC,
   home: DEFAULT_HOME_SETTINGS
 }
 
@@ -197,6 +213,12 @@ export interface AppState {
   voice: VoiceSettings
   /** Web clipper preferences: a port and a token belong to this machine. */
   clipper: ClipperSettings
+  /**
+   * The music folder and how the player was left. App-level because a folder
+   * of music belongs to the machine, and because the player keeps playing
+   * across a vault switch.
+   */
+  music: MusicSettings
   profiles: Profile[]
   activeProfileId: string | null
   settingsProfiles: SettingsPreset[]
@@ -231,6 +253,7 @@ const APP_STATE_DEFAULT: AppState = {
   quickNote: DEFAULT_QUICK_NOTE,
   voice: DEFAULT_VOICE,
   clipper: DEFAULT_CLIPPER,
+  music: DEFAULT_MUSIC,
   profiles: [],
   activeProfileId: null,
   settingsProfiles: []
@@ -323,7 +346,8 @@ export async function loadSettings(v: string): Promise<Settings> {
     slashCommands: appState.slashCommands,
     quickNote: appState.quickNote,
     voice: appState.voice,
-    clipper: appState.clipper
+    clipper: appState.clipper,
+    music: appState.music
   }
 
   const legacy = raw.hotkeys
@@ -344,14 +368,16 @@ export async function saveSettings(v: string, s: Settings): Promise<void> {
       slashCommands: [],
       quickNote: DEFAULT_QUICK_NOTE,
       voice: DEFAULT_VOICE,
-      clipper: DEFAULT_CLIPPER
+      clipper: DEFAULT_CLIPPER,
+      music: DEFAULT_MUSIC
     }),
     saveAppState({
       hotkeys: s.hotkeys,
       slashCommands: s.slashCommands,
       quickNote: s.quickNote,
       voice: s.voice,
-      clipper: s.clipper
+      clipper: s.clipper,
+      music: s.music
     })
   ])
 }

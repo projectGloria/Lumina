@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url'
 import { net, protocol } from 'electron'
-import { safeVaultPath } from './paths'
+import { getMusicRoot } from './music'
+import { safePathUnder } from './paths'
 import { getRoot } from './vault'
 
 /**
@@ -11,7 +12,11 @@ import { getRoot } from './vault'
  * CSP to allow `file:` would open the whole disk. This serves exactly one
  * folder, and `safeJoin` rejects anything that tries to climb out of it.
  *
- * Images are addressed as `lumina://vault/<vault-relative path>`.
+ * Images are addressed as `lumina://vault/<vault-relative path>`, and audio
+ * from the music folder as `lumina://music/<music-relative path>`. The music
+ * folder is not a vault and is never indexed or watched, but it is served
+ * under exactly the same guard: `safePathUnder` realpaths the result, so a
+ * symlink planted in someone's album cannot read the rest of the disk.
  */
 export function registerScheme(): void {
   protocol.registerSchemesAsPrivileged([
@@ -31,13 +36,13 @@ export function handleProtocol(): void {
       return new Response('Bad request', { status: 400 })
     }
 
-    if (url.hostname !== 'vault') return new Response('Not found', { status: 404 })
-
-    const root = getRoot()
-    if (!root) return new Response('No vault open', { status: 404 })
+    const root =
+      url.hostname === 'vault' ? getRoot() : url.hostname === 'music' ? getMusicRoot() : undefined
+    if (root === undefined) return new Response('Not found', { status: 404 })
+    if (!root) return new Response('Nothing to serve', { status: 404 })
 
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '')
-    const abs = await safeVaultPath(root, rel)
+    const abs = await safePathUnder(root, rel)
     if (!abs) return new Response('Forbidden', { status: 403 })
 
     try {

@@ -1,4 +1,5 @@
 import { Icon } from './Icon'
+import MiniPlayer from './MiniPlayer'
 import { commandTooltip, runCommand, useCommandHotkey } from '../lib/commands'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
@@ -42,6 +43,10 @@ export default function StatusBar(): React.JSX.Element {
       )}
 
       <span className="statusbar-spacer" />
+
+      {/* Draws nothing until a music folder is chosen, so this row is exactly
+          as it was for anyone not using the player. */}
+      <MiniPlayer />
 
       {saving ? <span>Saving…</span> : dirty ? <span>Unsaved</span> : path ? <span>Saved</span> : null}
 

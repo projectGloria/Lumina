@@ -66,7 +66,9 @@ const PATHS = {
   play: '<path d="M8 5.5l10 6.5-10 6.5v-13z" />',
   pause: '<path d="M9.5 5.5v13M14.5 5.5v13" />',
   skipBack: '<path d="M17 6.5v11L9 12l8-5.5z" /><path d="M6.5 6v12" />',
-  skipForward: '<path d="M7 6.5L15 12l-8 5.5v-11z" /><path d="M17.5 6v12" />'
+  skipForward: '<path d="M7 6.5L15 12l-8 5.5v-11z" /><path d="M17.5 6v12" />',
+  shuffle: '<path d="M3.5 7h3.2l3 4.2M3.5 17h3.2l3-4.2M14 7h6.5M14 17h6.5" /><path d="M18.5 4.5L21 7l-2.5 2.5M18.5 14.5L21 17l-2.5 2.5" />',
+  repeat: '<path d="M4 11V9.5A2.5 2.5 0 016.5 7H18" /><path d="M15.5 4.5L18.5 7l-3 2.5" /><path d="M20 13v1.5a2.5 2.5 0 01-2.5 2.5H6" /><path d="M8.5 19.5L5.5 17l3-2.5" />'
 } as const
 
 /**

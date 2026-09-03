@@ -216,6 +216,8 @@ export interface Settings {
   slashCommands: CustomSlashCommand[]
   /** The OS-wide quick note. App-level on disk, like `hotkeys`. */
   quickNote: QuickNoteSettings
+  /** The music folder and player state. App-level on disk, like `hotkeys`. */
+  music: MusicSettings
   /** Snippet file name -> enabled. */
   snippets: Record<string, boolean>
   starred: string[]
@@ -339,6 +341,52 @@ export interface ReadAloudSettings {
  * machine, not one vault. Off by default — this is the only inbound connection
  * Lumina ever accepts, so it opens because the user asked, never by default.
  */
+/**
+ * The music folder, and how the player was left.
+ *
+ * App-level on disk, like `hotkeys` and `voice`: a folder of music belongs to
+ * this machine, not to a vault, and the player keeps going across a vault
+ * switch. Nothing here is ever indexed or watched — see `main/music.ts`.
+ */
+export interface MusicSettings {
+  /** Absolute path to the music folder, or empty for none chosen. */
+  folder: string
+  /** 0-1. */
+  volume: number
+  shuffle: boolean
+  repeat: 'off' | 'all' | 'one'
+  /** Music-relative path of the track to restore, never auto-played. */
+  lastTrack?: string
+  /** Seconds into it. Written on pause, on track change and on quit. */
+  lastPosition?: number
+}
+
+/** One playable file, as the listing reports it. Paths are music-relative. */
+export interface MusicTrack {
+  path: string
+  size: number
+  mtime: number
+  /** Artwork found beside it, music-relative. */
+  cover?: string
+}
+
+/**
+ * What `music:list` answers.
+ *
+ * `ok: false` means the folder could not be read — unplugged drive, absent
+ * share, a path that has been deleted. Kept apart from an empty `tracks` so
+ * the player can say "that folder cannot be reached" instead of showing what
+ * looks like a library with nothing in it.
+ */
+export interface MusicListing {
+  ok: boolean
+  /** The folder that was looked in, for the message when it cannot be reached. */
+  root: string | null
+  tracks: MusicTrack[]
+  /** True when the library is larger than the cap and the list stops short. */
+  truncated: boolean
+}
+
 export interface ClipperSettings {
   enabled: boolean
   port: number

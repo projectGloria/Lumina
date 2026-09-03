@@ -103,6 +103,10 @@ export const CH = {
   speechRemove: 'speech:remove',
   speechProgress: 'speech:progress',
 
+  // the music folder: a dialog, and a listing. Nothing else about it crosses.
+  musicPick: 'music:pick',
+  musicList: 'music:list',
+
   // misc
   attachmentSave: 'attachment:save',
   exportPdf: 'export:pdf',

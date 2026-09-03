@@ -20,6 +20,7 @@ import { WIDGETS } from '../../home/widgets'
 import { useHome } from '../../store/homeStore'
 import { FALLBACK_SETTINGS, useSettings } from '../../store/settingsStore'
 import { toast, useUi } from '../../store/uiStore'
+import { useMusic } from '../../store/musicStore'
 import { useVault } from '../../store/vaultStore'
 
 type FontFamilyPreset = 'sans' | 'serif' | 'mono' | 'custom'
@@ -37,6 +38,7 @@ const TABS: { id: string; label: string; icon: IconName }[] = [
   { id: 'quick', label: 'Quick note', icon: 'bolt' },
   { id: 'home', label: 'Home', icon: 'home' },
   { id: 'voice', label: 'Voice', icon: 'mic' },
+  { id: 'music', label: 'Music', icon: 'speaker' },
   { id: 'clipper', label: 'Web clipper', icon: 'globe' },
   { id: 'vault', label: 'Vault', icon: 'vault' },
   { id: 'profiles', label: 'Settings profiles', icon: 'settings' },
@@ -85,6 +87,7 @@ export default function SettingsModal(): React.JSX.Element {
           {tab === 'quick' ? <QuickNoteTab /> : null}
           {tab === 'home' ? <HomeTab /> : null}
           {tab === 'voice' ? <VoiceTab /> : null}
+          {tab === 'music' ? <MusicTab /> : null}
           {tab === 'clipper' ? <ClipperTab /> : null}
           {tab === 'vault' ? <VaultSettingsTab /> : null}
           {tab === 'profiles' ? <SettingsProfilesTab /> : null}
@@ -92,6 +95,97 @@ export default function SettingsModal(): React.JSX.Element {
           {tab === 'about' ? <AboutTab /> : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------- music */
+
+function MusicTab(): React.JSX.Element {
+  const music = useSettings((s) => s.settings.music)
+  const patch = useSettings((s) => s.patch)
+  const vault = useVault((s) => s.vault)
+  const tracks = useMusic((s) => s.tracks)
+  const library = useMusic((s) => s.library)
+  const load = useMusic((s) => s.load)
+
+  // The count is whatever the player already read. Opening this tab does not
+  // walk the folder — that happens when the player is opened, and a settings
+  // pane is not a reason to touch twenty thousand files.
+  const counted = library === 'ready' || library === 'unreachable'
+
+  /**
+   * A music folder inside the vault is not forbidden, but the vault indexes
+   * what is under it, so the explorer fills with audio files and the search
+   * index carries them. Better said out loud than quietly prevented.
+   */
+  const insideVault =
+    !!vault && !!music.folder && music.folder.toLowerCase().startsWith(vault.path.toLowerCase())
+
+  const choose = (): void => {
+    void (async () => {
+      const folder = await window.lumina.music.pick()
+      if (!folder) return
+      patch({ music: { ...music, folder, lastTrack: undefined, lastPosition: undefined } })
+      await load(true)
+    })()
+  }
+
+  return (
+    <div className="settings-body">
+      <section className="settings-section">
+        <h3 className="settings-heading">Music</h3>
+        <p className="voice-blurb">
+          A folder of your own music, played inside Lumina. It is not part of any vault: it is
+          never indexed, never watched, and never shown in the explorer, and nothing about it is
+          read until you open the player. Like your hotkeys, the folder belongs to this machine
+          rather than to a vault, so the music keeps playing when you switch between them.
+        </p>
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">Music folder</div>
+            <div className="field-hint">
+              {music.folder ? (
+                <code>{music.folder}</code>
+              ) : (
+                'None chosen. The player stays out of the way until there is one.'
+              )}
+            </div>
+            {music.folder && counted ? (
+              <div className="field-hint">
+                {library === 'unreachable'
+                  ? 'Cannot be reached at the moment — an unmounted drive or share looks like this.'
+                  : `${tracks.length.toLocaleString()} track${tracks.length === 1 ? '' : 's'}`}
+              </div>
+            ) : null}
+            {insideVault ? (
+              <div className="field-hint">
+                This folder is inside the open vault, so the vault will index and show these files
+                as well. A folder outside it keeps the two apart.
+              </div>
+            ) : null}
+          </div>
+          <div className="field-control">
+            <button className="btn btn-small" onClick={choose}>
+              <Icon name="folder" size={14} />
+              <span>{music.folder ? 'Change' : 'Open music vault'}</span>
+            </button>
+            {music.folder ? (
+              <button
+                className="btn btn-small btn-danger"
+                onClick={() =>
+                  patch({
+                    music: { ...music, folder: '', lastTrack: undefined, lastPosition: undefined }
+                  })
+                }
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
     </div>
   )
 }

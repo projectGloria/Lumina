@@ -61,6 +61,7 @@ import {
   switchProfile,
   unlockProfile
 } from './profiles'
+import { listMusic, setMusicRoot } from './music'
 import { search, searchTitles } from './search'
 import {
   ensureLuminaDir,
@@ -533,6 +534,9 @@ export function registerIpc(): void {
     // main process (a global accelerator, a tray icon, a login item), so they
     // have to be re-applied on every save rather than only at startup.
     linkPreviewsEnabled = settings.editor.linkPreviews
+    // The protocol handler reads the music root straight from here, so it has
+    // to follow the setting rather than be read once at startup.
+    setMusicRoot(settings.music.folder)
     await syncClipServer(settings.clipper)
     onSettingsSaved?.(settings)
     return true
@@ -745,6 +749,27 @@ export function registerIpc(): void {
     if (root) await saveHome(root, layout)
     return true
   })
+
+  /* music ---------------------------------------------------------------- */
+  // Two calls and no more: choose the folder, and read it. The folder itself
+  // is never indexed, watched, or shown in the tree.
+  ipcMain.handle(CH.musicPick, async () => {
+    if (!win) return null
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Choose your music folder',
+      properties: ['openDirectory'],
+      buttonLabel: 'Use this folder'
+    })
+    const picked = res.canceled ? null : (res.filePaths[0] ?? null)
+    // Set here rather than waiting for the settings write to come back: that
+    // write is debounced, and the renderer lists the folder as soon as the
+    // dialog closes — which would otherwise walk the *previous* root.
+    if (picked) setMusicRoot(picked)
+    return picked
+  })
+
+  // Walked on demand — when the player is first opened — never at startup.
+  ipcMain.handle(CH.musicList, () => listMusic())
 
   /* attachments and export ---------------------------------------------- */
   ipcMain.handle(

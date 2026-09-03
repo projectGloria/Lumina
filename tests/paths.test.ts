@@ -9,6 +9,7 @@ import {
   isIgnored,
   isMarkdown,
   safeJoin,
+  safePathUnder,
   safeVaultPath,
   samePath,
   toRelative,
@@ -71,6 +72,66 @@ describe('safeVaultPath', () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true })
       await fs.rm(outside, { recursive: true, force: true })
+    }
+  })
+})
+
+/**
+ * The same guard pointed at a root that is not a vault — the music folder is
+ * the second one, and it is on an external drive or a share as often as not.
+ */
+describe('safePathUnder, on a root that is not the vault', () => {
+  it('accepts a file inside the root', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-music-'))
+    try {
+      await fs.mkdir(path.join(root, 'Album'))
+      await fs.writeFile(path.join(root, 'Album', 'Track.mp3'), 'audio')
+      expect(await safePathUnder(root, 'Album/Track.mp3')).toBe(
+        path.join(root, 'Album', 'Track.mp3')
+      )
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  // A music folder is a folder someone else arranged, and a link in it must
+  // not turn `lumina://music/...` into a reader for the whole disk.
+  it('rejects a symlink that escapes it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-music-'))
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-elsewhere-'))
+    try {
+      await fs.writeFile(path.join(outside, 'private.mp3'), 'not yours')
+      await fs.symlink(
+        outside,
+        path.join(root, 'linked'),
+        process.platform === 'win32' ? 'junction' : 'dir'
+      )
+      expect(await safePathUnder(root, 'linked/private.mp3')).toBeNull()
+      expect(await safePathUnder(root, 'linked/new.mp3', true)).toBeNull()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+      await fs.rm(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects traversal out of it', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-music-'))
+    try {
+      expect(await safePathUnder(root, '../secrets.mp3')).toBeNull()
+      expect(await safePathUnder(root, 'Album/../../secrets.mp3')).toBeNull()
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('is the same function the vault guard is named after', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lumina-alias-'))
+    try {
+      await fs.writeFile(path.join(root, 'a.md'), 'x')
+      expect(await safeVaultPath(root, 'a.md')).toBe(await safePathUnder(root, 'a.md'))
+      expect(await safeVaultPath(root, '../a.md')).toBe(await safePathUnder(root, '../a.md'))
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
     }
   })
 })

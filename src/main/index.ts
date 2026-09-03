@@ -17,6 +17,7 @@ import { stopClipServer } from './clipServer'
 import { stopWhisperServer } from './whisperServer'
 import { saveCache } from './indexer'
 import { fileArgsFrom } from './paths'
+import { setMusicRoot } from './music'
 import { handleProtocol, registerScheme } from './protocol'
 import {
   applyLoginItem,
@@ -207,6 +208,11 @@ if (!app.requestSingleInstanceLock()) {
 
     const state = await loadAppState()
     windowBounds = state.windowBounds
+
+    // Where the music is, so `lumina://music/...` can answer. Setting a string
+    // costs nothing; the folder itself is not read until the player asks for
+    // it, which must never be on the path that brings the app up into the tray.
+    setMusicRoot(state.music.folder)
 
     registerIpc()
     onSettingsChanged((settings: Settings) => applyQuickNote(settings.quickNote, true))

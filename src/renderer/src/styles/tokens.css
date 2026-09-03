@@ -203,6 +203,20 @@
   --lum-home-edit-grid: color-mix(in srgb, var(--lum-border-strong) 90%, transparent);
   --lum-home-edit-card-bg: color-mix(in srgb, var(--lum-surface) 70%, var(--lum-bg));
 
+  /* ------------------------------------------------------------ music
+   * The player's own sizes. Its colours come from the surfaces and the
+   * decorative accent set, so a retheme carries it along with everything
+   * else — the generated artwork tile is `--lum-widget-accent-1..5` picked by
+   * the album's name. */
+  --lum-music-art-sm: 20px;
+  --lum-music-art-lg: 56px;
+  --lum-music-strip-width: 260px;
+  --lum-music-panel-width: 420px;
+  --lum-music-panel-height: 460px;
+  --lum-music-scrub-height: 3px;
+  --lum-music-scrub-thumb: 10px;
+  --lum-music-track: color-mix(in srgb, var(--lum-text) 14%, transparent);
+
   /* ---------------------------------------------------------- chrome */
   --lum-titlebar-height: 38px;
   --lum-statusbar-height: 26px;

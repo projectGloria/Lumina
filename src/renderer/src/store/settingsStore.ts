@@ -66,6 +66,7 @@ export const FALLBACK_SETTINGS: Settings = {
     downloadImages: true,
     openOnClip: true
   },
+  music: { folder: '', volume: 0.8, shuffle: false, repeat: 'off' },
   home: { openOnLaunch: false }
 }
 

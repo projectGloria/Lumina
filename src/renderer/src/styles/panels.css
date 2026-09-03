@@ -2112,3 +2112,328 @@
   padding: var(--lum-space-3) var(--lum-space-5);
   border-top: 1px solid var(--lum-border);
 }
+
+/* ============================================================ music player */
+
+/* The compact strip, inside the status bar rather than floating above the
+   workspace. The recording bar and the read-aloud player are fixed-position
+   pills anchored to the bottom of the window; a third pill would have to know
+   about both to avoid sitting on them, and this is simply part of the row. */
+.music-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  flex: 0 1 var(--lum-music-strip-width);
+  min-width: 0;
+}
+
+.music-strip-open {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  min-width: 0;
+  color: inherit;
+}
+.music-strip-open:hover {
+  color: var(--lum-text);
+}
+
+.music-strip-title {
+  min-width: 0;
+  max-width: 12ch;
+}
+
+/* Artwork, or a tile standing in for it. */
+.music-art {
+  flex: none;
+  width: var(--lum-music-art-sm);
+  height: var(--lum-music-art-sm);
+  border-radius: var(--lum-radius-sm);
+  object-fit: cover;
+  background: var(--lum-surface-hover);
+}
+.music-art.is-lg {
+  width: var(--lum-music-art-lg);
+  height: var(--lum-music-art-lg);
+  border-radius: var(--lum-radius);
+}
+
+/* No picture beside the track: a tile coloured from the album's name, so the
+   same record looks the same every launch instead of reading as a broken
+   image. The colours are the decorative accents, never the semantic ones. */
+.music-art.is-generated {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--lum-widget-accent-1) 20%, var(--lum-surface));
+  color: var(--lum-widget-accent-1);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.music-art.is-generated.is-lg {
+  font-size: 18px;
+}
+.music-art.is-generated[data-tile='1'] {
+  background: color-mix(in srgb, var(--lum-widget-accent-2) 20%, var(--lum-surface));
+  color: var(--lum-widget-accent-2);
+}
+.music-art.is-generated[data-tile='2'] {
+  background: color-mix(in srgb, var(--lum-widget-accent-3) 20%, var(--lum-surface));
+  color: var(--lum-widget-accent-3);
+}
+.music-art.is-generated[data-tile='3'] {
+  background: color-mix(in srgb, var(--lum-widget-accent-4) 20%, var(--lum-surface));
+  color: var(--lum-widget-accent-4);
+}
+.music-art.is-generated[data-tile='4'] {
+  background: color-mix(in srgb, var(--lum-widget-accent-5) 20%, var(--lum-surface));
+  color: var(--lum-widget-accent-5);
+}
+
+/* A line rather than a slider: the strip has 26px to work in. */
+.music-scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--lum-music-scrub-thumb);
+  background: transparent;
+  cursor: pointer;
+}
+.music-scrub::-webkit-slider-runnable-track {
+  height: var(--lum-music-scrub-height);
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--lum-accent) 0 var(--music-progress, 0%),
+    var(--lum-music-track) var(--music-progress, 0%) 100%
+  );
+}
+.music-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--lum-music-scrub-thumb);
+  height: var(--lum-music-scrub-thumb);
+  margin-top: calc((var(--lum-music-scrub-height) - var(--lum-music-scrub-thumb)) / 2);
+  border-radius: 50%;
+  background: var(--lum-accent);
+  opacity: 0;
+  transition: opacity var(--lum-transition);
+}
+.music-scrub:hover::-webkit-slider-thumb,
+.music-scrub:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+.music-scrub.is-compact {
+  flex: 0 1 90px;
+}
+
+.music-play {
+  color: var(--lum-text);
+}
+
+/* ------------------------------------------------------------- the panel */
+
+.music-panel {
+  position: fixed;
+  right: var(--lum-space-4);
+  bottom: calc(var(--lum-statusbar-height) + var(--lum-space-2));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-3);
+  width: var(--lum-music-panel-width);
+  max-height: var(--lum-music-panel-height);
+  padding: var(--lum-space-4);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius-lg);
+  background: var(--lum-surface);
+  box-shadow: var(--lum-shadow-lg);
+}
+
+.music-panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lum-space-3);
+}
+
+.music-panel-now {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.music-panel-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  margin-top: var(--lum-space-1);
+}
+
+.music-title {
+  font-size: var(--lum-font-size-ui);
+  color: var(--lum-text);
+}
+.music-sub {
+  font-size: var(--lum-font-size-small);
+  color: var(--lum-text-muted);
+}
+
+.music-panel-seek {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-3);
+}
+
+.music-elapsed {
+  flex: none;
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.music-panel-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+}
+.music-panel-tools .icon-btn.is-active {
+  color: var(--lum-accent);
+}
+
+.music-repeat-one {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+.music-panel-tools .icon-btn {
+  position: relative;
+}
+
+.music-volume {
+  flex: 0 0 70px;
+}
+
+.music-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.music-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.music-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-2);
+  width: 100%;
+  padding: var(--lum-space-1) var(--lum-space-2);
+  border-radius: var(--lum-radius-sm);
+  text-align: left;
+}
+.music-row:hover,
+.music-row:focus-visible {
+  background: var(--lum-surface-hover);
+}
+.music-row.is-current .music-title {
+  color: var(--lum-accent);
+}
+
+.music-row-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* An unreachable folder is a sentence and a path, not a toast: the drive comes
+   back, and the message has to still be there when it does. */
+.music-notice {
+  margin: 0;
+  color: var(--lum-text-muted);
+  font-size: var(--lum-font-size-ui);
+}
+.music-notice.is-problem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lum-space-2);
+  padding: var(--lum-space-3);
+  border: 1px solid var(--lum-border);
+  border-radius: var(--lum-radius);
+  background: var(--lum-bg);
+}
+.music-notice.is-problem p {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lum-space-1);
+  margin: 0;
+  min-width: 0;
+}
+.music-notice.is-problem code {
+  overflow-wrap: anywhere;
+  color: var(--lum-text);
+  font-size: var(--lum-font-size-small);
+}
+.music-notice.is-problem span {
+  color: var(--lum-text-faint);
+  font-size: var(--lum-font-size-small);
+}
+
+/* --------------------------------------------------------- the Home card */
+
+.home-music {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-3);
+  height: 100%;
+}
+
+.home-music-art {
+  flex: none;
+  border-radius: var(--lum-radius);
+  overflow: hidden;
+}
+.home-music-art img {
+  display: block;
+  width: var(--lum-music-art-lg);
+  height: var(--lum-music-art-lg);
+  border-radius: var(--lum-radius);
+  object-fit: cover;
+}
+
+.home-music-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.home-music-title {
+  font-size: var(--lum-home-row-size);
+  color: var(--lum-text);
+}
+
+.home-music-sub {
+  font-size: var(--lum-home-meta-size);
+  color: var(--lum-text-muted);
+}
+
+.home-music-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--lum-space-1);
+  margin-top: var(--lum-space-1);
+}

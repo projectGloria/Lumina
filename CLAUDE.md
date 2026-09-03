@@ -105,6 +105,7 @@ linkPreview.ts opt-in page metadata
 snippets.ts vault CSS, hot-reloaded
 fonts.ts    installed families, per OS
 clipServer.ts  the web clipper's listener
+music.ts    the music folder: where, and what is in it
 clipImages.ts  clipped images, pulled into the vault
 net.ts      the fetch primitives both outbound features share
 transcribe.ts  local whisper, one-shot
@@ -141,11 +142,14 @@ through `src/preload/index.ts` — a new capability means editing all three, plu
 scheme (`src/main/protocol.ts`) rather than widening the CSP to `file:`.
 
 `src/main/paths.ts` has two guards and they are not interchangeable. `safeJoin`
-is sync and only rejects `..` traversal; `safeVaultPath` is async, additionally
-`realpath`s the result so an in-vault symlink cannot point outside, and takes
-`allowMissing` for a path about to be created (which then checks the nearest
-existing parent). **Anything that opens a real file — indexer, protocol handler,
-vault writes — must use `safeVaultPath`.**
+is sync and only rejects `..` traversal; `safePathUnder` is async, additionally
+`realpath`s the result so a symlink inside the root cannot point outside, and
+takes `allowMissing` for a path about to be created (which then checks the
+nearest existing parent). **Anything that opens a real file — indexer, protocol
+handler, vault writes — must use it.** `safeVaultPath` is that same function
+named for the case nearly every caller means; the root is a parameter because
+there is now a second one, the music folder the `lumina://music` handler serves.
+A second copy of that reasoning is how one of the two guards ends up wrong.
 
 Paths in the renderer, the index and every IPC payload are **vault-relative and
 `/`-separated**; only `src/main` deals in absolute OS paths. `safeJoin` tolerates
@@ -739,6 +743,55 @@ user cannot tell which is their headset. That is also why the picker cannot
 show names until the meter has been run once: a page with no granted access is
 not told what hardware is attached, so filling the list in is a side effect of
 pressing Test.
+
+### Music, which is not a vault
+
+`Ctrl+,` → Music points Lumina at a folder of the user's own music. It is the
+one folder the app reads that is **not** part of any vault: never indexed,
+never watched, never in the explorer, and nothing about it is read at startup.
+
+The setting is app-level, like `hotkeys` — a folder of music belongs to the
+machine, not to a vault — so `music` is in `AppState`, in the `appLevel`
+overlay in `loadSettings`, and in **both** writes in `saveSettings`. That is
+also what lets the player keep playing across a vault switch:
+`store/musicStore.ts` is deliberately left out of `receive()` in `App.tsx`.
+
+Three things there are load-bearing:
+
+- **The walk is lazy and never at boot.** `listMusic` runs when the player is
+  first opened or the Home widget mounts, and `main/index.ts` only stores the
+  *path* at startup. Lumina comes up into the tray with no vault indexed and
+  has to answer a global shortcut on the first press; a twenty-thousand-file
+  walk has no business anywhere near that. The walk itself yields every 200
+  entries so a large library does not block the main process, caps at
+  `MUSIC_LIMIT`, and never follows a directory symlink.
+- **`music:pick` sets the root itself** rather than waiting for the settings
+  write to come back. That write is debounced by 250ms and the renderer lists
+  the folder the moment the dialog closes, so the listing would otherwise walk
+  the previous root.
+- **A folder that cannot be reached is not an empty folder.** `MusicListing.ok`
+  is false for an unplugged drive or an unmounted share, and the panel says so
+  with the path it is looking for. An empty shelf would read as "you own no
+  music"; a toast would be gone by the time the drive came back.
+
+Audio is served by the existing `lumina://` handler under a second hostname,
+`lumina://music/<music-relative>`, guarded by `safePathUnder` exactly as vault
+files are — the `realpath` step is what stops a symlink planted in someone's
+album folder from serving the rest of the disk. The renderer's CSP already
+allows `media-src lumina:`, so nothing there needed widening.
+
+The pure half is `src/shared/music.ts`: the extension predicate, filename
+parsing, duration formatting, and the queue. The queue is a bag — with shuffle
+on, a permutation consumed to exhaustion, so every track plays once before any
+plays twice, and a refill never opens with the track that just finished.
+`repeat: 'one'` is honoured by `onTrackEnd` and deliberately ignored by `skip`,
+because a repeat the Next button cannot escape is a trap. `tests/music.test.ts`
+holds all of it with an injected RNG.
+
+The compact strip lives **inside the status bar**, not as another floating
+pill. `VoiceRecorder` and `SpeechPlayer` are both `position: fixed` bars
+anchored above it, and they already stack by a hardcoded pairwise rule
+(`.speech-bar.is-stacked`); a third pill would have to know about both.
 
 ### The web clipper
 

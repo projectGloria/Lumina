@@ -4,6 +4,7 @@ import type { LinkMetadata } from '@shared/linkPreview'
 import type { ClipPayload } from '@shared/clip'
 
 import type {
+  MusicListing,
   ClipperStatus,
   FileOpenRequest,
   SpeechInstallProgress,
@@ -164,6 +165,13 @@ const api = {
   home: {
     get: (): Promise<HomeLayout | null> => ipcRenderer.invoke(CH.homeGet),
     set: (layout: HomeLayout): Promise<boolean> => ipcRenderer.invoke(CH.homeSet, layout)
+  },
+
+  music: {
+    /** Choose the music folder. The path is stored through `settings:set`. */
+    pick: (): Promise<string | null> => ipcRenderer.invoke(CH.musicPick),
+    /** Walk it. Called when the player is first opened, never at startup. */
+    list: (): Promise<MusicListing> => ipcRenderer.invoke(CH.musicList)
   },
 
   links: {

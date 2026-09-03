@@ -24,6 +24,7 @@ import Welcome from './components/Welcome'
 import Workspace from './components/Workspace'
 import { Icon } from './components/Icon'
 import { getActiveView } from './editor/activeView'
+import { rememberPosition } from './lib/musicPlayer'
 import { captureActiveSession } from './editor/session'
 import {
   drainQuickNotes,
@@ -194,6 +195,10 @@ export default function App(): React.JSX.Element {
         // Synchronous, and before the workspace flush below, so the caret in
         // the note on screen is part of what gets written out.
         captureActiveSession(activePath(), getActiveView())
+        // Where the music got to. One of the three moments it is written
+        // down — there is no heartbeat, so this is what makes "carry on where
+        // I left off" survive a normal quit.
+        rememberPosition()
         void Promise.all([
           useEditor.getState().saveAll(),
           flushSettingsPersistence(),

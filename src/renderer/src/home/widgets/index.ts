@@ -12,6 +12,7 @@ import { clockWidget } from './ClockWidget'
 import { dailyWidget } from './DailyNoteWidget'
 import { graphWidget } from './GraphWidget'
 import { heatmapWidget } from './HeatmapWidget'
+import { musicWidget } from './MusicWidget'
 import { onThisDayWidget } from './OnThisDayWidget'
 import { pinnedWidget, starredWidget } from './PathListWidget'
 import { progressWidget } from './ProgressWidget'
@@ -34,6 +35,7 @@ export const WIDGETS: AnyWidgetDef[] = [
   scratchWidget,
   graphWidget,
   heatmapWidget,
+  musicWidget,
   recentWidget,
   starredWidget,
   pinnedWidget,
