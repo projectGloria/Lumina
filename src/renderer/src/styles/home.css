@@ -614,6 +614,20 @@
   text-decoration: line-through;
 }
 
+/* A task ticked on the board keeps its place for a few seconds rather than
+   being filtered away by the click that ticked it, so the undo it offers is
+   the row itself plus this. */
+.home-task-undo {
+  flex: none;
+  padding: 0 var(--lum-space-1);
+  border-radius: var(--lum-radius-sm);
+  color: var(--lum-accent);
+  font-size: var(--lum-font-size-small);
+}
+.home-task-undo:hover {
+  background: var(--lum-accent-soft);
+}
+
 /* -------------------------------------------- the Home tab in settings */
 
 .settings-widget-list {

@@ -7,6 +7,7 @@ import {
   extractLinks,
   extractTags,
   extractTasks,
+  findTaskLine,
   isMarkdownPath,
   isPathAtOrBelow,
   maskCode,
@@ -422,5 +423,72 @@ describe('setTaskDone', () => {
     const ticked = setTaskDone(src, 0, true)
     expect(ticked).not.toBeNull()
     expect(extractTasks(ticked as string).map((t) => t.done)).toEqual([true, true])
+  })
+})
+
+describe('findTaskLine', () => {
+  it('returns the line itself when nothing has moved', () => {
+    const src = ['- [ ] one', '- [ ] two'].join('\n')
+    expect(findTaskLine(src, 1, 'two')).toBe(1)
+  })
+
+  // The case the text match exists for: a note open in a background tab with
+  // unsaved edits above the task has already moved it, so the indexed line now
+  // holds a different checkbox. Ticking that one is the bug.
+  it('follows a task that edits above it pushed down', () => {
+    const src = ['new line', 'another', '- [ ] one', '- [ ] two'].join('\n')
+    expect(findTaskLine(src, 1, 'two')).toBe(3)
+  })
+
+  it('follows a task that moved up', () => {
+    expect(findTaskLine(['- [ ] one', '- [ ] two'].join('\n'), 6, 'one')).toBe(0)
+  })
+
+  it('finds it whether it is ticked or not', () => {
+    expect(findTaskLine(['prose', '- [x] one'].join('\n'), 0, 'one')).toBe(1)
+  })
+
+  it('refuses when the task is gone entirely', () => {
+    expect(findTaskLine('- [ ] something else', 0, 'one')).toBeNull()
+    expect(findTaskLine('', 0, 'one')).toBeNull()
+  })
+
+  it('ignores a matching checkbox inside a fenced code block', () => {
+    const src = ['```md', '- [ ] one', '```'].join('\n')
+    expect(findTaskLine(src, 1, 'one')).toBeNull()
+  })
+
+  it('takes the nearer of two identical tasks', () => {
+    // Duplicated text in one note is ordinary; distance from the indexed line
+    // is what picks between them.
+    const src = ['- [ ] follow up', 'prose', 'prose', '- [ ] follow up'].join('\n')
+    expect(findTaskLine(src, 3, 'follow up')).toBe(3)
+    expect(findTaskLine(src, 1, 'follow up')).toBe(0)
+  })
+
+  it('refuses to guess between two equidistant matches', () => {
+    // A coin toss here would tick the wrong box silently, which is exactly
+    // what this function was added to prevent.
+    const src = ['- [ ] follow up', 'prose', '- [ ] follow up'].join('\n')
+    expect(findTaskLine(src, 1, 'follow up')).toBeNull()
+  })
+
+  it('still prefers an exact hit over a nearer duplicate elsewhere', () => {
+    const src = ['- [ ] follow up', '- [ ] follow up', 'prose'].join('\n')
+    expect(findTaskLine(src, 1, 'follow up')).toBe(1)
+  })
+
+  it('refuses an empty search text rather than matching a bare box', () => {
+    expect(findTaskLine('- [ ]', 0, '')).toBeNull()
+    expect(findTaskLine('- [ ]', 0, '   ')).toBeNull()
+  })
+
+  it('hands setTaskDone a line it can write', () => {
+    const src = ['inserted', '- [ ] one', '- [ ] two'].join('\n')
+    const line = findTaskLine(src, 1, 'two')
+    expect(line).toBe(2)
+    expect(setTaskDone(src, line!, true)).toBe(
+      ['inserted', '- [ ] one', '- [x] two'].join('\n')
+    )
   })
 })

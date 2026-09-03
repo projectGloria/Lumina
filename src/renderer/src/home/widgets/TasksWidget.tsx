@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { isPathAtOrBelow, setTaskDone, toPlainText } from '@shared/markdown-parse'
+import { findTaskLine, isPathAtOrBelow, setTaskDone, toPlainText } from '@shared/markdown-parse'
+import {
+  drop,
+  nextFrozenOrder,
+  nextTickDeadline,
+  reconcileTicks,
+  taskView,
+  tick,
+  type TaskRow,
+  type TaskTicks,
+  type TaskViewRow
+} from '@shared/homeTasks'
 import { openNote, updateNoteContent } from '@/lib/actions'
 import { toast } from '@/store/uiStore'
 import { titleOf, useVault } from '@/store/vaultStore'
@@ -12,70 +23,86 @@ interface TasksConfig extends Record<string, unknown> {
   showDone: boolean
 }
 
-/** `path:line` — a task has no id of its own, and the pair is what identifies it. */
-const keyOf = (path: string, line: number): string => `${path}:${line}`
-
+/**
+ * Open checkboxes from across the vault, tickable in place.
+ *
+ * Everything about which rows show and in what order is in
+ * `@shared/homeTasks`; this draws the result and owns the round trip. Two of
+ * those rules exist because of how the round trip feels: a box ticked here
+ * stays on the board rather than being filtered away by the same click, and
+ * the order is held still while the write bumps the note's mtime.
+ */
 function Tasks({ config }: WidgetProps<TasksConfig>): React.JSX.Element {
   const index = useVault((s) => s.index)
-  /**
-   * Boxes ticked here but not yet seen coming back through the index.
-   *
-   * A write goes to disk, the watcher notices, and the note is reparsed — long
-   * enough that a checkbox with no optimistic state looks broken when clicked.
-   */
-  const [pending, setPending] = useState<Record<string, boolean>>({})
+  /** Boxes ticked here, from the click until the board stops holding them. */
+  const [ticks, setTicks] = useState<TaskTicks>({})
+  const [frozen, setFrozen] = useState<string[] | null>(null)
 
-  const tasks = useMemo(() => {
-    const rows = []
+  /** Every task in scope — reconciliation needs the finished ones too. */
+  const rows = useMemo<TaskRow[]>(() => {
+    const out: TaskRow[] = []
     for (const note of Object.values(index.notes)) {
       if (config.folder && !isPathAtOrBelow(note.path, config.folder)) continue
       for (const task of note.tasks) {
-        if (!task.text) continue
-        rows.push({ ...task, path: note.path, mtime: note.mtime })
+        out.push({
+          path: note.path,
+          line: task.line,
+          text: task.text,
+          done: task.done,
+          mtime: note.mtime
+        })
       }
     }
-    return rows
-      .filter((task) => config.showDone || !(pending[keyOf(task.path, task.line)] ?? task.done))
-      .sort((a, b) => b.mtime - a.mtime || a.line - b.line)
-      .slice(0, Math.max(1, config.count))
-  }, [index, config.folder, config.showDone, config.count, pending])
+    return out
+  }, [index, config.folder])
 
-  // Drop an optimistic tick once the index agrees with it, so the row goes
-  // back to reflecting the file rather than this widget's memory of it.
+  const tasks = useMemo(
+    () => taskView(rows, { showDone: config.showDone, ticks, frozen, limit: config.count }),
+    [rows, config.showDone, config.count, ticks, frozen]
+  )
+
+  // Settle what the index has caught up with, and expire what it never will.
   useEffect(() => {
-    setPending((current) => {
-      const next: Record<string, boolean> = {}
-      let settled = false
-      for (const [key, value] of Object.entries(current)) {
-        const split = key.lastIndexOf(':')
-        const task = index.notes[key.slice(0, split)]?.tasks.find(
-          (candidate) => candidate.line === Number(key.slice(split + 1))
-        )
-        if (task && task.done === value) settled = true
-        else next[key] = value
-      }
-      return settled ? next : current
-    })
-  }, [index])
+    setTicks((current) => reconcileTicks(current, rows, Date.now()).next)
+  }, [rows])
 
-  const toggle = async (path: string, line: number, done: boolean): Promise<void> => {
-    const key = keyOf(path, line)
-    setPending((current) => ({ ...current, [key]: done }))
+  // The last entry's expiry is not an index event, so it needs its own clock —
+  // otherwise a hold with nothing else happening in the vault never ends.
+  useEffect(() => {
+    const deadline = nextTickDeadline(ticks)
+    if (deadline === null) return
+    const timer = setTimeout(
+      () => setTicks((current) => reconcileTicks(current, rows, Date.now()).next),
+      Math.max(0, deadline - Date.now())
+    )
+    return () => clearTimeout(timer)
+  }, [ticks, rows])
+
+  // Hold the order while anything is settling. Captured from what is on screen
+  // at the first click, released when the last entry goes.
+  useEffect(() => {
+    setFrozen((current) => nextFrozenOrder(current, tasks, ticks))
+  }, [ticks, tasks])
+
+  const toggle = async (task: TaskViewRow, done: boolean): Promise<void> => {
+    setTicks((current) => tick(current, task.key, done, Date.now()))
 
     let applied = false
-    const ok = await updateNoteContent(path, (content) => {
+    const ok = await updateNoteContent(task.path, (content) => {
+      // The line comes from the index, the content may be ahead of it: a note
+      // open in a tab with unsaved edits has already moved the task. Its own
+      // text is what identifies it.
+      const line = findTaskLine(content, task.line, task.text)
+      if (line === null) return content
       const next = setTaskDone(content, line, done)
       applied = next !== null
       return next ?? content
     })
 
     if (ok && applied) return
-    setPending((current) => {
-      const next = { ...current }
-      delete next[key]
-      return next
-    })
-    // The index is a snapshot; the line may have moved since it was taken.
+    setTicks((current) => drop(current, task.key))
+    // Either the task is gone, or there are two of it and the same distance
+    // from where it was — both are cases for the note rather than a guess.
     if (ok) toast('That task has moved — open the note to change it', 'error')
   }
 
@@ -90,25 +117,36 @@ function Tasks({ config }: WidgetProps<TasksConfig>): React.JSX.Element {
   return (
     <ul className="home-list home-tasks">
       {tasks.map((task) => {
-        const key = keyOf(task.path, task.line)
-        const done = pending[key] ?? task.done
+        const label = toPlainText(task.text)
         return (
-          <li key={key} className={`home-task${done ? ' is-done' : ''}`}>
+          <li
+            key={task.key}
+            className={`home-task${task.done ? ' is-done' : ''}${task.held ? ' is-held' : ''}`}
+          >
             <input
               type="checkbox"
               className="home-task-box"
-              checked={done}
-              aria-label={task.text}
-              onChange={(e) => void toggle(task.path, task.line, e.target.checked)}
+              checked={task.done}
+              aria-label={label}
+              onChange={(e) => void toggle(task, e.target.checked)}
             />
             <button
               className="home-task-text truncate"
               data-tooltip={`${task.path}:${task.line + 1}`}
               onClick={() => openNote(task.path, { line: task.line })}
             >
-              {toPlainText(task.text)}
+              {label}
             </button>
             <span className="home-row-meta truncate">{titleOf(task.path)}</span>
+            {task.held ? (
+              <button
+                className="home-task-undo"
+                aria-label={`Undo completing ${label}`}
+                onClick={() => void toggle(task, false)}
+              >
+                Undo
+              </button>
+            ) : null}
           </li>
         )
       })}

@@ -215,6 +215,48 @@ export function extractTasks(src: string): Task[] {
 }
 
 /**
+ * Which line holds the task that was on `line` when the index was taken.
+ *
+ * A line number alone is not an identity. The index is a snapshot and the text
+ * being written may be ahead of it — a note open in a background tab with
+ * unsaved edits above the task has already moved it — so `setTaskDone` used to
+ * tick whatever checkbox had arrived at that line number instead. Matching the
+ * task's own text is what makes it the same task.
+ *
+ * Returns null rather than guessing when the nearest two matches are the same
+ * distance away. Two tasks with identical text in one note is ordinary
+ * (`- [ ] follow up` twice), and a coin toss between them would be the very
+ * bug this replaces.
+ */
+export function findTaskLine(content: string, line: number, text: string): number | null {
+  const wanted = text.trim()
+  if (!wanted) return null
+
+  const lines = maskCode(content).split('\n')
+  const onLine = lines[line]?.match(TASK_RE)
+  // The overwhelmingly common case: nothing moved.
+  if (onLine && onLine[3].trim() === wanted) return line
+
+  let best: number | null = null
+  let bestDistance = Infinity
+  let tied = false
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(TASK_RE)
+    if (!m || m[3].trim() !== wanted) continue
+    const distance = Math.abs(i - line)
+    if (distance < bestDistance) {
+      best = i
+      bestDistance = distance
+      tied = false
+    } else if (distance === bestDistance) {
+      tied = true
+    }
+  }
+
+  return tied ? null : best
+}
+
+/**
  * Tick or untick the checkbox on one line.
  *
  * Returns null when that line is not a task any more — the index is a snapshot,
