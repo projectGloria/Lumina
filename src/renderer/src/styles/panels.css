@@ -1764,7 +1764,7 @@
 .voice-bar {
   position: fixed;
   left: 50%;
-  bottom: 28px;
+  bottom: var(--lum-bar-bottom);
   transform: translateX(-50%);
   z-index: 60;
   display: flex;
@@ -1867,7 +1867,7 @@
 /* Both can be up at once: dictating while a note is read back is odd but
    nothing forbids it, and one bar sitting on top of the other is a bug. */
 .speech-bar.is-stacked {
-  bottom: 82px;
+  bottom: calc(var(--lum-bar-bottom) + var(--lum-bar-stack));
 }
 
 .speech-what {
@@ -2125,6 +2125,30 @@
   gap: var(--lum-space-2);
   flex: 0 1 var(--lum-music-strip-width);
   min-width: 0;
+}
+
+/*
+ * The strip gives way rather than pushing.
+ *
+ * The status bar is `overflow: hidden; white-space: nowrap`, so whatever does
+ * not fit is cut off — and the word count and the save indicator were there
+ * first. The strip sheds its title and scrub line, then leaves altogether;
+ * losing it costs nothing, because the player is still on the palette
+ * (`music.toggle`), in the Home widget, and one click away in the panel.
+ *
+ * The widths are literals because they have to be: a custom property cannot be
+ * read inside a container query condition. They are the only two in this file.
+ */
+@container (max-width: 900px) {
+  .music-strip-title,
+  .music-scrub.is-compact {
+    display: none;
+  }
+}
+@container (max-width: 620px) {
+  .music-strip {
+    display: none;
+  }
 }
 
 .music-strip-open {

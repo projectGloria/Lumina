@@ -220,6 +220,12 @@
   /* ---------------------------------------------------------- chrome */
   --lum-titlebar-height: 38px;
   --lum-statusbar-height: 26px;
+  /* Where the floating bars sit — the recorder and the read-aloud player.
+     Derived from the status bar rather than written as the 28px it happens to
+     work out to, so the pills cannot slide underneath the row the day it gets
+     taller. `--lum-bar-stack` is one pill plus its gap, for when both are up. */
+  --lum-bar-bottom: calc(var(--lum-statusbar-height) + var(--lum-space-1));
+  --lum-bar-stack: 54px;
   --lum-sidebar-icon: 20px;
 
   /* --------------------------------------------------------- motion */

@@ -219,6 +219,10 @@ body {
 /* ------------------------------------------------------------ statusbar */
 
 .statusbar {
+  /* A container, so the music strip can shed parts of itself when the row runs
+     out of width — see `.music-strip` in panels.css. The row is a full-width
+     grid track, so its size comes from the grid and never from its contents. */
+  container-type: inline-size;
   display: flex;
   align-items: center;
   gap: var(--lum-space-4);
