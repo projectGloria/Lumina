@@ -37,9 +37,11 @@ Tests run in vitest's `node` environment, so React components and CodeMirror
 have no harness at all. What is covered is the pure half of each feature:
 `src/shared` (markdown parsing, slash-item ranking, placeholder expansion, tab
 transitions, link-banner and quick-note naming, WAV encoding, whisper output
-parsing, the language table, clip validation) plus `src/main/paths.ts`,
-`openFile.ts`, `transcribe.ts`, `speechPacks.ts`, `clipServer.ts` and the
-starter vault.
+parsing, the language table, clip validation, the music queue, and the eight
+`home*` modules behind the board — geometry, config merging, calendar
+arithmetic, heat bands, sparkline scaling, cover sweeping, path rebasing and
+task ticks) plus `src/main/paths.ts`, `openFile.ts`, `transcribe.ts`,
+`speechPacks.ts`, `clipServer.ts`, `range.ts` and the starter vault.
 
 Several suites deliberately touch the real world, because the question they ask
 is about it. `tests/open-file.test.ts` and the `safeVaultPath` cases in
@@ -80,7 +82,7 @@ The vault picker is a native dialog, so for scripted verification seed the app
 state instead. `%APPDATA%/lumina/lumina.json` holds `lastVault`, `recentVaults`,
 `profiles`, app-level `hotkeys` and `windowBounds`; the app reopens the active
 profile's vault on launch. Per-vault UI state lives in
-`<vault>/.lumina/{settings,theme,workspace}.json`, so you can force a theme, a
+`<vault>/.lumina/{settings,theme,workspace,home}.json`, so you can force a theme, a
 panel, or a window size by writing those files and restarting. Pointing at an
 empty folder seeds it with the starter notes from `src/main/starter.ts`.
 
@@ -106,6 +108,8 @@ snippets.ts vault CSS, hot-reloaded
 fonts.ts    installed families, per OS
 clipServer.ts  the web clipper's listener
 music.ts    the music folder: where, and what is in it
+musicArt.ts cover art, out of the tags and cached
+range.ts    byte ranges, so an <audio> can seek
 clipImages.ts  clipped images, pulled into the vault
 net.ts      the fetch primitives both outbound features share
 transcribe.ts  local whisper, one-shot
@@ -374,17 +378,18 @@ Autosave is debounced, so at any instant the last few hundred milliseconds of
 typing exist only in the renderer. Both quit paths therefore hand off to
 `flushRenderer` (`ipc.ts`) and *wait*: the window's `close` handler (the X
 button, which destroys the renderer) and `before-quit` (Cmd+Q, which skips the
-close handler entirely). The renderer's `onFlush` awaits three debounced things
-together — `useEditor.saveAll()`, `flushSettingsPersistence()` and
-`flushWorkspacePersistence()` — so a theme tweak or a resized panel survives the
-same way an unsaved sentence does. Each path is guarded against re-entry and both
+close handler entirely). The renderer's `onFlush` awaits four debounced things
+together — `useEditor.saveAll()`, `flushSettingsPersistence()`,
+`flushWorkspacePersistence()` and `flushHomePersistence()` — so a theme tweak, a
+resized panel or a dragged widget survives the same way an unsaved sentence
+does. Each path is guarded against re-entry and both
 are safe to run twice, since saving a clean buffer does nothing. The 3s timeout
 means a wedged renderer delays the quit rather than preventing it. If you add a
 new way to quit, route it through one of those two.
 
 ### Commands are data
 
-`src/renderer/src/lib/commands.ts` is a flat list (~50 entries) read by the
+`src/renderer/src/lib/commands.ts` is a flat list (~70 entries) read by the
 command palette, the global hotkey handler in `App.tsx`, and the hotkey rebinder
 in settings. Add an action there, not as a bare click handler, or it will be
 missing from the palette and unbindable. Operations spanning more than one store
@@ -434,14 +439,93 @@ through the tree and no context provider. Use the `withView()` wrapper in
 `commands.ts`, which no-ops when no note is focused, rather than reading the
 singleton directly.
 
+### The Home board
+
+Home is a per-vault dashboard and **the one tab that shows no note**: its
+`TabKind` is `'home'` and its `path` is `''`, so `openTab` finds an existing
+one by kind rather than by path and there is never a second. `kind` is absent
+for a note tab, which is what lets a `workspace.json` written before Home
+existed open exactly the way it used to. `settings.home.openOnLaunch` decides
+whether a vault with no tabs to restore opens on it.
+
+The layout lives in `<vault>/.lumina/home.json` and follows `workspace.json`'s
+pattern exactly — debounced writes, one queued chain, and a
+`flushHomePersistence()` the quit handoff awaits. `homeStore` keeps the same
+`vaultGeneration` guard `editorStore` does, because a read still in flight when
+a second vault opens would otherwise land as *that* vault's board, and the next
+commit would write one vault's widgets into the other's file.
+
+**Widgets are data, the way commands are.** A `WidgetDef` in
+`home/widgets/types.ts`, one entry in `WIDGETS` (`home/widgets/index.ts`), and
+the picker, the board and `home.json` all know about it — the board, the store
+and the persistence layer are not touched. Two consequences:
+
+- A `type` string is persisted, so renaming one orphans every board that used
+  it; add a new entry instead. A stored type this build no longer knows is
+  **kept** and drawn as a placeholder rather than quietly deleted.
+- A widget that stores a vault path declares `rebasePaths` on its own
+  definition and owes nothing else (see the rename bookkeeping above). There is
+  deliberately no delete counterpart: a path that has gone is shown, not
+  cleared.
+
+`home.json` is a plain file a user can edit, and a board outlives the build
+that wrote it, so **nothing in it is trusted**. `normalizeLayout`
+(`shared/homeLayout.ts`) clamps coordinates, drops duplicate ids (two cards
+would share one React key and one drag), resolves overlaps, and bounds
+`columns` and `h` — a hand-written `h: 99999` makes `findFreeSpot` scan a
+hundred thousand rows on every add. `shared/homeConfig.ts` does the same one
+level down: `mergeWidgetConfig` lays only same-shaped stored values over a
+widget's `defaultConfig`, so a typo cannot reach a component as `NaN`, and
+`oneOf` covers the string options a default cannot describe. Keys the defaults
+do not mention are dropped on the way to the component but left in the file, so
+a board written by a later build round-trips through this one.
+
+The geometry is pure functions over grid **cells, never pixels** — `compact`,
+`placeWidget`, `findFreeSpot`, `clampToColumns` — which is why
+`tests/home-layout.test.ts` can pin it down in vitest's node environment with
+the renderer left only to draw. `HomeBoard` picks a column count from its own
+width (4 / 2 / 1 at 900px and 640px) and folds the authored board into it. That
+fold is one-way: `canArrange` refuses to *store* an arrangement made narrower
+than the board was authored at, because the clamped widths are a projection the
+wide layout cannot be recovered from — the board says so and offers to
+re-author at this width instead. Anything replacing the widget list goes
+through `withWidgets`, which keeps the parts of the layout an arrangement is
+not about; rebuilding the object at the call site is how every drag, nudge and
+reset used to delete the user's cover.
+
+The rest of `src/shared/home*.ts` is the same split — the half that can be
+quietly wrong, kept pure and tested:
+
+- `homeDates` steps days with `Date.setDate` and nothing else. A day is not
+  86,400,000ms, and fixed-millisecond arithmetic drops a day from the grid on
+  the night the clocks change.
+- `homeHeat` takes the activity grid's bands from quartiles over the days that
+  saw any activity — fixed thresholds saturate for anyone prolific, and scaling
+  to the maximum lets one bulk import flatten the year.
+- `homeSpark` scales a flat series and a lone spike deliberately, since the
+  obvious scaling draws both as "nothing happened".
+- `homeTasks` holds a ticked box on the board for `TASK_HOLD_MS` and expires
+  every entry at that deadline whatever it is waiting for. Ticking writes the
+  note, the watcher fires, and the index returns a moment later with different
+  contents — a row that vanished on the click read as a deletion, and an entry
+  the index can never confirm would otherwise be stranded for the session.
+- `homeCovers` decides which pictures under `.lumina/home` the board has
+  stopped using; `main/settings.ts` only handles the files, and timidly — the
+  sweep runs only when the cover reference actually changed, never on a board
+  with no widgets (which is what a renderer that has not loaded one yet would
+  send), and deletes go to the recycle bin.
+
 ### State
 
-Six Zustand stores under `store/`: `vaultStore` (vault, tree, index),
+Eight Zustand stores under `store/`: `vaultStore` (vault, tree, index),
 `workspaceStore` (tabs, panels, history — persisted to `workspace.json`),
 `editorStore` (buffers, dirty tracking, debounced autosave), `settingsStore`
 (settings, theme, snippets, and `applyTheme` which pushes everything onto the
 DOM), `uiStore` (modals, toasts, context menu, prompts), `profileStore`
-(profiles and the passlock gate).
+(profiles and the passlock gate), `homeStore` (the board, persisted to
+`home.json`) and `musicStore` — which is the one store `receive()` in
+`App.tsx` deliberately leaves alone, so the player keeps playing across a
+vault switch.
 
 `vaultStore` also exports the read helpers everything else resolves links
 through — `titleOf`, `knownPaths`, `aliasMap`, `pathForNewNote`. `aliasMap`

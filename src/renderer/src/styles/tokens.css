@@ -9,55 +9,58 @@
 
 :root {
   /* ---------------------------------------------------------- surfaces */
-  --lum-bg: #faf9f5;              /* the app canvas: warm paper */
-  --lum-bg-sidebar: #f5f4ee;
-  --lum-bg-titlebar: #f5f4ee;
+  --lum-bg: #f9f9f7;              /* the app canvas: warm paper */
+  --lum-bg-sidebar: #f0efec;
+  --lum-bg-titlebar: #f0efec;
   --lum-surface: #ffffff;          /* cards, modals, popovers */
-  --lum-surface-hover: #f0eee6;
-  --lum-surface-active: #e9e6dc;
-  --lum-overlay: rgba(20, 20, 19, 0.32);
+  --lum-surface-hover: #f3f3f0;
+  --lum-surface-active: #e7e6e1;
+  --lum-overlay: rgba(11, 11, 11, 0.32);
 
   /* ------------------------------------------------------------ lines */
-  --lum-border: #e5e3dc;
-  --lum-border-strong: #d6d3c8;
+  --lum-border: #e7e6e1;
+  --lum-border-strong: #d2d1c7;
 
   /* ------------------------------------------------------------- text */
-  --lum-text: #141413;
-  --lum-text-muted: #73726c;
-  --lum-text-faint: #a3a29b;
+  --lum-text: #0b0b0b;
+  --lum-text-muted: #52514e;
+  --lum-text-faint: #898781;
   --lum-text-on-accent: #ffffff;
 
   /* ----------------------------------------------------------- accent */
-  --lum-accent: #c96442;           /* Claude clay */
-  --lum-accent-hover: #b5533a;
-  --lum-accent-soft: #f5e6e0;      /* active nav pill, selection wash */
-  --lum-accent-ring: rgba(201, 100, 66, 0.35);
-  --lum-selection: rgba(201, 100, 66, 0.16);
+  --lum-accent: #c6613f;           /* Claude clay, emphasized */
+  --lum-accent-hover: #d97757;     /* clay proper: the brand lightens on hover */
+  /* A wash, not a tint: this is the ground under a selected row, so it is the
+     accent at roughly a tenth. Claude's own notice tints are ~30% and read as
+     a highlighter when a whole tree of rows wears one. */
+  --lum-accent-soft: #f7e9e4;      /* active nav pill, selection wash */
+  --lum-accent-ring: rgba(198, 97, 63, 0.35);
+  --lum-selection: rgba(198, 97, 63, 0.16);
 
   /* --------------------------------------------------------- semantic */
-  --lum-success: #4a7c59;
-  --lum-warning: #a97b21;
-  --lum-danger: #b34a3f;
-  --lum-info: #4a6fa5;
-  --lum-folder: #e07a3f;
+  --lum-success: #006300;
+  --lum-warning: #734500;
+  --lum-danger: #8e2626;
+  --lum-info: #184f95;
+  --lum-folder: #d97757;
 
   /* --------------------------------------------------------- markdown */
   --lum-link: var(--lum-accent);
-  --lum-link-unresolved: #b9a99f;
-  --lum-tag-bg: #efece2;
-  --lum-tag-text: #6d6a5f;
-  --lum-code-bg: #f2f0e8;
-  --lum-code-text: #8a4a33;
-  --lum-quote-border: #ddd9cc;
-  --lum-hr: #e5e3dc;
-  --lum-mark-bg: #f8e7b8;
+  --lum-link-unresolved: #a5a49a;
+  --lum-tag-bg: #f0efec;
+  --lum-tag-text: #52514e;
+  --lum-code-bg: #f3f3f0;
+  --lum-code-text: #8e2626;
+  --lum-quote-border: #d2d1c7;
+  --lum-hr: #e7e6e1;
+  --lum-mark-bg: #f9dca4;
 
   /* ------------------------------------------------------------ graph */
-  --lum-graph-node: #c9a793;
+  --lum-graph-node: #b4b3a8;
   --lum-graph-node-active: var(--lum-accent);
-  --lum-graph-node-unresolved: #d9d5c8;
-  --lum-graph-edge: rgba(20, 20, 19, 0.13);
-  --lum-graph-edge-active: rgba(201, 100, 66, 0.55);
+  --lum-graph-node-unresolved: #d2d1c7;
+  --lum-graph-edge: rgba(11, 11, 11, 0.13);
+  --lum-graph-edge-active: rgba(198, 97, 63, 0.55);
   --lum-graph-label: var(--lum-text-muted);
 
   /* ------------------------------------------------------------ fonts */
@@ -72,8 +75,8 @@
 
   /* ------------------------------------------------------- typography */
   --lum-font-size: 16px;
-  --lum-font-size-ui: 13.5px;
-  --lum-font-size-small: 12px;
+  --lum-font-size-ui: 14px;
+  --lum-font-size-small: 12.5px;
   --lum-line-height: 1.7;
   --lum-editor-width: 46rem;
   /* The measure the editor centres text to. Settings swaps this for `100%`
@@ -85,7 +88,7 @@
    * `default` step, so the explorer still draws correctly before settings
    * hydrate and when a snippet wants to override just one of them. */
   --lum-tree-row-height: 36px;
-  --lum-tree-font-size: 14.5px;
+  --lum-tree-font-size: 14px;
   --lum-tree-icon-size: 18px;
   --lum-tree-gap: 10px;
   --lum-tree-indent: 18px;
@@ -99,18 +102,18 @@
   --lum-space-6: 32px;
 
   /* ------------------------------------------------------------ shape */
-  --lum-radius: 10px;
-  --lum-radius-sm: 6px;
-  --lum-radius-lg: 16px;
+  --lum-radius: 6px;
+  --lum-radius-sm: 5px;
+  --lum-radius-lg: 12px;
 
   /* ---------------------------------------------------------- surface
    * Claude leans on flat surfaces and 1px warm borders rather than shadow.
    * The two shadows here are only for things that genuinely float. */
-  --lum-shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.05);
+  --lum-shadow-sm: 0 1px 2px 0 rgba(11, 11, 11, 0.06), 0 2px 8px 0 rgba(11, 11, 11, 0.08);
   /* Between the two: enough to lift a card under the pointer, not enough to
      make a board look like it is hovering. */
-  --lum-shadow-md: 0 4px 12px rgba(20, 20, 19, 0.08), 0 1px 3px rgba(20, 20, 19, 0.05);
-  --lum-shadow-lg: 0 12px 32px rgba(20, 20, 19, 0.12), 0 2px 8px rgba(20, 20, 19, 0.06);
+  --lum-shadow-md: 0 2px 4px 0 rgba(11, 11, 11, 0.07), 0 6px 16px 0 rgba(11, 11, 11, 0.08);
+  --lum-shadow-lg: 0 4px 8px 0 rgba(11, 11, 11, 0.08), 0 12px 28px -2px rgba(11, 11, 11, 0.08);
 
   /* --------------------------------------------------------- skeleton */
   --lum-skeleton-bg: color-mix(in srgb, var(--lum-text) 7%, var(--lum-surface));
@@ -237,55 +240,58 @@
   --lum-sidebar-icon: 20px;
 
   /* --------------------------------------------------------- motion */
-  --lum-transition: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --lum-transition: 120ms cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 
 [data-theme='dark'] {
-  --lum-bg: #262624;
-  --lum-bg-sidebar: #1f1e1d;
-  --lum-bg-titlebar: #1f1e1d;
-  --lum-surface: #30302e;
-  --lum-surface-hover: #3a3a37;
-  --lum-surface-active: #454541;
+  /* Dark is a neutral near-black, not a warm charcoal: the ground is the
+     darkest thing on screen only in the chrome, and each surface steps up
+     rather than down. The warmth lives in the text, which is off-white. */
+  --lum-bg: #151515;
+  --lum-bg-sidebar: #0b0b0b;
+  --lum-bg-titlebar: #0b0b0b;
+  --lum-surface: #1a1a19;
+  --lum-surface-hover: #20201f;
+  --lum-surface-active: #2c2c2a;
   --lum-overlay: rgba(0, 0, 0, 0.5);
 
-  --lum-border: #3d3d3a;
-  --lum-border-strong: #52514c;
+  --lum-border: #2c2c2a;
+  --lum-border-strong: #454442;
 
-  --lum-text: #f5f4ef;
-  --lum-text-muted: #b7b5ac;
-  --lum-text-faint: #82817b;
+  --lum-text: #f0efec;
+  --lum-text-muted: #b4b3a8;
+  --lum-text-faint: #898781;
   --lum-text-on-accent: #ffffff;
 
   --lum-accent: #d97757;
   --lum-accent-hover: #e08a6d;
-  --lum-accent-soft: #3c2e28;
+  --lum-accent-soft: #332621;
   --lum-accent-ring: rgba(217, 119, 87, 0.4);
   --lum-selection: rgba(217, 119, 87, 0.22);
 
-  --lum-success: #7aa87f;
-  --lum-warning: #d0a755;
-  --lum-danger: #e08074;
-  --lum-info: #7fa3d9;
-  --lum-folder: #e58a55;
+  --lum-success: #0ca30c;
+  --lum-warning: #db9300;
+  --lum-danger: #ec7e7e;
+  --lum-info: #6da7ec;
+  --lum-folder: #d97757;
 
-  --lum-link-unresolved: #6f6a63;
-  --lum-tag-bg: #3a3a36;
-  --lum-tag-text: #c2bfb4;
-  --lum-code-bg: #35342f;
-  --lum-code-text: #e0a284;
-  --lum-quote-border: #4a4945;
-  --lum-hr: #3d3d3a;
-  --lum-mark-bg: #5c4c22;
+  --lum-link-unresolved: #6d6b67;
+  --lum-tag-bg: #20201f;
+  --lum-tag-text: #c3c2b7;
+  --lum-code-bg: #20201f;
+  --lum-code-text: #ec7e7e;
+  --lum-quote-border: #454442;
+  --lum-hr: #2c2c2a;
+  --lum-mark-bg: #311a00;
 
-  --lum-graph-node: #7a6a60;
-  --lum-graph-node-unresolved: #46443f;
-  --lum-graph-edge: rgba(245, 244, 239, 0.12);
+  --lum-graph-node: #5f5e5a;
+  --lum-graph-node-unresolved: #383835;
+  --lum-graph-edge: rgba(240, 239, 236, 0.12);
   --lum-graph-edge-active: rgba(217, 119, 87, 0.6);
 
-  --lum-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --lum-shadow-md: 0 6px 18px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.28);
-  --lum-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --lum-shadow-sm: 0 1px 2px 0 rgba(11, 11, 11, 0.06), 0 2px 8px 0 rgba(0, 0, 0, 0.24);
+  --lum-shadow-md: 0 2px 4px 0 rgba(11, 11, 11, 0.07), 0 6px 16px 0 rgba(0, 0, 0, 0.24);
+  --lum-shadow-lg: 0 4px 8px 0 rgba(11, 11, 11, 0.08), 0 12px 28px -2px rgba(0, 0, 0, 0.24);
 
   /* A dark ground swallows a tint, so each band takes more of it to read as
      the same amount of colour. */

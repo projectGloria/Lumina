@@ -44,8 +44,8 @@ function grantMicrophoneOnly(win: BrowserWindow): void {
 }
 
 /** Matches `--lum-bg` in the light theme, so the window never flashes white. */
-const LIGHT_BG = '#faf9f5'
-const DARK_BG = '#262624'
+const LIGHT_BG = '#f9f9f7'
+const DARK_BG = '#151515'
 
 export interface Bounds {
   width: number

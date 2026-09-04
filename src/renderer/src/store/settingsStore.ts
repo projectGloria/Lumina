@@ -351,5 +351,5 @@ function toHex(color: string): string {
     const hex = (n: number): string => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0')
     return `#${hex(r)}${hex(g)}${hex(b)}`
   }
-  return '#faf9f5'
+  return '#f9f9f7'
 }

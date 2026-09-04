@@ -2,28 +2,28 @@
    the app rather than as a separate tool. Standalone: an extension popup gets
    none of the app's stylesheets. */
 :root {
-  --bg: #faf9f5;
+  --bg: #f9f9f7;
   --surface: #ffffff;
-  --border: #e6e3d8;
-  --text: #141413;
-  --muted: #6b6a63;
-  --accent: #c96442;
-  --accent-soft: #f5e6e0;
-  --ok: #3d7a4e;
-  --bad: #b34a3f;
+  --border: #e7e6e1;
+  --text: #0b0b0b;
+  --muted: #52514e;
+  --accent: #c6613f;
+  --accent-soft: #f7d8cb;
+  --ok: #006300;
+  --bad: #8e2626;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #262624;
-    --surface: #30302e;
-    --border: #3d3d39;
-    --text: #f5f4ef;
-    --muted: #a3a29b;
-    --accent: #e08a6c;
-    --accent-soft: #3c2e28;
-    --ok: #7fbc8e;
-    --bad: #e08074;
+    --bg: #151515;
+    --surface: #1a1a19;
+    --border: #2c2c2a;
+    --text: #f0efec;
+    --muted: #898781;
+    --accent: #d97757;
+    --accent-soft: #371407;
+    --ok: #0ca30c;
+    --bad: #ec7e7e;
   }
 }
 

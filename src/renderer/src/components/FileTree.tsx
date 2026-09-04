@@ -265,17 +265,25 @@ function showIconPicker(path: string, x: number, y: number, current: string | un
   })
 }
 
-/** Small built-in palette a file or folder's icon color can be set to. */
+/**
+ * Small built-in palette a file or folder's icon color can be set to.
+ *
+ * These are stored per path and so cannot be tokens — one value has to read on
+ * both grounds. They are the categorical set the rest of the app's palette
+ * comes from, at the mid band that clears both: a pure `#f76b15` orange beside
+ * a clay `--lum-folder` reads as a different app's colour, not another one of
+ * ours.
+ */
 const COLOR_CHOICES: { label: string; value: string }[] = [
-  { label: 'Red', value: '#e5484d' },
-  { label: 'Orange', value: '#f76b15' },
-  { label: 'Amber', value: '#ffb224' },
-  { label: 'Green', value: '#30a46c' },
-  { label: 'Teal', value: '#12a594' },
-  { label: 'Blue', value: '#3b82f6' },
-  { label: 'Purple', value: '#8b5cf6' },
-  { label: 'Pink', value: '#ec4899' },
-  { label: 'Gray', value: '#8b8d98' }
+  { label: 'Red', value: '#e66767' },
+  { label: 'Orange', value: '#d95926' },
+  { label: 'Amber', value: '#c98500' },
+  { label: 'Green', value: '#008300' },
+  { label: 'Teal', value: '#199e70' },
+  { label: 'Blue', value: '#3987e5' },
+  { label: 'Purple', value: '#9085e9' },
+  { label: 'Pink', value: '#d55181' },
+  { label: 'Gray', value: '#97958d' }
 ]
 
 /** Opens a native color input off-screen and resolves with the chosen color, or null if cancelled. */
@@ -283,7 +291,7 @@ function pickCustomColor(initial: string | undefined): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'color'
-    input.value = initial ?? '#8b8d98'
+    input.value = initial ?? '#97958d'
     let settled = false
     const finish = (value: string | null): void => {
       if (settled) return
