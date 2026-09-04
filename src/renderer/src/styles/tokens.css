@@ -211,7 +211,15 @@
   --lum-music-art-sm: 20px;
   --lum-music-art-lg: 56px;
   --lum-music-strip-width: 260px;
-  --lum-music-panel-width: 420px;
+  /* How much of a title the strip shows. Deliberately small by default — the
+     word count and the save indicator were in that row first — and raised at
+     wide windows, where there is slack nobody else is using. */
+  --lum-music-strip-title: 12ch;
+  /* Measured against a real library: the longest title needs 230px, and at the
+     old 420px the header box gave it 278. This is headroom for a library that
+     grows, and the panel is anchored right, so the extra goes leftward into
+     empty screen rather than into anything. */
+  --lum-music-panel-width: 520px;
   --lum-music-panel-height: 460px;
   --lum-music-scrub-height: 3px;
   --lum-music-scrub-thumb: 10px;

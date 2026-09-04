@@ -106,6 +106,7 @@ export const CH = {
   // the music folder: a dialog, and a listing. Nothing else about it crosses.
   musicPick: 'music:pick',
   musicList: 'music:list',
+  musicArt: 'music:art',
 
   // misc
   attachmentSave: 'attachment:save',

@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
-import { parseTrackName, tileInitials, tileSeed } from '@shared/music'
+import { parseTrackName } from '@shared/music'
 import { Icon } from '@/components/Icon'
-import { musicUrl, playTrack, step, togglePlay } from '@/lib/musicPlayer'
+import MusicArt, { albumOf } from '@/components/MusicArt'
+import { playTrack, step, togglePlay } from '@/lib/musicPlayer'
 import { useMusic } from '@/store/musicStore'
 import { useSettings } from '@/store/settingsStore'
 import { EmptyCard, LoadingCard } from './CardState'
@@ -44,7 +45,7 @@ function Music(): React.JSX.Element {
   if (!tracks.length) return <EmptyCard icon="speaker" line="Nothing playable in that folder." />
 
   const name = current ? parseTrackName(current.path) : null
-  const album = current ? (current.path.split('/').slice(-2)[0] ?? 'Music') : 'Music'
+  const album = current ? albumOf(current.path) : 'Music'
 
   return (
     <div className="home-music">
@@ -53,13 +54,7 @@ function Music(): React.JSX.Element {
         aria-label="Open the player"
         onClick={() => setExpanded(true)}
       >
-        {current?.cover ? (
-          <img src={musicUrl(current.cover)} alt="" />
-        ) : (
-          <span className="music-art is-generated is-lg" data-tile={tileSeed(album)}>
-            {tileInitials(album)}
-          </span>
-        )}
+        <MusicArt track={current} size="lg" />
       </button>
       <div className="home-music-copy">
         <span className="home-music-title truncate">{name ? name.title : 'Nothing playing'}</span>

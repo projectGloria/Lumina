@@ -76,6 +76,14 @@ export const useMusic = create<MusicState>((set, get) => ({
     if (state.library === 'loading') return
     if (!force && state.library === 'ready') return
 
+    // A forced read is either a refresh or a new folder, and in both cases the
+    // art answers remembered from before are about files nobody is asking
+    // about now.
+    if (force) {
+      const { forgetArt } = await import('@/lib/musicArt')
+      forgetArt()
+    }
+
     set({ library: 'loading' })
     try {
       const listing = await window.lumina.music.list()

@@ -780,6 +780,40 @@ files are — the `realpath` step is what stops a symlink planted in someone's
 album folder from serving the rest of the disk. The renderer's CSP already
 allows `media-src lumina:`, so nothing there needed widening.
 
+That handler also answers **ranged** requests, which is how an `<audio>`
+element seeks. Measured rather than assumed: `net.fetch` on a `file:` URL does
+honour a forwarded `Range` and returns the right bytes, but reports `200` with
+no `Content-Range` — and a 200 carrying a thousand bytes tells the player the
+whole file is a thousand bytes. So `main/range.ts` parses the header (the
+suffix form `bytes=-500` is the *last* 500 bytes; reading it as the first would
+be a silent wrong answer to a seek) and the handler dresses the reply as the
+206 it is. A request with **no** `Range` takes the original path untouched,
+which is every image the vault serves.
+
+**Cover art comes from the tags, not from the folder.** A sidecar `cover.jpg`
+describes a directory, which is right for an album and a lie in a mixed folder
+— one record's sleeve on a dozen unrelated tracks is worse than no picture,
+because it asserts something false. `main/musicArt.ts` reads the file's own
+tags through `music-metadata`, which is the one production dependency the
+player added and is `import()`ed lazily so it is off the startup path and out
+of every bundle. Three rules keep it affordable, and all three are load-bearing:
+
+- Extraction happens **only for a track being drawn or played** — `MusicArt`
+  in the renderer waits on an `IntersectionObserver` rather than firing for
+  every row in a list that can hold hundreds.
+- Art is **downscaled on the way in**. Measured on a real 44-track library:
+  68 MB of embedded art between them, one a 5016x5016 PNG of 27.4 MB, all of
+  it drawn at 56px. Electron's own `nativeImage` takes that to a 25 KB JPEG,
+  so no second dependency and a cache in kilobytes.
+- It is **cached under `userData` by path and mtime**, served back over a third
+  hostname, `lumina://art/<file>`. Retagging a track re-extracts it; a second
+  play is a `stat`.
+
+The fallback order is embedded, then the folder sidecar, then a tile coloured
+and lettered from the folder name — which claims nothing. The tile is always
+the element; a picture is a background laid over it, so a source that fails to
+load reveals the lettering instead of a broken image.
+
 The pure half is `src/shared/music.ts`: the extension predicate, filename
 parsing, duration formatting, and the queue. The queue is a bag — with shuffle
 on, a permutation consumed to exhaustion, so every track plays once before any
@@ -790,8 +824,23 @@ holds all of it with an injected RNG.
 
 The compact strip lives **inside the status bar**, not as another floating
 pill. `VoiceRecorder` and `SpeechPlayer` are both `position: fixed` bars
-anchored above it, and they already stack by a hardcoded pairwise rule
+anchored above it (at `--lum-bar-bottom`, derived from the status bar's own
+height so they cannot slide under the row), and they stack by a pairwise rule
 (`.speech-bar.is-stacked`); a third pill would have to know about both.
+
+That row is `overflow: hidden`, and the word count and save indicator were in
+it first, so the strip **yields rather than clips**: the status bar is a
+`container-type: inline-size` container and the strip drops its title and
+scrub line below 900px, leaves entirely below 620px, and takes some of the
+spacer's slack above 1150px. Losing it costs nothing — the player is still on
+the palette, in the Home widget, and one click away. The breakpoint widths are
+literals because a container query condition cannot read a custom property.
+
+The panel closes on a `pointerdown` outside it, and `pointerdown` is the point:
+listening for a click or a pointer*up* would close the panel when a drag of the
+volume slider or the scrub line happened to be released out over the editor.
+The strip is excluded along with the panel, or its own toggle would dismiss and
+immediately reopen it.
 
 ### The web clipper
 

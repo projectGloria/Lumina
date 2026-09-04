@@ -2145,6 +2145,22 @@
     display: none;
   }
 }
+
+/* Above the widths where the row is under pressure, the title takes some of
+   the slack the spacer was holding — a custom property may be *set* inside a
+   container query even though the condition cannot read one. */
+@container (min-width: 1150px) {
+  .music-strip {
+    --lum-music-strip-width: 360px;
+    --lum-music-strip-title: 24ch;
+  }
+}
+@container (min-width: 1500px) {
+  .music-strip {
+    --lum-music-strip-width: 460px;
+    --lum-music-strip-title: 34ch;
+  }
+}
 @container (max-width: 620px) {
   .music-strip {
     display: none;
@@ -2164,54 +2180,58 @@
 
 .music-strip-title {
   min-width: 0;
-  max-width: 12ch;
+  max-width: var(--lum-music-strip-title);
 }
 
-/* Artwork, or a tile standing in for it. */
+/*
+ * The tile is always there; a picture is laid over it.
+ *
+ * One element either way, so the `IntersectionObserver` that decides when to
+ * ask for the art has something stable to watch — and so a source that fails
+ * to load reveals the lettering underneath rather than a broken image.
+ * The colours are the decorative accents, never the semantic ones.
+ */
 .music-art {
   flex: none;
+  display: grid;
+  place-items: center;
   width: var(--lum-music-art-sm);
   height: var(--lum-music-art-sm);
   border-radius: var(--lum-radius-sm);
-  object-fit: cover;
-  background: var(--lum-surface-hover);
+  background-color: color-mix(in srgb, var(--lum-widget-accent-1) 20%, var(--lum-surface));
+  background-size: cover;
+  background-position: center;
+  color: var(--lum-widget-accent-1);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  overflow: hidden;
 }
 .music-art.is-lg {
   width: var(--lum-music-art-lg);
   height: var(--lum-music-art-lg);
   border-radius: var(--lum-radius);
-}
-
-/* No picture beside the track: a tile coloured from the album's name, so the
-   same record looks the same every launch instead of reading as a broken
-   image. The colours are the decorative accents, never the semantic ones. */
-.music-art.is-generated {
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--lum-widget-accent-1) 20%, var(--lum-surface));
-  color: var(--lum-widget-accent-1);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-.music-art.is-generated.is-lg {
   font-size: 18px;
 }
-.music-art.is-generated[data-tile='1'] {
-  background: color-mix(in srgb, var(--lum-widget-accent-2) 20%, var(--lum-surface));
+.music-art[data-tile='1'] {
+  background-color: color-mix(in srgb, var(--lum-widget-accent-2) 20%, var(--lum-surface));
   color: var(--lum-widget-accent-2);
 }
-.music-art.is-generated[data-tile='2'] {
-  background: color-mix(in srgb, var(--lum-widget-accent-3) 20%, var(--lum-surface));
+.music-art[data-tile='2'] {
+  background-color: color-mix(in srgb, var(--lum-widget-accent-3) 20%, var(--lum-surface));
   color: var(--lum-widget-accent-3);
 }
-.music-art.is-generated[data-tile='3'] {
-  background: color-mix(in srgb, var(--lum-widget-accent-4) 20%, var(--lum-surface));
+.music-art[data-tile='3'] {
+  background-color: color-mix(in srgb, var(--lum-widget-accent-4) 20%, var(--lum-surface));
   color: var(--lum-widget-accent-4);
 }
-.music-art.is-generated[data-tile='4'] {
-  background: color-mix(in srgb, var(--lum-widget-accent-5) 20%, var(--lum-surface));
+.music-art[data-tile='4'] {
+  background-color: color-mix(in srgb, var(--lum-widget-accent-5) 20%, var(--lum-surface));
   color: var(--lum-widget-accent-5);
+}
+/* With a real cover on it the lettering would only show through the picture. */
+.music-art.has-image {
+  color: transparent;
 }
 
 /* A line rather than a slider: the strip has 26px to work in. */
@@ -2266,7 +2286,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--lum-space-3);
-  width: var(--lum-music-panel-width);
+  /* Anchored right, so the width grows leftward into empty screen. Bounded by
+     the window so a narrow one gets a panel rather than an overflow. */
+  width: min(var(--lum-music-panel-width), calc(100vw - var(--lum-space-5) * 2));
   max-height: var(--lum-music-panel-height);
   padding: var(--lum-space-4);
   border: 1px solid var(--lum-border);
@@ -2428,13 +2450,6 @@
   flex: none;
   border-radius: var(--lum-radius);
   overflow: hidden;
-}
-.home-music-art img {
-  display: block;
-  width: var(--lum-music-art-lg);
-  height: var(--lum-music-art-lg);
-  border-radius: var(--lum-radius);
-  object-fit: cover;
 }
 
 .home-music-copy {

@@ -171,7 +171,13 @@ const api = {
     /** Choose the music folder. The path is stored through `settings:set`. */
     pick: (): Promise<string | null> => ipcRenderer.invoke(CH.musicPick),
     /** Walk it. Called when the player is first opened, never at startup. */
-    list: (): Promise<MusicListing> => ipcRenderer.invoke(CH.musicList)
+    list: (): Promise<MusicListing> => ipcRenderer.invoke(CH.musicList),
+    /**
+     * Cover art out of one track's own tags, as a `lumina://art/...` URL, or
+     * null when the file carries none. Asked for a track being drawn or
+     * played — never for the whole library.
+     */
+    art: (path: string): Promise<string | null> => ipcRenderer.invoke(CH.musicArt, path)
   },
 
   links: {

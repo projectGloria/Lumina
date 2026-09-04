@@ -62,6 +62,7 @@ import {
   unlockProfile
 } from './profiles'
 import { listMusic, setMusicRoot } from './music'
+import { resetArtCache, trackArt } from './musicArt'
 import { search, searchTitles } from './search'
 import {
   ensureLuminaDir,
@@ -262,6 +263,8 @@ function focusWindow(): void {
  * where the network call actually happens.
  */
 let linkPreviewsEnabled = false
+/** The music folder last seen in a save, so a change to it can be noticed. */
+let musicFolder = ''
 
 /* ------------------------------------------------------------ open a vault */
 
@@ -537,6 +540,12 @@ export function registerIpc(): void {
     // The protocol handler reads the music root straight from here, so it has
     // to follow the setting rather than be read once at startup.
     setMusicRoot(settings.music.folder)
+    // A different folder means the remembered art belongs to files that are no
+    // longer the ones being asked about.
+    if (settings.music.folder !== musicFolder) {
+      musicFolder = settings.music.folder
+      resetArtCache()
+    }
     await syncClipServer(settings.clipper)
     onSettingsSaved?.(settings)
     return true
@@ -770,6 +779,12 @@ export function registerIpc(): void {
 
   // Walked on demand — when the player is first opened — never at startup.
   ipcMain.handle(CH.musicList, () => listMusic())
+
+  // One track's own cover, extracted and cached the first time it is drawn.
+  ipcMain.handle(CH.musicArt, async (_e, rel: string) => {
+    const name = await trackArt(rel)
+    return name ? `lumina://art/${encodeURIComponent(name)}` : null
+  })
 
   /* attachments and export ---------------------------------------------- */
   ipcMain.handle(

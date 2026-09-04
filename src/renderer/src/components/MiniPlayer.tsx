@@ -8,11 +8,9 @@
  * sitting on them. In the status bar it is simply part of the row.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatDuration, parseTrackName, tileInitials, tileSeed } from '@shared/music'
-import type { MusicTrack } from '@shared/types'
+import { formatDuration, parseTrackName } from '@shared/music'
 import {
   cycleRepeat,
-  musicUrl,
   playTrack,
   seek,
   setVolume,
@@ -23,37 +21,7 @@ import {
 import { useMusic } from '@/store/musicStore'
 import { useSettings } from '@/store/settingsStore'
 import { Icon } from './Icon'
-
-/** The album a track belongs to, which for a folder of music is its folder. */
-function albumOf(path: string): string {
-  const cut = path.lastIndexOf('/')
-  return cut > 0 ? path.slice(0, cut).split('/').pop()! : 'Music'
-}
-
-/**
- * Artwork, or something deliberate in its place.
- *
- * A picture beside the track when there is one; otherwise a tile coloured from
- * the album's name, so the same record looks the same every launch and the
- * shelf does not read as a row of broken images.
- */
-function Art({ track, size }: { track: MusicTrack | null; size: 'sm' | 'lg' }): React.JSX.Element {
-  const album = track ? albumOf(track.path) : 'Music'
-  if (track?.cover) {
-    return (
-      <img className={`music-art is-${size}`} src={musicUrl(track.cover)} alt="" aria-hidden="true" />
-    )
-  }
-  return (
-    <span
-      className={`music-art is-${size} is-generated`}
-      data-tile={tileSeed(album)}
-      aria-hidden="true"
-    >
-      {tileInitials(album)}
-    </span>
-  )
-}
+import MusicArt, { albumOf } from './MusicArt'
 
 function Scrubber({ compact }: { compact?: boolean }): React.JSX.Element {
   const position = useMusic((s) => s.position)
@@ -146,7 +114,7 @@ function LibraryNotice(): React.JSX.Element | null {
   return null
 }
 
-function Expanded(): React.JSX.Element {
+function Expanded({ panelRef }: { panelRef: React.RefObject<HTMLDivElement | null> }): React.JSX.Element {
   const tracks = useMusic((s) => s.tracks)
   const current = useMusic((s) => s.current)
   const library = useMusic((s) => s.library)
@@ -174,9 +142,9 @@ function Expanded(): React.JSX.Element {
   }, [tracks, query])
 
   return (
-    <div className="music-panel" role="dialog" aria-label="Music">
+    <div className="music-panel" role="dialog" aria-label="Music" ref={panelRef}>
       <header className="music-panel-head">
-        <Art track={current} size="lg" />
+        <MusicArt track={current} size="lg" />
         <div className="music-panel-now">
           <span className="music-title truncate">
             {current ? parseTrackName(current.path).title : 'Nothing playing'}
@@ -260,7 +228,7 @@ function Expanded(): React.JSX.Element {
               className={`music-row${current?.path === track.path ? ' is-current' : ''}`}
               onClick={() => playTrack(index)}
             >
-              <Art track={track} size="sm" />
+              <MusicArt track={track} size="sm" />
               <span className="music-row-copy">
                 <span className="music-title truncate">{name.title}</span>
                 <span className="music-sub truncate">{name.artist ?? albumOf(track.path)}</span>
@@ -291,18 +259,58 @@ export default function MiniPlayer(): React.JSX.Element | null {
   const current = useMusic((s) => s.current)
   const setExpanded = useMusic((s) => s.setExpanded)
   const load = useMusic((s) => s.load)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
 
   // The folder is read when the player is first opened, and not before.
   useEffect(() => {
     if (expanded) void load()
   }, [expanded, load])
 
+  /*
+   * Clicking away closes it, and two things about that are easy to get wrong.
+   *
+   * It listens for `pointerdown`, not `pointerup` or `click`, which is what
+   * makes dragging the volume slider or the scrub line safe: the gesture
+   * *begins* inside the panel, so releasing the button out over the editor is
+   * never seen as a click outside.
+   *
+   * The strip is excluded as well as the panel. Its toggle would otherwise be
+   * dismissed by this handler and reopened by its own `onClick` in the same
+   * gesture, which reads as the panel refusing to close.
+   */
+  useEffect(() => {
+    if (!expanded) return
+
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      if (!target) return
+      if (panelRef.current?.contains(target) || stripRef.current?.contains(target)) return
+      setExpanded(false)
+    }
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      // Kept from also leaving edit mode or focus mode on the way past.
+      event.stopPropagation()
+      setExpanded(false)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [expanded, setExpanded])
+
   if (!folder) return null
   const name = current ? parseTrackName(current.path) : null
 
   return (
     <>
-      <div className="music-strip">
+      <div className="music-strip" ref={stripRef}>
         <button
           className="music-strip-open"
           data-tooltip={current ? 'Open the player' : 'Music'}
@@ -310,14 +318,14 @@ export default function MiniPlayer(): React.JSX.Element | null {
           aria-expanded={expanded}
           onClick={() => setExpanded(!expanded)}
         >
-          <Art track={current} size="sm" />
+          <MusicArt track={current} size="sm" />
           <span className="music-strip-title truncate">{name ? name.title : 'Music'}</span>
         </button>
         <Transport compact />
         <Scrubber compact />
       </div>
 
-      {expanded ? <Expanded /> : null}
+      {expanded ? <Expanded panelRef={panelRef} /> : null}
     </>
   )
 }
