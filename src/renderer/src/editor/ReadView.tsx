@@ -5,6 +5,8 @@ import { renderNoteFragment } from '../lib/render'
 import { useEditor } from '../store/editorStore'
 import { useSettings } from '../store/settingsStore'
 import { useUi } from '../store/uiStore'
+import { aliasMap, knownPaths } from '../store/vaultStore'
+import { resolveLink } from '@shared/markdown-parse'
 
 /**
  * Where each note was scrolled to in read mode, so toggling back and forth
@@ -121,8 +123,8 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
    * the data attributes this reads.
    */
   const onClick = (event: React.MouseEvent): void => {
-    const target = event.target as HTMLElement | null
-    const el = target?.closest<HTMLElement>('a[href], .wikilink, .tag')
+    const clickTarget = event.target as HTMLElement | null
+    const el = clickTarget?.closest<HTMLElement>('a[href], .wikilink, .tag')
     if (!el) return
 
     if (el.classList.contains('tag')) {
@@ -137,7 +139,8 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
     if (el.classList.contains('wikilink')) {
       event.preventDefault()
       const resolved = el.dataset.resolved
-      if (resolved) openNote(resolved, { anchor: el.dataset.anchor })
+      const newTab = event.ctrlKey || event.metaKey
+      if (resolved) openNote(resolved, { newTab, anchor: el.dataset.anchor })
       else void createFromLink(el.dataset.target ?? '', path)
       return
     }
@@ -145,7 +148,19 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
     const href = el.getAttribute('href') ?? ''
     if (href.startsWith('#')) return // in-page anchor; let the browser handle it
     event.preventDefault()
-    if (/^(?:https?|mailto):/i.test(href)) void window.lumina.files.openExternal(href)
+    if (/^(?:https?|mailto):/i.test(href)) {
+      void window.lumina.files.openExternal(href)
+      return
+    }
+
+    // Relative or vault-internal link
+    const [rawTarget, rawAnchor] = href.split('#')
+    const linkTarget = decodeURIComponent(rawTarget.replace(/^\.?\//, ''))
+    const anchor = rawAnchor ? decodeURIComponent(rawAnchor) : undefined
+    const resolved = resolveLink(linkTarget, path, knownPaths(), aliasMap())
+    const newTab = event.ctrlKey || event.metaKey
+    if (resolved) openNote(resolved, { newTab, anchor })
+    else void createFromLink(linkTarget, path)
   }
 
   /**

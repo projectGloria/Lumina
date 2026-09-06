@@ -94,6 +94,23 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
   }
 
   const append = (chunk: Float32Array): void => {
+    if (!speaking) {
+      // In silence, keep only bounded pre-roll to prevent unbounded memory growth and copying
+      const preRoll = Math.ceil(sampleRate * 0.35)
+      const combinedLen = buffer.length + chunk.length
+      if (combinedLen > preRoll) {
+        const next = new Float32Array(preRoll)
+        if (chunk.length >= preRoll) {
+          next.set(chunk.subarray(chunk.length - preRoll))
+        } else {
+          const keepFromPrev = preRoll - chunk.length
+          next.set(buffer.subarray(buffer.length - keepFromPrev))
+          next.set(chunk, keepFromPrev)
+        }
+        buffer = next
+        return
+      }
+    }
     const next = new Float32Array(buffer.length + chunk.length)
     next.set(buffer)
     next.set(chunk, buffer.length)
@@ -234,6 +251,8 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
     },
     cancel: () => {
       speaking = false
+      buffer = new Float32Array(0)
+      phraseStart = 0
       release()
     }
   }

@@ -651,8 +651,8 @@ async function exportNote(kind: 'html' | 'pdf'): Promise<void> {
   try {
     const res =
       kind === 'html'
-        ? await window.lumina.files.exportHtml(title, html)
-        : await window.lumina.files.exportPdf(title, html)
+        ? await window.lumina.files.exportHtml(title, html, path)
+        : await window.lumina.files.exportPdf(title, html, path)
 
     if (res.ok) toast(`Exported ${title}`)
     else if (res.error) toast(res.error, 'error')

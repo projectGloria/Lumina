@@ -38,7 +38,7 @@ import { defaultLayout } from './home/widgets/defaults'
 import { drainClips, requestClip } from './lib/clipToNote'
 import { COMMANDS, hotkeyFor, runCommand } from './lib/commands'
 import { matchesAccelerator } from './lib/hotkeys'
-import { useEditor } from './store/editorStore'
+import { anyDirty, useEditor } from './store/editorStore'
 import { flushHomePersistence, useHome } from './store/homeStore'
 import { useProfiles } from './store/profileStore'
 import { flushSettingsPersistence, useSettings } from './store/settingsStore'
@@ -205,7 +205,16 @@ export default function App(): React.JSX.Element {
           flushWorkspacePersistence(),
           flushHomePersistence()
         ])
-          .finally(() => window.lumina.app.flushed())
+          .then(([savedOk]) => {
+            if (savedOk && !anyDirty()) {
+              window.lumina.app.flushed()
+            } else {
+              toast('Some notes could not be saved', 'error')
+            }
+          })
+          .catch(() => {
+            toast('Failed to save changes before quit', 'error')
+          })
       }),
 
       window.lumina.index.onUpdated((index) => useVault.getState().setIndex(index)),

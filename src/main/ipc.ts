@@ -48,7 +48,7 @@ import {
 } from './clipServer'
 import { saveClipImage } from './clipImages'
 import { resolveFile, toRequest } from './openFile'
-import { samePath } from './paths'
+import { safeVaultPath, samePath } from './paths'
 import {
   createProfile,
   deleteProfile,
@@ -792,7 +792,81 @@ export function registerIpc(): void {
     (_e, folder: string, name: string, data: ArrayBuffer) => saveAttachment(folder, name, data)
   )
 
-  ipcMain.handle(CH.exportHtml, async (_e, title: string, html: string) => {
+  const MIME_TYPES: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.avif': 'image/avif',
+    '.bmp': 'image/bmp',
+    '.ico': 'image/x-icon'
+  }
+  const MAX_IMAGE_EMBED_BYTES = 25 * 1024 * 1024
+
+  const embedLocalImages = async (html: string, notePath?: string): Promise<string> => {
+    const vault = getRoot()
+    if (!vault) return html
+
+    const imgRegex = /<img\b([^>]*\bsrc=["'])([^"']+)(["'][^>]*)>/gi
+    const matches: { full: string; prefix: string; src: string; suffix: string }[] = []
+    let m: RegExpExecArray | null
+    while ((m = imgRegex.exec(html)) !== null) {
+      matches.push({ full: m[0], prefix: m[1], src: m[2], suffix: m[3] })
+    }
+    if (!matches.length) return html
+
+    let result = html
+    const dataUriCache = new Map<string, string>()
+
+    for (const item of matches) {
+      const rawSrc = item.src.trim()
+      if (/^(?:data:|https?:|\/\/)/i.test(rawSrc)) continue
+
+      let cleanPath = rawSrc
+      if (cleanPath.startsWith('lumina://vault/')) {
+        cleanPath = cleanPath.slice('lumina://vault/'.length)
+      }
+      cleanPath = decodeURIComponent(cleanPath.replace(/^\.?\//, ''))
+
+      let dataUri = dataUriCache.get(cleanPath)
+      if (!dataUri) {
+        const candidates = [
+          cleanPath,
+          notePath ? path.join(path.dirname(notePath), cleanPath) : null,
+          path.join('attachments', cleanPath),
+          path.join('.lumina', 'previews', cleanPath)
+        ].filter((c): c is string => !!c)
+
+        for (const candidate of candidates) {
+          const abs = await safeVaultPath(vault, candidate)
+          if (!abs) continue
+          try {
+            const stat = await fs.stat(abs)
+            if (!stat.isFile() || stat.size > MAX_IMAGE_EMBED_BYTES) continue
+            const ext = path.extname(abs).toLowerCase()
+            const mime = MIME_TYPES[ext] || 'application/octet-stream'
+            const bytes = await fs.readFile(abs)
+            dataUri = `data:${mime};base64,${bytes.toString('base64')}`
+            dataUriCache.set(cleanPath, dataUri)
+            break
+          } catch {
+            // try next candidate
+          }
+        }
+      }
+
+      if (dataUri) {
+        const replacement = `<img${item.prefix.slice(4)}${dataUri}${item.suffix}>`
+        result = result.replace(item.full, replacement)
+      }
+    }
+
+    return result
+  }
+
+  ipcMain.handle(CH.exportHtml, async (_e, title: string, html: string, notePath?: string) => {
     if (!win) return { ok: false, error: 'No window' }
     const res = await dialog.showSaveDialog(win, {
       title: 'Export as HTML',
@@ -800,11 +874,12 @@ export function registerIpc(): void {
       filters: [{ name: 'HTML', extensions: ['html'] }]
     })
     if (res.canceled || !res.filePath) return { ok: false }
-    await fs.writeFile(res.filePath, html, 'utf8')
+    const embeddedHtml = await embedLocalImages(html, notePath)
+    await fs.writeFile(res.filePath, embeddedHtml, 'utf8')
     return { ok: true }
   })
 
-  ipcMain.handle(CH.exportPdf, async (_e, title: string, html: string) => {
+  ipcMain.handle(CH.exportPdf, async (_e, title: string, html: string, notePath?: string) => {
     if (!win) return { ok: false, error: 'No window' }
     const res = await dialog.showSaveDialog(win, {
       title: 'Export as PDF',
@@ -813,10 +888,12 @@ export function registerIpc(): void {
     })
     if (res.canceled || !res.filePath) return { ok: false }
 
+    const embeddedHtml = await embedLocalImages(html, notePath)
+
     // Render in an offscreen window so the export is the note, not the app.
     const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
     try {
-      await printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+      await printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(embeddedHtml)}`)
       const pdf = await printer.webContents.printToPDF({
         printBackground: true,
         margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 }

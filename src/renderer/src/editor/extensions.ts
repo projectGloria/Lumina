@@ -165,7 +165,7 @@ export function createExtensions(opts: EditorOptions): Extension[] {
     formatKeymapCompartment.of(buildFormatKeymap(opts.onSave)),
     linkClickHandlers(opts.handlers),
     editorContextMenu(),
-    attachmentDropExtension(),
+    attachmentDropExtension(opts.path),
     linkPasteExtension(),
     luminaEditorTheme,
     scrollOverflowExtension,

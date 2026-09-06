@@ -208,10 +208,10 @@ const api = {
     adoptVault: (fileAbs: string): Promise<boolean> => ipcRenderer.invoke(CH.fileOpen, fileAbs),
     saveAttachment: (folder: string, name: string, data: ArrayBuffer): Promise<OpResult<string>> =>
       ipcRenderer.invoke(CH.attachmentSave, folder, name, data),
-    exportHtml: (title: string, html: string): Promise<OpResult> =>
-      ipcRenderer.invoke(CH.exportHtml, title, html),
-    exportPdf: (title: string, html: string): Promise<OpResult> =>
-      ipcRenderer.invoke(CH.exportPdf, title, html),
+    exportHtml: (title: string, html: string, notePath?: string): Promise<OpResult> =>
+      ipcRenderer.invoke(CH.exportHtml, title, html, notePath),
+    exportPdf: (title: string, html: string, notePath?: string): Promise<OpResult> =>
+      ipcRenderer.invoke(CH.exportPdf, title, html, notePath),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke(CH.openExternal, url)
   },
 

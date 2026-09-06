@@ -70,19 +70,24 @@ async function rebuildSnapshot(): Promise<void> {
     next.notes[notePath] = { ...entry, links }
 
     for (const tag of entry.tags) {
-      ;(next.tags[tag] ??= []).push(notePath)
+      const list = Object.hasOwn(next.tags, tag) ? next.tags[tag] : (next.tags[tag] = [])
+      list.push(notePath)
       // Nested tags roll up: `#project/gloria` also counts under `#project`.
       const parts = tag.split('/')
       for (let i = 1; i < parts.length; i++) {
         const parent = parts.slice(0, i).join('/')
-        const list = (next.tags[parent] ??= [])
-        if (!list.includes(notePath)) list.push(notePath)
+        const parentList = Object.hasOwn(next.tags, parent) ? next.tags[parent] : (next.tags[parent] = [])
+        if (!parentList.includes(notePath)) parentList.push(notePath)
       }
     }
 
     for (const link of links) {
-      if (link.to) (next.backlinks[link.to] ??= []).push(link)
-      else if (link.kind === 'link') next.unresolved.push(link)
+      if (link.to) {
+        const blist = Object.hasOwn(next.backlinks, link.to) ? next.backlinks[link.to] : (next.backlinks[link.to] = [])
+        blist.push(link)
+      } else if (link.kind === 'link') {
+        next.unresolved.push(link)
+      }
     }
   }
 

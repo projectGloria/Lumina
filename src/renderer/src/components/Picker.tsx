@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { highlight } from '../lib/fuzzy'
+import { useModalTrap } from './useModalTrap'
 
 export interface PickerItem {
   id: string
@@ -41,6 +42,7 @@ export default function Picker({
   const [cursor, setCursor] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  const trapRef = useModalTrap({ onClose, initialFocusRef: input })
 
   useEffect(() => {
     input.current?.focus()
@@ -86,7 +88,15 @@ export default function Picker({
 
   return (
     <div className="overlay top" onMouseDown={onClose}>
-      <div className="modal picker" onMouseDown={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={placeholder}
+        className="modal picker"
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
+      >
         <input
           ref={input}
           className="picker-input"

@@ -19,7 +19,7 @@ import type {
 } from '@shared/types'
 import { HOME_LAYOUT_VERSION } from '@shared/types'
 import { HOME_COVER_DIR, sweepableCovers } from '@shared/homeCovers'
-import { luminaDir } from './paths'
+import { contains, luminaDir, safePathUnder } from './paths'
 import { DEFAULT_QUICK_NOTE } from './quickNote'
 import { DEFAULT_CLIP_PORT } from './clipServer'
 
@@ -302,11 +302,16 @@ export const cacheFile = (v: string): string => path.join(luminaDir(v), 'cache.j
 export const snippetsDir = (v: string): string => path.join(luminaDir(v), 'snippets')
 
 export async function ensureLuminaDir(vault: string): Promise<void> {
+  const realVault = await fs.realpath(path.resolve(vault))
   const ensureRealDirectory = async (dir: string): Promise<void> => {
     try {
       const stat = await fs.lstat(dir)
       if (stat.isSymbolicLink() || !stat.isDirectory()) {
         throw new Error(`${dir} must be a real directory`)
+      }
+      const realDir = await fs.realpath(dir)
+      if (!contains(realVault, realDir)) {
+        throw new Error(`${dir} must be contained within vault`)
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
@@ -316,6 +321,10 @@ export async function ensureLuminaDir(vault: string): Promise<void> {
       const stat = await fs.lstat(dir)
       if (stat.isSymbolicLink() || !stat.isDirectory()) {
         throw new Error(`${dir} must be a real directory`)
+      }
+      const realDir = await fs.realpath(dir)
+      if (!contains(realVault, realDir)) {
+        throw new Error(`${dir} must be contained within vault`)
       }
     }
   }
@@ -447,6 +456,9 @@ async function sweepCovers(v: string, layout: HomeLayout): Promise<void> {
   lastSavedCover.set(v, cover)
   if (previous === cover) return
 
+  const safeDir = await safePathUnder(v, HOME_COVER_DIR)
+  if (!safeDir) return
+
   const dir = path.join(v, HOME_COVER_DIR)
   let entries
   try {
@@ -471,8 +483,10 @@ async function sweepCovers(v: string, layout: HomeLayout): Promise<void> {
     now: Date.now(),
     graceMs: COVER_GRACE_MS
   })) {
+    const target = await safePathUnder(v, path.join(HOME_COVER_DIR, name))
+    if (!target) continue
     // A picture that will not move is not a reason to fail saving a board.
-    await shell.trashItem(path.join(dir, name)).catch(() => {})
+    await shell.trashItem(target).catch(() => {})
   }
 }
 

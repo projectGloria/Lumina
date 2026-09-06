@@ -29,8 +29,9 @@ export function requireRoot(): string {
 }
 
 export async function setRoot(dir: string): Promise<void> {
-  root = path.resolve(dir)
-  await ensureLuminaDir(root)
+  const candidate = path.resolve(dir)
+  await ensureLuminaDir(candidate)
+  root = candidate
 }
 
 export function markSelfWrite(absPath: string): void {
@@ -175,17 +176,47 @@ export async function noteExists(rel: string): Promise<boolean> {
   return abs ? exists(abs) : false
 }
 
-/** Append ` 1`, ` 2`, ... until the name is free. */
-async function uniquePath(abs: string): Promise<string> {
-  if (!(await exists(abs))) return abs
-  const dir = path.dirname(abs)
-  const ext = path.extname(abs)
-  const stem = path.basename(abs, ext)
-  for (let i = 1; i < 1000; i++) {
-    const candidate = path.join(dir, `${stem} ${i}${ext}`)
-    if (!(await exists(candidate))) return candidate
+/**
+ * Write a file atomically using exclusive creation (`flag: 'wx'`).
+ * If candidate exists (EEXIST), retry with ` 1`, ` 2`, etc.
+ * Avoids check-then-write races under concurrent creation.
+ */
+async function writeExclusive(
+  target: string,
+  data: string | NodeJS.ArrayBufferView,
+  encoding?: BufferEncoding
+): Promise<string> {
+  const dir = path.dirname(target)
+  const ext = path.extname(target)
+  const stem = path.basename(target, ext)
+  await fs.mkdir(dir, { recursive: true })
+
+  for (let i = 0; i < 1000; i++) {
+    const candidate = i === 0 ? target : path.join(dir, `${stem} ${i}${ext}`)
+    try {
+      markSelfWrite(candidate)
+      if (typeof data === 'string') {
+        await fs.writeFile(candidate, data, { flag: 'wx', encoding: encoding ?? 'utf8' })
+      } else {
+        await fs.writeFile(candidate, data, { flag: 'wx' })
+      }
+      return candidate
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        continue
+      }
+      throw err
+    }
   }
-  return path.join(dir, `${stem} ${Date.now()}${ext}`)
+
+  const fallback = path.join(dir, `${stem} ${Date.now()}-${randomUUID().slice(0, 8)}${ext}`)
+  markSelfWrite(fallback)
+  if (typeof data === 'string') {
+    await fs.writeFile(fallback, data, { flag: 'wx', encoding: encoding ?? 'utf8' })
+  } else {
+    await fs.writeFile(fallback, data, { flag: 'wx' })
+  }
+  return fallback
 }
 
 export async function createNote(rel: string, content = ''): Promise<OpResult<string>> {
@@ -194,10 +225,7 @@ export async function createNote(rel: string, content = ''): Promise<OpResult<st
   if (!wanted) return { ok: false, error: 'Path is outside the vault' }
 
   try {
-    const abs = await uniquePath(wanted)
-    await fs.mkdir(path.dirname(abs), { recursive: true })
-    markSelfWrite(abs)
-    await fs.writeFile(abs, content, 'utf8')
+    const abs = await writeExclusive(wanted, content, 'utf8')
     return { ok: true, data: toRelative(vault, abs) }
   } catch (err) {
     return { ok: false, error: (err as Error).message }
@@ -274,10 +302,7 @@ export async function saveAttachment(
   const target = await safeVaultPath(vault, `${folder}/${path.basename(name)}`, true)
   if (!target) return { ok: false, error: 'Path is outside the vault' }
   try {
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    const abs = await uniquePath(target)
-    markSelfWrite(abs)
-    await fs.writeFile(abs, Buffer.from(data))
+    const abs = await writeExclusive(target, Buffer.from(data))
     return { ok: true, data: toRelative(vault, abs) }
   } catch (err) {
     return { ok: false, error: (err as Error).message }

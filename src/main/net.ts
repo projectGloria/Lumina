@@ -47,23 +47,44 @@ export async function fetchWithTimeout(
  * A server can claim any `Content-Length` it likes, or none, so the cap is
  * enforced against what actually arrives rather than what was promised.
  */
-export async function readCapped(response: Response, cap: number): Promise<Uint8Array> {
+export async function readCapped(
+  response: Response,
+  cap: number,
+  timeoutMs = TIMEOUT_MS
+): Promise<Uint8Array> {
   const reader = response.body?.getReader()
   if (!reader) return new Uint8Array()
 
   const chunks: Uint8Array[] = []
   let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      chunks.push(value)
-      total += value.byteLength
-      if (total >= cap) {
-        await reader.cancel().catch(() => {})
-        break
+  let timer: NodeJS.Timeout | null = null
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        void reader.cancel().catch(() => {})
+        reject(new Error(`Response body timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+    })
+
+    const readLoop = async (): Promise<void> => {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          chunks.push(value)
+          total += value.byteLength
+          if (total >= cap) {
+            await reader.cancel().catch(() => {})
+            break
+          }
+        }
       }
     }
+
+    await Promise.race([readLoop(), timeoutPromise])
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 
   const out = new Uint8Array(Math.min(total, cap))

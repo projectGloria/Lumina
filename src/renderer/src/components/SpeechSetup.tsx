@@ -7,11 +7,11 @@
  * only when this build actually carries packs and none are installed, and
  * never asks again whichever way it is answered.
  */
-import { useEffect } from 'react'
 import SpeechPacks from './settings/SpeechPacks'
 import { Icon } from './Icon'
 import { useSettings } from '../store/settingsStore'
 import { useUi } from '../store/uiStore'
+import { useModalTrap } from './useModalTrap'
 
 export default function SpeechSetup(): React.JSX.Element {
   const close = useUi((s) => s.closeModal)
@@ -23,20 +23,20 @@ export default function SpeechSetup(): React.JSX.Element {
     close()
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') done()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-    // `done` is stable enough here: both store functions are.
-  }, [])
+  const trapRef = useModalTrap({ onClose: done })
 
   return (
     <div className="overlay center" onMouseDown={done}>
-      <div className="modal speech-setup" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="speech-setup-title"
+        className="modal speech-setup"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
-          <h2 className="modal-title">Set up dictation</h2>
+          <h2 id="speech-setup-title" className="modal-title">Set up dictation</h2>
           <button className="icon-btn" onClick={done} data-tooltip="Close" aria-label="Close">
             <Icon name="close" />
           </button>

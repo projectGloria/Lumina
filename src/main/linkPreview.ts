@@ -16,6 +16,7 @@ import path from 'node:path'
 import { parseOgTags, type LinkMetadata } from '@shared/linkPreview'
 import { fetchWithTimeout, isHttp, readCapped, IMAGE_EXTENSIONS } from './net'
 import { luminaDir, readJson, writeJson } from './settings'
+import { safePathUnder } from './paths'
 import { getRoot } from './vault'
 
 /** Bump when `LinkMetadata` changes shape, so stale entries are re-fetched. */
@@ -79,8 +80,11 @@ async function cacheImage(vault: string, imageUrl: string): Promise<string | und
     if (!bytes.length) return undefined
 
     const name = `${createHash('sha256').update(imageUrl).digest('hex').slice(0, 32)}.${extension}`
+    const previewTarget = path.join('.lumina', 'previews', name)
+    const safeTarget = await safePathUnder(vault, previewTarget, true)
+    if (!safeTarget) return undefined
     await fs.mkdir(previewDir(vault), { recursive: true })
-    await fs.writeFile(path.join(previewDir(vault), name), bytes)
+    await fs.writeFile(safeTarget, bytes)
     return previewRel(name)
   } catch {
     return undefined

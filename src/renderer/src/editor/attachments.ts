@@ -1,7 +1,10 @@
 /** Pasting or dragging an image file into the editor saves it to the vault and inserts a link. */
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
-import { encodeTarget } from '@shared/markdown-parse'
+import { basename, encodeTarget } from '@shared/markdown-parse'
+import { updateNoteContent } from '../lib/actions'
+import { activePath } from '../store/workspaceStore'
+import { getActiveView } from './activeView'
 import { useSettings } from '../store/settingsStore'
 import { toast } from '../store/uiStore'
 
@@ -44,7 +47,13 @@ function attachmentName(file: File): string {
   return `Pasted image ${stamp}.${generic[1]}`
 }
 
-async function insertAttachments(view: EditorView, files: File[], from: number, to: number): Promise<void> {
+async function insertAttachments(
+  notePath: string,
+  view: EditorView,
+  files: File[],
+  from: number,
+  to: number
+): Promise<void> {
   const folder = useSettings.getState().settings.attachmentFolder
   const embeds: string[] = []
 
@@ -63,14 +72,25 @@ async function insertAttachments(view: EditorView, files: File[], from: number, 
   if (!embeds.length) return
 
   const insert = `${embeds.join('\n')}\n`
-  view.dispatch({
-    changes: { from, to, insert },
-    selection: { anchor: from + insert.length },
-    scrollIntoView: true
-  })
+
+  // Verify the view is still active and attached to the target note
+  if (activePath() === notePath && getActiveView() === view) {
+    const docLen = view.state.doc.length
+    const safeFrom = Math.max(0, Math.min(from, docLen))
+    const safeTo = Math.max(safeFrom, Math.min(to, docLen))
+    view.dispatch({
+      changes: { from: safeFrom, to: safeTo, insert },
+      selection: { anchor: safeFrom + insert.length },
+      scrollIntoView: true
+    })
+  } else {
+    // Note changed while saving attachments: write to target note rather than currently active view
+    void updateNoteContent(notePath, (content) => `${content.trimEnd()}\n\n${insert}`)
+    toast(`Saved attachment to ${basename(notePath)}`)
+  }
 }
 
-export function attachmentDropExtension(): Extension {
+export function attachmentDropExtension(notePath: string): Extension {
   return EditorView.domEventHandlers({
     paste(event, view) {
       const files = imageFilesFrom(event.clipboardData)
@@ -79,7 +99,7 @@ export function attachmentDropExtension(): Extension {
       // Replace the selection the way a normal paste would, rather than
       // inserting at its start and leaving the old text behind.
       const sel = view.state.selection.main
-      void insertAttachments(view, files, sel.from, sel.to)
+      void insertAttachments(notePath, view, files, sel.from, sel.to)
       return true
     },
     drop(event, view) {
@@ -87,7 +107,7 @@ export function attachmentDropExtension(): Extension {
       if (!files.length) return false
       event.preventDefault()
       const at = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.from
-      void insertAttachments(view, files, at, at)
+      void insertAttachments(notePath, view, files, at, at)
       return true
     }
   })

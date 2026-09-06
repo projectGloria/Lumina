@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../store/uiStore'
+import { useModalTrap } from './useModalTrap'
 
 /**
  * A text prompt, used for naming and renaming.
@@ -14,6 +15,7 @@ export function PromptDialog(): React.JSX.Element | null {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  const trapRef = useModalTrap({ onClose: hide, initialFocusRef: input })
 
   useEffect(() => {
     if (!prompt) return
@@ -47,8 +49,15 @@ export function PromptDialog(): React.JSX.Element | null {
 
   return (
     <div className="overlay center" onMouseDown={hide}>
-      <div className="modal dialog" onMouseDown={(e) => e.stopPropagation()}>
-        <h3 className="dialog-title">{prompt.title}</h3>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="prompt-dialog-title"
+        className="modal dialog"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h3 id="prompt-dialog-title" className="dialog-title">{prompt.title}</h3>
         <label className="dialog-body">
           {prompt.label ? <span className="dialog-label">{prompt.label}</span> : null}
           <input
@@ -89,6 +98,7 @@ export function ConfirmDialog(): React.JSX.Element | null {
   const confirm = useUi((s) => s.confirm)
   const hide = useUi((s) => s.hideConfirm)
   const button = useRef<HTMLButtonElement>(null)
+  const trapRef = useModalTrap({ onClose: hide, initialFocusRef: button })
 
   useEffect(() => {
     if (confirm) requestAnimationFrame(() => button.current?.focus())
@@ -104,13 +114,17 @@ export function ConfirmDialog(): React.JSX.Element | null {
   return (
     <div className="overlay center" onMouseDown={hide}>
       <div
+        ref={trapRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
         className="modal dialog"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Escape') hide()
         }}
       >
-        <h3 className="dialog-title">{confirm.title}</h3>
+        <h3 id="confirm-dialog-title" className="dialog-title">{confirm.title}</h3>
         {confirm.body ? <p className="dialog-body-text">{confirm.body}</p> : null}
         <div className="dialog-actions">
           <button className="btn btn-ghost" onClick={hide}>

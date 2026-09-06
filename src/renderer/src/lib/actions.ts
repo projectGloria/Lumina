@@ -136,8 +136,13 @@ function wanted(path: string): boolean {
  */
 export async function releaseNote(path: string): Promise<void> {
   if (wanted(path)) return
-  await useEditor.getState().save(path)
+  const saved = await useEditor.getState().save(path)
   if (wanted(path)) return
+  const buf = useEditor.getState().buffers[path]
+  if (!saved || (buf && buf.content !== buf.saved)) {
+    // Save failed or edits remain dirty: preserve buffer so unsaved work is not discarded
+    return
+  }
   useEditor.getState().close(path)
 }
 
@@ -333,8 +338,8 @@ export async function updateNoteContent(
     }
 
     useEditor.getState().setContent(path, edit(buffer.content))
-    await useEditor.getState().save(path)
-    return true
+    const saved = await useEditor.getState().save(path)
+    return saved
   } finally {
     // The hold goes first, or the release below finds the note still held.
     dropNote(path)

@@ -117,9 +117,9 @@ export interface VaultIndex {
 }
 
 export const emptyIndex = (): VaultIndex => ({
-  notes: {},
-  backlinks: {},
-  tags: {},
+  notes: Object.create(null),
+  backlinks: Object.create(null),
+  tags: Object.create(null),
   unresolved: []
 })
 

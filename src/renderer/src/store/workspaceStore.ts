@@ -133,11 +133,16 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => {
     setSplitWidth: (w) => set({ splitWidth: Math.max(280, w) }),
 
     hydrate: (state) => {
-      set({ ...state, hydrated: true })
       const active = state.tabs[state.activeTab]
-      // Home names no file, so it is not a history entry: Alt+Left from the
-      // board goes back to the last note rather than to an empty path.
-      if (active && isNoteTab(active)) set({ history: [active.path], historyIndex: 0 })
+      const hasNote = active && isNoteTab(active)
+      // Reset vault-scoped session state and isolate history from the previous vault
+      set({
+        ...state,
+        splitPath: null,
+        history: hasNote ? [active.path] : [],
+        historyIndex: hasNote ? 0 : -1,
+        hydrated: true
+      })
     },
 
     openNote: (path, opts = {}) => {

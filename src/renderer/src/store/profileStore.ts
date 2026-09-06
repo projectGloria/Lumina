@@ -86,6 +86,7 @@ export const useProfiles = create<ProfileStore>((set, get) => ({
   },
 
   signOut: async () => {
+    await useEditor.getState().saveAll()
     await window.lumina.profiles.signOut()
     set({ status: 'picker', activeId: null, pendingId: null })
   },
@@ -105,12 +106,13 @@ export const useProfiles = create<ProfileStore>((set, get) => ({
 async function finalize(id: string): Promise<void> {
   const profile = useProfiles.getState().profiles.find((p) => p.id === id)
   if (!profile) return
+  await useEditor.getState().saveAll()
   if (!profile.passwordHash) await window.lumina.profiles.switch(id)
   useProfiles.setState({ status: 'ready', activeId: id, pendingId: null, error: null })
   if (profile.vaultPath) {
     try {
-      await window.lumina.vault.open(profile.vaultPath)
-      return
+      const payload = await window.lumina.vault.open(profile.vaultPath)
+      if (payload) return
     } catch {
       // Folder moved or deleted — fall through to the welcome screen, same as
       // the old lastVault auto-open behaviour.

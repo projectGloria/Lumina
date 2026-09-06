@@ -23,6 +23,8 @@ import { toast, useUi } from '../../store/uiStore'
 import { useMusic } from '../../store/musicStore'
 import { useVault } from '../../store/vaultStore'
 
+import { useModalTrap } from '../useModalTrap'
+
 type FontFamilyPreset = 'sans' | 'serif' | 'mono' | 'custom'
 
 const FONT_FAMILY_PRESETS: Record<Exclude<FontFamilyPreset, 'custom'>, string> = {
@@ -50,18 +52,18 @@ export default function SettingsModal(): React.JSX.Element {
   const close = useUi((s) => s.closeModal)
   const tab = useUi((s) => s.settingsTab)
   const openSettings = useUi((s) => s.openSettings)
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [close])
+  const trapRef = useModalTrap({ onClose: close })
 
   return (
     <div className="overlay center" onMouseDown={close}>
-      <div className="modal settings" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        className="modal settings"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <nav className="settings-nav" aria-label="Settings sections">
           <div className="settings-nav-title">Settings</div>
           {TABS.map((t) => (

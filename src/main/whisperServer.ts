@@ -22,6 +22,7 @@
  * makes this a fair trade rather than a quiet downgrade.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
+import fs from 'node:fs/promises'
 import { createServer } from 'node:net'
 import os from 'node:os'
 import type { VoiceTools } from './transcribe'
@@ -68,9 +69,15 @@ function freePort(): Promise<number> {
 }
 
 /** Poll until the server answers, so the first phrase is not sent into a void. */
-async function waitForReady(port: number, child: ChildProcess): Promise<string | null> {
+async function waitForReady(
+  port: number,
+  child: ChildProcess,
+  getError: () => Error | null
+): Promise<string | null> {
   const deadline = Date.now() + READY_TIMEOUT_MS
   while (Date.now() < deadline) {
+    const err = getError()
+    if (err) return `Speech server failed to start: ${err.message}`
     if (child.exitCode !== null) return `Speech server exited (code ${child.exitCode})`
     try {
       // Any answer at all means the HTTP layer is up and the model is loaded;
@@ -81,6 +88,8 @@ async function waitForReady(port: number, child: ChildProcess): Promise<string |
       await new Promise((r) => setTimeout(r, 250))
     }
   }
+  const err = getError()
+  if (err) return `Speech server failed to start: ${err.message}`
   return 'Speech server did not start in time'
 }
 
@@ -114,25 +123,43 @@ export async function ensureWhisperServer(tools: VoiceTools): Promise<string | n
   }
 
   const serverBinary = tools.binary.replace(/whisper-cli(\.exe)?$/i, 'whisper-server$1')
+  const binaryStat = await fs.stat(serverBinary).catch(() => null)
+  if (!binaryStat) return `Speech server binary not found at ${serverBinary}`
+
   const port = await freePort()
+  let child: ChildProcess
+  try {
+    child = spawn(
+      serverBinary,
+      [
+        '--model', tools.model,
+        '--host', '127.0.0.1',
+        '--port', String(port),
+        // Only off GPU. On the RTX card this was measured at 246ms with the
+        // reduced window and 269ms without — 23ms is not worth the accuracy.
+        ...(tools.gpu ? [] : ['--audio-ctx', String(AUDIO_CTX)]),
+        '--no-timestamps',
+        '--threads', String(Math.max(1, Math.min(8, (os.cpus().length || 4) - 1)))
+      ],
+      { windowsHide: true, stdio: 'ignore' }
+    )
+  } catch (err) {
+    return `Could not spawn speech server: ${(err as Error).message}`
+  }
 
-  const child = spawn(
-    serverBinary,
-    [
-      '--model', tools.model,
-      '--host', '127.0.0.1',
-      '--port', String(port),
-      // Only off GPU. On the RTX card this was measured at 246ms with the
-      // reduced window and 269ms without — 23ms is not worth the accuracy.
-      ...(tools.gpu ? [] : ['--audio-ctx', String(AUDIO_CTX)]),
-      '--no-timestamps',
-      '--threads', String(Math.max(1, Math.min(8, (os.cpus().length || 4) - 1)))
-    ],
-    { windowsHide: true, stdio: 'ignore' }
-  )
-
+  let spawnError: Error | null = null
   const state: Running = { process: child, port, model: tools.model, ready: Promise.resolve(null) }
-  state.ready = waitForReady(port, child).then((error) => {
+
+  child.once('error', (err) => {
+    spawnError = err
+    if (running === state) running = null
+  })
+
+  child.once('exit', () => {
+    if (running === state) running = null
+  })
+
+  state.ready = waitForReady(port, child, () => spawnError).then((error) => {
     if (error) {
       // A server that never came up must not be left as `running`, or every
       // later phrase would be posted to a dead port.
@@ -142,10 +169,6 @@ export async function ensureWhisperServer(tools: VoiceTools): Promise<string | n
     return error
   })
   running = state
-
-  child.once('exit', () => {
-    if (running === state) running = null
-  })
 
   armIdle()
   return state.ready

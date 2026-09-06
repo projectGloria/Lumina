@@ -13,6 +13,7 @@ import { formatDuration } from '@shared/audio'
 import { startRecording, toWhisperWav, type RecorderHandle } from './recorder'
 import { startLiveDictation, type LiveDictation } from './liveDictation'
 import { getActiveView } from '../editor/activeView'
+import { activePath } from '../store/workspaceStore'
 import { useSettings } from '../store/settingsStore'
 import { toast, useUi } from '../store/uiStore'
 
@@ -20,6 +21,7 @@ import { toast, useUi } from '../store/uiStore'
 export type VoiceMode = 'note' | 'dictate'
 
 let handle: RecorderHandle | null = null
+let recordingPath: string | null = null
 
 /**
  * The live segmenter, when dictation is writing as the user speaks.
@@ -61,7 +63,7 @@ let interim: { from: number; to: number } | null = null
  */
 function writeDictated(text: string, provisional: boolean): boolean {
   const view = getActiveView()
-  if (!view) {
+  if (!view || !recordingPath || activePath() !== recordingPath) {
     interim = null
     return false
   }
@@ -96,7 +98,7 @@ function clearInterim(): void {
  */
 function insertAtCaret(text: string): boolean {
   const view = getActiveView()
-  if (!view) return false
+  if (!view || !recordingPath || activePath() !== recordingPath) return false
   const sel = view.state.selection.main
   view.dispatch({
     changes: { from: sel.from, to: sel.to, insert: text },
@@ -119,16 +121,19 @@ export async function startVoice(mode: VoiceMode): Promise<void> {
   // second recording there would overwrite the phase the bar is showing and
   // orphan the transcript that is still on its way.
   if (handle || useUi.getState().voice) return
-  if (!getActiveView()) {
+  const currentPath = activePath()
+  if (!getActiveView() || !currentPath) {
     toast('Open a note first', 'error')
     return
   }
+  recordingPath = currentPath
 
   const ui = useUi.getState()
   ui.setVoice({ mode, phase: 'starting', startedAt: Date.now() })
   try {
     handle = await startRecording(useSettings.getState().settings.voice.deviceId)
   } catch (err) {
+    recordingPath = null
     ui.setVoice(null)
     toast((err as Error).message, 'error')
     return
@@ -166,6 +171,7 @@ export function cancelVoice(): void {
   clearInterim()
   handle?.cancel()
   handle = null
+  recordingPath = null
   void window.lumina.voice.liveStop()
   useUi.getState().setVoice(null)
 }
@@ -184,100 +190,98 @@ export async function stopVoice(): Promise<void> {
   handle = null
 
   const ui = useUi.getState()
-  const mode = ui.voice?.mode ?? 'note'
-  ui.setVoice({ mode, phase: 'saving', startedAt: Date.now() })
+  try {
+    const mode = ui.voice?.mode ?? 'note'
+    ui.setVoice({ mode, phase: 'saving', startedAt: Date.now() })
 
-  // Flush the phrase still being spoken before the stream is torn down, so the
-  // last sentence is not the one that goes missing.
-  const wasLive = live
-  if (wasLive) {
+    // Flush the phrase still being spoken before the stream is torn down, so the
+    // last sentence is not the one that goes missing.
+    const wasLive = live
+    if (wasLive) {
+      ui.setVoice({ mode, phase: 'transcribing', startedAt: Date.now() })
+      live = null
+      await wasLive.finish()
+      clearInterim()
+    }
+
+    let recording: Awaited<ReturnType<RecorderHandle['stop']>>
+    try {
+      recording = await current.stop()
+    } catch (err) {
+      toast(`Recording failed: ${(err as Error).message}`, 'error')
+      return
+    }
+
+    if (!recording) {
+      toast('Nothing was recorded', 'error')
+      return
+    }
+
+    const voice = useSettings.getState().settings.voice
+    const keepAudio = mode === 'note' && voice.keepAudio
+    let savedPath: string | null = null
+
+    if (keepAudio) {
+      const name = `Voice ${stamp()}.${recording.ext}`
+      const res = await window.lumina.files.saveAttachment(
+        voice.folder || 'attachments',
+        name,
+        await recording.blob.arrayBuffer()
+      )
+      if (!res.ok || !res.data) {
+        toast(res.error ?? 'Could not save the recording', 'error')
+        return
+      }
+      savedPath = res.data
+
+      // In the note before transcription starts, so the recording is safe on disk
+      // and linked even if whisper is missing or fails.
+      if (!insertAtCaret(`![${formatDuration(recording.seconds)}](${encodeTarget(savedPath)})\n`)) {
+        toast(`Recording saved to ${savedPath}`)
+      }
+    }
+
+    // Live mode has already written everything as it was spoken.
+    if (wasLive) {
+      return
+    }
+
+    const wantsText = voice.transcribe || mode === 'dictate'
+    if (!wantsText) {
+      return
+    }
+
     ui.setVoice({ mode, phase: 'transcribing', startedAt: Date.now() })
-    live = null
-    await wasLive.finish()
-    clearInterim()
-  }
+    try {
+      const status = await window.lumina.voice.status()
+      if (!status.available) {
+        // Not an error in `note` mode — the audio is already saved and linked, so
+        // this is a missing optional extra, not a lost recording.
+        toast(status.reason ?? 'No speech model installed', savedPath ? 'info' : 'error')
+        return
+      }
 
-  let recording: Awaited<ReturnType<RecorderHandle['stop']>>
-  try {
-    recording = await current.stop()
-  } catch (err) {
-    ui.setVoice(null)
-    toast(`Recording failed: ${(err as Error).message}`, 'error')
-    return
-  }
+      const wav = await toWhisperWav(recording.blob)
+      const result = await window.lumina.voice.transcribe(wav, voice.language)
+      if (!result.ok) {
+        toast(result.error ?? 'Transcription failed', 'error')
+        return
+      }
+      if (!result.text) {
+        toast('No speech was recognised')
+        return
+      }
 
-  if (!recording) {
-    ui.setVoice(null)
-    toast('Nothing was recorded', 'error')
-    return
-  }
-
-  const voice = useSettings.getState().settings.voice
-  const keepAudio = mode === 'note' && voice.keepAudio
-  let savedPath: string | null = null
-
-  if (keepAudio) {
-    const name = `Voice ${stamp()}.${recording.ext}`
-    const res = await window.lumina.files.saveAttachment(
-      voice.folder || 'attachments',
-      name,
-      await recording.blob.arrayBuffer()
-    )
-    if (!res.ok || !res.data) {
-      ui.setVoice(null)
-      toast(res.error ?? 'Could not save the recording', 'error')
-      return
+      // Under the player when there is one, so the note reads as audio then text.
+      if (!insertAtCaret(savedPath ? `${result.text}\n\n` : `${result.text} `)) {
+        await navigator.clipboard.writeText(result.text)
+        toast('No note was focused — the transcript is on the clipboard')
+      }
+    } catch (err) {
+      toast(`Transcription failed: ${(err as Error).message}`, 'error')
     }
-    savedPath = res.data
-
-    // In the note before transcription starts, so the recording is safe on disk
-    // and linked even if whisper is missing or fails.
-    if (!insertAtCaret(`![${formatDuration(recording.seconds)}](${encodeTarget(savedPath)})\n`)) {
-      toast(`Recording saved to ${savedPath}`)
-    }
-  }
-
-  // Live mode has already written everything as it was spoken.
-  if (wasLive) {
-    ui.setVoice(null)
-    return
-  }
-
-  const wantsText = voice.transcribe || mode === 'dictate'
-  if (!wantsText) {
-    ui.setVoice(null)
-    return
-  }
-
-  ui.setVoice({ mode, phase: 'transcribing', startedAt: Date.now() })
-  try {
-    const status = await window.lumina.voice.status()
-    if (!status.available) {
-      // Not an error in `note` mode — the audio is already saved and linked, so
-      // this is a missing optional extra, not a lost recording.
-      toast(status.reason ?? 'No speech model installed', savedPath ? 'info' : 'error')
-      return
-    }
-
-    const wav = await toWhisperWav(recording.blob)
-    const result = await window.lumina.voice.transcribe(wav, voice.language)
-    if (!result.ok) {
-      toast(result.error ?? 'Transcription failed', 'error')
-      return
-    }
-    if (!result.text) {
-      toast('No speech was recognised')
-      return
-    }
-
-    // Under the player when there is one, so the note reads as audio then text.
-    if (!insertAtCaret(savedPath ? `${result.text}\n\n` : `${result.text} `)) {
-      await navigator.clipboard.writeText(result.text)
-      toast('No note was focused — the transcript is on the clipboard')
-    }
-  } catch (err) {
-    toast(`Transcription failed: ${(err as Error).message}`, 'error')
   } finally {
+    recordingPath = null
     ui.setVoice(null)
   }
 }

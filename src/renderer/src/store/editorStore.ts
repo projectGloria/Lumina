@@ -20,8 +20,8 @@ interface EditorState {
   open: (path: string) => Promise<void>
   reload: (path: string) => Promise<void>
   setContent: (path: string, content: string) => void
-  save: (path: string) => Promise<void>
-  saveAll: () => Promise<void>
+  save: (path: string) => Promise<boolean>
+  saveAll: () => Promise<boolean>
   reset: () => void
   close: (path: string) => void
   rename: (from: string, to: string) => void
@@ -72,6 +72,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   reload: async (path) => {
+    const currentBuf = get().buffers[path]
+    const initialContent = currentBuf?.content
     const generation = vaultGeneration
     const request = Symbol(path)
     loads.set(path, request)
@@ -84,6 +86,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (generation !== vaultGeneration || loads.get(path) !== request) return
     loads.delete(path)
     if (!res.ok || !res.data) return
+
+    const latest = get().buffers[path]
+    if (!latest) return
+    // Guard against overwriting edits made while the asynchronous read was in flight
+    if (latest.content !== initialContent || latest.content !== latest.saved) {
+      toast(`${path} changed on disk while you were editing. Your edits are kept here.`, 'error')
+      return
+    }
+
     set((s) => ({
       buffers: {
         ...s.buffers,
@@ -117,9 +128,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
 
     const buffer = get().buffers[path]
-    if (!buffer || buffer.loading || buffer.content === buffer.saved) return
+    if (!buffer || buffer.loading) return true
+    if (buffer.content === buffer.saved) return true
 
     const content = buffer.content
+    let succeeded = false
     const operation = (async (): Promise<void> => {
       set((s) => ({ saving: s.saving.includes(path) ? s.saving : [...s.saving, path] }))
       try {
@@ -139,6 +152,7 @@ export const useEditor = create<EditorState>((set, get) => ({
             }
           }
         })
+        succeeded = true
       } catch (err) {
         toast(`Could not save ${path}: ${(err as Error).message}`, 'error')
       } finally {
@@ -149,6 +163,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     saves.set(path, operation)
     try {
       await operation
+      return succeeded
     } finally {
       if (saves.get(path) === operation) saves.delete(path)
     }
@@ -158,7 +173,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const dirty = Object.entries(get().buffers)
       .filter(([, b]) => b.content !== b.saved)
       .map(([p]) => p)
-    await Promise.all(dirty.map((p) => get().save(p)))
+    const results = await Promise.all(dirty.map((p) => get().save(p)))
+    return results.every(Boolean)
   },
 
   /**
