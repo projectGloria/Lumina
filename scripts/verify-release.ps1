@@ -36,7 +36,7 @@ $contents = & node $asarCli list $asar
 foreach ($required in @(
   '\out\main\index.js',
   '\out\preload\index.js',
-  '\out\renderer\index.html',
+  '\out\renderer\renderer\index.html',
   '\package.json'
 )) {
   if ($contents -notcontains $required) {

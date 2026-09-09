@@ -196,7 +196,10 @@ const api = {
     takePending: (): Promise<number> => ipcRenderer.invoke(CH.quickNotePending),
     /** Whether the accelerator could be bound after a settings change. */
     onStatus: (cb: (s: { accelerator: string; registered: boolean }) => void) =>
-      on<{ accelerator: string; registered: boolean }>(CH.quickNoteStatus, cb)
+      on<{ accelerator: string; registered: boolean }>(CH.quickNoteStatus, cb),
+    /** Create a dedicated Quick Note shortcut with custom icon on the desktop. */
+    createDesktopShortcut: (): Promise<{ ok: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke(CH.quickNoteCreateShortcut)
   },
 
   files: {

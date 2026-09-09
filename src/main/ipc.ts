@@ -39,6 +39,7 @@ import {
   removeSpeechPack,
   type SpeechPack
 } from './speechPacks'
+import { createQuickNoteDesktopShortcut } from './quicknote/shortcut'
 import {
   clipServerRunning,
   DEFAULT_CLIP_PORT,
@@ -447,6 +448,8 @@ export function registerIpc(): void {
     pendingQuickNotes = 0
     return count
   })
+
+  ipcMain.handle(CH.quickNoteCreateShortcut, () => createQuickNoteDesktopShortcut())
 
   /* notes --------------------------------------------------------------- */
   ipcMain.handle(CH.noteRead, (_e, rel: string) => readNote(rel))

@@ -67,6 +67,7 @@ export const CH = {
   quickNote: 'quickNote:requested',
   quickNotePending: 'quickNote:pending',
   quickNoteStatus: 'quickNote:status',
+  quickNoteCreateShortcut: 'quickNote:createShortcut',
 
   // shutdown
   appFlush: 'app:flush',

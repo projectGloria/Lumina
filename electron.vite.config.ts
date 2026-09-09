@@ -34,7 +34,7 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve('src/main/index.ts') }
+        input: { index: resolve('src/main/index.ts'), vaultApp: resolve('src/main/vaultApp.ts'), quicknote: resolve('src/main/quicknote/startup.ts') }
       }
     }
   },
@@ -47,12 +47,12 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: { index: resolve('src/preload/index.ts') }
+        input: { index: resolve('src/preload/index.ts'), quicknote: resolve('src/preload/quicknote.ts') }
       }
     }
   },
   renderer: {
-    root: resolve('src/renderer'),
+    root: resolve('src'),
     resolve: {
       alias: {
         '@': resolve('src/renderer/src'),
@@ -62,7 +62,7 @@ export default defineConfig({
     plugins: [react(), reloadEditorModules()],
     build: {
       rollupOptions: {
-        input: { index: resolve('src/renderer/index.html') }
+        input: { index: resolve('src/renderer/index.html'), quicknote: resolve('src/quicknote/index.html') }
       }
     }
   }

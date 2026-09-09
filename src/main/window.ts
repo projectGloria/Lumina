@@ -170,8 +170,8 @@ export function createWindow(
     )
   }
 
-  if (devUrl) void win.loadURL(devUrl)
-  else void win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  if (devUrl) void win.loadURL(devUrl + '/renderer/index.html')
+  else void win.loadFile(path.join(__dirname, '../renderer/renderer/index.html'))
 
   return win
 }

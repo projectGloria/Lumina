@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Quick Note</title>
+</head>
+<body>
+  <div class="titlebar">
+    <span class="app-icon">▤</span>
+    <span id="title">Quick Note</span>
+  </div>
+  <div class="toolbar" aria-label="Editor toolbar">
+    <div class="toolbar-left">
+      <button id="new" title="New draft (Ctrl+N)">▧ New</button>
+      <button id="save" title="Save As (Ctrl+S)">▣ Save As…</button>
+      <i></i>
+      <button id="find-btn" title="Find & Replace (Ctrl+F)">🔍 Find</button>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <div class="toolbar-right">
+      <div class="toolbar-hover-group">
+        <button id="theme-btn" title="Theme & Typography Editor (Ctrl+Alt+T)">🎨 Theme</button>
+        <button id="shortcuts-btn" title="Keyboard Shortcuts (Ctrl+Alt+K)">⌨ Shortcuts</button>
+        <button id="settings-btn" title="Import / Export Settings">⚙ Settings</button>
+        <i></i>
+      </div>
+      <div class="toolbar-nav-group">
+        <button id="undo" title="Back / Undo (Ctrl+Z)">↶</button>
+        <button id="redo" title="Forward / Redo (Ctrl+Y)">↷</button>
+      </div>
+    </div>
+  </div>
+  <div id="drafts" role="tablist" aria-label="Unsaved notes"></div>
+  <div id="find-replace-container" class="find-replace-panel"></div>
+  <main>
+    <div id="gutter" aria-hidden="true"><pre id="lines">1</pre></div>
+    <div id="editor-wrap">
+      <div id="backdrop" aria-hidden="true"><pre id="highlights"></pre></div>
+      <textarea id="editor" aria-label="Quick note text" wrap="off" spellcheck="false" disabled></textarea>
+    </div>
+  </main>
+  <footer>
+    <span id="status" role="status">Restoring drafts…</span>
+    <span id="metrics">length: 0   lines: 1</span>
+    <span id="position">Ln: 1   Col: 1</span>
+    <span>UTF-8</span>
+    <span>INS</span>
+  </footer>
+  <div id="modal-container"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

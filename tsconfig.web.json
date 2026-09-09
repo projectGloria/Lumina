@@ -18,5 +18,5 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/**/*"]
+  "include": ["src/renderer/**/*", "src/quicknote/**/*", "src/shared/**/*", "src/preload/**/*"]
 }

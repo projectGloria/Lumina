@@ -1046,6 +1046,33 @@ function QuickNoteTab(): React.JSX.Element {
           placeholder="Temporary"
           onChange={(v) => set({ folder: v })}
         />
+
+        <div className="field-row">
+          <div>
+            <div className="field-label">Desktop shortcut</div>
+            <div className="field-hint">
+              Create a dedicated Quick Note shortcut with its own custom amber lightning icon on your desktop.
+            </div>
+          </div>
+          <div className="field-control">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                void (async () => {
+                  const res = await window.lumina.quickNote.createDesktopShortcut()
+                  if (res.ok) {
+                    toast('Quick Note shortcut created on your desktop!')
+                  } else {
+                    toast(res.error || 'Failed to create shortcut.')
+                  }
+                })()
+              }}
+            >
+              Create quick notes shortcut to the desktop
+            </button>
+          </div>
+        </div>
       </section>
 
       <section className="settings-section">
