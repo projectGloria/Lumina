@@ -1,4 +1,4 @@
-import fs from 'node:fs/promises'
+﻿import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
@@ -49,7 +49,7 @@ import {
 } from './clipServer'
 import { saveClipImage } from './clipImages'
 import { resolveFile, toRequest } from './openFile'
-import { safeVaultPath, samePath } from './paths'
+import { samePath } from './paths'
 import {
   createProfile,
   deleteProfile,
@@ -79,8 +79,10 @@ import {
   saveAppState,
   saveHome,
   saveTheme,
-  saveWorkspace
+  saveWorkspace,
+  stripMachineSettings
 } from './settings'
+import { cleanupTempHtml, embedLocalImages, writeTempHtml } from './export'
 import { openSnippetsFolder, readSnippets, startSnippetWatcher, stopSnippetWatcher } from './snippets'
 import { isEmptyVault, seedVault } from './starter'
 import { startWatcher, stopWatcher } from './watcher'
@@ -94,6 +96,7 @@ import {
   readTree,
   renamePath,
   revealInExplorer,
+  rootMatches,
   saveAttachment,
   setRoot,
   writeNote
@@ -117,6 +120,17 @@ let onSettingsSaved: ((settings: Settings) => void) | null = null
 let clipStartError: string | null = null
 
 /**
+ * The configuration the listener is currently running with.
+ *
+ * Without this, every settings write restarted the socket — and settings are
+ * written for things that have nothing to do with the clipper, like starring a
+ * note. That dropped any clip arriving during the teardown, and a rapid
+ * sequence of unrelated preference changes could race `close()` against
+ * `listen()` and report a spurious "port already in use".
+ */
+let appliedClipper: { enabled: boolean; port: number; token: string } | null = null
+
+/**
  * Bring the clip listener in line with the settings.
  *
  * Takes `ClipperSettings` rather than the whole `Settings` because these are
@@ -126,11 +140,24 @@ let clipStartError: string | null = null
  * clip arriving with no vault yet is held by `drainClips` in the renderer
  * rather than refused at the socket.
  *
- * Called again after every settings save, so toggling it takes effect without
- * a restart and turning it off actually closes the socket.
+ * Called after every settings save, so toggling it takes effect without a
+ * restart and turning it off actually closes the socket — but a save that did
+ * not touch the clipper leaves the socket alone.
  */
 export async function syncClipServer(clipper: ClipperSettings): Promise<void> {
   const { enabled, port, token } = clipper
+
+  const unchanged =
+    appliedClipper !== null &&
+    appliedClipper.enabled === enabled &&
+    appliedClipper.port === port &&
+    appliedClipper.token === token
+  // Only skip when the listener is actually in the state that configuration
+  // describes; a server that died on its own still needs bringing back.
+  if (unchanged && clipServerRunning() === (enabled && !!token)) return
+
+  appliedClipper = { enabled, port, token }
+
   if (!enabled || !token) {
     clipStartError = null
     await stopClipServer()
@@ -235,18 +262,26 @@ function pushFileRequest(request: FileOpenRequest): void {
  * away — the one bug a note app cannot afford. The timeout means a wedged
  * renderer delays the quit rather than preventing it.
  */
-export function flushRenderer(timeoutMs = 3000): Promise<void> {
+let pendingFlush: Promise<void> | null = null
+export function resumeRenderer(): void { send(CH.appResume) }
+export function flushRenderer(timeoutMs = 15000): Promise<void> {
   if (!win || win.isDestroyed()) return Promise.resolve()
-  return new Promise((resolve) => {
-    const done = (): void => {
+  if (pendingFlush) return pendingFlush
+  const id = randomUUID()
+  pendingFlush = new Promise<void>((resolve, reject) => {
+    const finish = (error?: string): void => {
       clearTimeout(timer)
       ipcMain.removeListener(CH.appFlushed, done)
-      resolve()
+      if (error) { resumeRenderer(); reject(new Error(error)) } else resolve()
     }
-    const timer = setTimeout(done, timeoutMs)
-    ipcMain.once(CH.appFlushed, done)
-    send(CH.appFlush)
-  })
+    const done = (event: Electron.IpcMainEvent, token: string, error?: string): void => {
+      if (token === id && event.sender === win?.webContents) finish(error)
+    }
+    const timer = setTimeout(() => finish('Saving timed out. The operation was cancelled to keep your edits.'), timeoutMs)
+    ipcMain.on(CH.appFlushed, done)
+    send(CH.appFlush, id)
+  }).finally(() => { pendingFlush = null })
+  return pendingFlush
 }
 
 /** Bring the window forward, for a note opened from outside the app. */
@@ -290,11 +325,46 @@ async function vaultPayload(vault: string) {
   }
 }
 
-export async function openVault(dir: string) {
+let switchChain: Promise<unknown> = Promise.resolve()
+let transitioning = false
+const activeOperations = new Set<Promise<unknown>>()
+
+export function openVault(dir: string): ReturnType<typeof switchVault> {
+  const operation = switchChain.catch(() => {}).then(() => switchVault(dir))
+  switchChain = operation
+  return operation
+}
+
+function closeVault(): Promise<void> {
+  const operation = switchChain.catch(() => {}).then(async () => {
+    if (getRoot()) await flushRenderer()
+    transitioning = true
+    try {
+      await Promise.all([stopWatcher(), stopSnippetWatcher()])
+      await Promise.allSettled([...activeOperations])
+      await changeChain
+      cancelCacheSave()
+      await setRoot(null)
+      forgetLinkPreviews()
+      send(CH.vaultClosed)
+    } finally { transitioning = false; resumeRenderer() }
+  })
+  switchChain = operation
+  return operation
+}
+
+async function switchVault(dir: string) {
   // Anything still dirty belongs to the vault being left, and writes resolve
   // against the root, so it has to reach disk before the root moves.
   if (getRoot()) await flushRenderer()
 
+  transitioning = true
+  const previous = getRoot()
+  try {
+  await Promise.all([stopWatcher(), stopSnippetWatcher()])
+  await Promise.allSettled([...activeOperations])
+  await changeChain
+  cancelCacheSave()
   await setRoot(dir)
   // The link cache lives in the vault, so the in-memory copy belongs to the
   // one being left.
@@ -307,7 +377,7 @@ export async function openVault(dir: string) {
   const stats = await buildIndex()
   scheduleCacheSave(1000)
 
-  startWatcher(dir, (changes) => void applyChanges(changes))
+  startWatcher(dir, queueChanges)
   startSnippetWatcher(dir, (snippets) => send(CH.snippetsChanged, snippets))
 
   const payload = await vaultPayload(dir)
@@ -319,6 +389,15 @@ export async function openVault(dir: string) {
     )
   }
   return payload
+  } catch (error) {
+    if (previous) {
+      await setRoot(previous)
+      await buildIndex()
+      startWatcher(previous, queueChanges)
+      startSnippetWatcher(previous, (snippets) => send(CH.snippetsChanged, snippets))
+    } else await setRoot(null)
+    throw error
+  } finally { transitioning = false; resumeRenderer() }
 }
 
 /* ----------------------------------------------- a note handed to us by the OS */
@@ -355,12 +434,37 @@ export async function openFileFromDisk(fileAbs: string, adopt = false): Promise<
  * once. Tree changes and index changes travel together so the UI never shows a
  * file that the index does not know about.
  */
+/** Files read at once when a batch lands. Enough to hide latency, not enough to thrash. */
+const INDEX_CONCURRENCY = 8
+
+/**
+ * Batches are applied one after another.
+ *
+ * `startWatcher` calls this fire-and-forget, so without a chain two batches
+ * could interleave their `readTree()` and `getIndex()` calls and push a staler
+ * tree after a fresher one. Same shape as the persistence chains in
+ * `settings.ts` and the renderer's stores.
+ */
+let changeChain: Promise<void> = Promise.resolve()
+
+export function queueChanges(changes: VaultChange[]): void {
+  const root = getRoot()
+  changeChain = changeChain.catch(() => {}).then(async () => {
+    if (getRoot() === root) await applyChanges(changes)
+  })
+}
+
 async function applyChanges(changes: VaultChange[]): Promise<void> {
   let structural = false
 
+  // Reads are the slow part and they are independent of each other, so they go
+  // in bounded-concurrency waves rather than strictly one at a time — a `git
+  // checkout` touching hundreds of notes used to mean hundreds of sequential
+  // round trips before the renderer heard anything.
+  const toIndex: string[] = []
   for (const change of changes) {
     if (change.type === 'add' || change.type === 'change') {
-      await indexNote(change.path)
+      toIndex.push(change.path)
       if (change.type === 'add') structural = true
     } else if (change.type === 'unlink') {
       forgetNote(change.path)
@@ -376,6 +480,10 @@ async function applyChanges(changes: VaultChange[]): Promise<void> {
     }
   }
 
+  for (let i = 0; i < toIndex.length; i += INDEX_CONCURRENCY) {
+    await Promise.all(toIndex.slice(i, i + INDEX_CONCURRENCY).map((rel) => indexNote(rel)))
+  }
+
   const tree = structural ? await readTree() : null
   send(CH.vaultChanged, { changes, tree, index: await getIndex() })
   scheduleCacheSave()
@@ -389,6 +497,16 @@ async function pushTree(): Promise<void> {
 
 /* -------------------------------------------------------------- handlers */
 
+function handleVault(channel: string, handler: Parameters<typeof ipcMain.handle>[1]): void {
+  ipcMain.handle(channel, (event, stamp: string | null, ...args: unknown[]) => {
+    if (transitioning || stamp !== getRoot()) throw new Error('The vault changed. Retry in the current vault.')
+    const operation = Promise.resolve().then(() => handler(event, ...args))
+    activeOperations.add(operation)
+    void operation.finally(() => activeOperations.delete(operation)).catch(() => {})
+    return operation
+  })
+}
+
 export function registerIpc(): void {
   /* window chrome ------------------------------------------------------- */
   ipcMain.on(CH.winMinimize, () => win?.minimize())
@@ -401,6 +519,7 @@ export function registerIpc(): void {
   ipcMain.handle(CH.winIsMaximized, () => win?.isMaximized() ?? false)
 
   /* vault --------------------------------------------------------------- */
+  ipcMain.handle(CH.vaultClose, () => closeVault())
   ipcMain.handle(CH.vaultPick, async () => {
     if (!win) return null
     const res = await dialog.showOpenDialog(win, {
@@ -423,13 +542,15 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle(CH.vaultCurrent, async () => {
+    await switchChain.catch(() => {})
+    await changeChain.catch(() => {})
     const root = getRoot()
     return root ? vaultPayload(root) : null
   })
 
   ipcMain.handle(CH.vaultRecent, async () => (await loadAppState()).recentVaults)
-  ipcMain.handle(CH.vaultTree, () => readTree())
-  ipcMain.handle(CH.vaultReveal, (_e, rel: string) => revealInExplorer(rel))
+  handleVault(CH.vaultTree, () => readTree())
+  handleVault(CH.vaultReveal, (_e, rel: string) => revealInExplorer(rel))
 
   // The renderer sends back the absolute path it was asked about, once the
   // user has agreed to treat the containing folder as a vault.
@@ -452,19 +573,31 @@ export function registerIpc(): void {
   ipcMain.handle(CH.quickNoteCreateShortcut, () => createQuickNoteDesktopShortcut())
 
   /* notes --------------------------------------------------------------- */
-  ipcMain.handle(CH.noteRead, (_e, rel: string) => readNote(rel))
+  handleVault(CH.noteRead, (_e, rel: string) => readNote(rel))
 
-  ipcMain.handle(CH.noteWrite, async (_e, rel: string, content: string) => {
-    const res = await writeNote(rel, content)
+  handleVault(CH.noteWrite, async (_e, rel: string, content: string, forVault?: string, expected?: string) => {
+    // The renderer stamps every write with the vault it was composed against.
+    // A write that arrives after the root has moved belongs to the vault being
+    // left, and writing it here would put its text into the new vault's file
+    // of the same name — so it is refused rather than redirected.
+    if (!rootMatches(forVault)) {
+      return { ok: false as const, mtime: 0, error: 'The vault changed before this could be saved' }
+    }
+    const res = await writeNote(rel, content, expected)
     if (res.ok) {
-      await indexNote(rel)
-      send(CH.indexUpdated, await getIndex())
-      scheduleCacheSave()
+      changeChain = changeChain.catch(() => {}).then(async () => {
+        await indexNote(rel)
+        send(CH.indexUpdated, await getIndex())
+        scheduleCacheSave()
+      })
     }
     return res
   })
 
-  ipcMain.handle(CH.noteCreate, async (_e, rel: string, content = '') => {
+  handleVault(CH.noteCreate, async (_e, rel: string, content = '', forVault?: string) => {
+    if (!rootMatches(forVault)) {
+      return { ok: false as const, error: 'The vault changed before this could be created' }
+    }
     const res = await createNote(rel, content)
     if (res.ok && res.data) {
       await indexNote(res.data)
@@ -473,13 +606,13 @@ export function registerIpc(): void {
     return res
   })
 
-  ipcMain.handle(CH.noteCreateFolder, async (_e, rel: string) => {
+  handleVault(CH.noteCreateFolder, async (_e, rel: string) => {
     const res = await createFolder(rel)
     if (res.ok) await pushTree()
     return res
   })
 
-  ipcMain.handle(CH.noteRename, async (_e, from: string, to: string) => {
+  handleVault(CH.noteRename, async (_e, from: string, to: string) => {
     const res = await renamePath(from, to)
     if (res.ok && res.data) {
       forgetNote(from)
@@ -491,21 +624,24 @@ export function registerIpc(): void {
     return res
   })
 
-  ipcMain.handle(CH.noteDelete, async (_e, rel: string) => {
+  handleVault(CH.noteDelete, async (_e, rel: string) => {
     const res = await deletePath(rel)
     if (res.ok) {
       forgetNote(rel)
-      if (!isMarkdownPath(rel)) await buildIndex()
+      // A folder takes its notes with it. `forgetNotesUnder` drops them from
+      // the index directly; the full `buildIndex` this used to do re-walked and
+      // re-stat'd the entire vault to reach the same answer.
+      if (!isMarkdownPath(rel)) forgetNotesUnder(rel)
       await pushTree()
     }
     return res
   })
 
-  ipcMain.handle(CH.noteExists, (_e, rel: string) => noteExists(rel))
+  handleVault(CH.noteExists, (_e, rel: string) => noteExists(rel))
 
   /* index + search ------------------------------------------------------ */
-  ipcMain.handle(CH.indexGet, async () => await getIndex())
-  ipcMain.handle(
+  handleVault(CH.indexGet, async () => await getIndex())
+  handleVault(
     CH.searchQuery,
     (_e, q: string, mode: 'full' | 'titles' = 'full', opts?: SearchOptions) =>
       mode === 'titles' ? searchTitles(q) : search(q, 60, opts)
@@ -528,12 +664,12 @@ export function registerIpc(): void {
   ipcMain.handle(CH.profileSignOut, () => signOutProfile())
 
   /* settings, theme, snippets ------------------------------------------- */
-  ipcMain.handle(CH.settingsGet, async () => {
+  handleVault(CH.settingsGet, async () => {
     const root = getRoot()
     return root ? loadSettings(root) : null
   })
 
-  ipcMain.handle(CH.settingsSet, async (_e, settings: Settings) => {
+  handleVault(CH.settingsSet, async (_e, settings: Settings) => {
     const root = getRoot()
     if (root) await saveSettings(root, settings)
     // The quick-note preferences live in this payload but are acted on by the
@@ -575,7 +711,7 @@ export function registerIpc(): void {
    */
   ipcMain.handle(CH.clipRegenerateToken, () => generateClipToken())
 
-  ipcMain.handle(CH.clipSaveImage, (_e, folder: string, url: string) =>
+  handleVault(CH.clipSaveImage, (_e, folder: string, url: string) =>
     saveClipImage(folder, url)
   )
 
@@ -591,13 +727,13 @@ export function registerIpc(): void {
     })
   }
 
-  ipcMain.handle(CH.voiceStatus, async (): Promise<VoiceToolStatus> => {
+  handleVault(CH.voiceStatus, async (): Promise<VoiceToolStatus> => {
     const tools = await voiceTools()
     const reason = describeMissing(tools)
     return { available: !reason, reason, folder: tools.folder, binary: tools.binary, model: tools.model }
   })
 
-  ipcMain.handle(
+  handleVault(
     CH.voiceTranscribe,
     async (_e, wav: ArrayBuffer, language?: string): Promise<TranscribeResponse> =>
       transcribe(wav, await voiceTools(), { language })
@@ -605,10 +741,10 @@ export function registerIpc(): void {
 
   /* Live dictation keeps the model resident; see `whisperServer.ts` for why a
      process per phrase cannot keep up. */
-  ipcMain.handle(CH.voiceLiveStart, async (): Promise<string | null> =>
+  handleVault(CH.voiceLiveStart, async (): Promise<string | null> =>
     ensureWhisperServer(await voiceTools())
   )
-  ipcMain.handle(CH.voiceLiveChunk, async (_e, wav: ArrayBuffer, language?: string) => {
+  handleVault(CH.voiceLiveChunk, async (_e, wav: ArrayBuffer, language?: string) => {
     const settings = getRoot() ? await loadSettings(getRoot() as string) : null
     return transcribeLive(wav, language ?? settings?.voice.language)
   })
@@ -675,7 +811,7 @@ export function registerIpc(): void {
       filters: [{ name: 'Lumina settings', extensions: ['json'] }]
     })
     if (result.canceled || !result.filePaths[0]) return null
-    const raw = JSON.parse((await fs.readFile(result.filePaths[0], 'utf8')).replace(/^﻿/, '')) as Record<string, unknown>
+    const raw = JSON.parse((await fs.readFile(result.filePaths[0], 'utf8')).replace(/^ï»¿/, '')) as Record<string, unknown>
     const source = raw.settings && typeof raw.settings === 'object' ? raw.settings : raw
     const theme = raw.theme && typeof raw.theme === 'object' ? raw.theme : undefined
     const state = await loadAppState()
@@ -685,7 +821,10 @@ export function registerIpc(): void {
         ? raw.name.trim()
         : path.basename(result.filePaths[0], path.extname(result.filePaths[0])),
       createdAt: Date.now(),
-      settings: normalizeSettings(source),
+      // Stripped at the door rather than at apply time: the preset is stored in
+      // `lumina.json`, so a dangerous value left in here would survive to be
+      // applied later by a user who has forgotten where the file came from.
+      settings: stripMachineSettings(normalizeSettings(source)),
       theme: normalizeTheme(theme)
     }
     await saveAppState({ settingsProfiles: [...state.settingsProfiles, profile] })
@@ -710,39 +849,39 @@ export function registerIpc(): void {
     return true
   })
 
-  ipcMain.handle(CH.linkPreview, async (_e, url: string) => {
+  handleVault(CH.linkPreview, async (_e, url: string) => {
     if (!linkPreviewsEnabled) return null
     return linkPreview(url)
   })
 
-  ipcMain.handle(CH.themeGet, async () => {
+  handleVault(CH.themeGet, async () => {
     const root = getRoot()
     return root ? loadTheme(root) : null
   })
 
-  ipcMain.handle(CH.themeSet, async (_e, theme: ThemeFile) => {
+  handleVault(CH.themeSet, async (_e, theme: ThemeFile) => {
     const root = getRoot()
     if (root) await saveTheme(root, theme)
     return true
   })
 
-  ipcMain.handle(CH.snippetsGet, async () => {
+  handleVault(CH.snippetsGet, async () => {
     const root = getRoot()
     return root ? readSnippets(root) : []
   })
 
-  ipcMain.handle(CH.snippetsOpenFolder, async () => {
+  handleVault(CH.snippetsOpenFolder, async () => {
     const root = getRoot()
     if (root) await openSnippetsFolder(root)
   })
 
   /* workspace ----------------------------------------------------------- */
-  ipcMain.handle(CH.workspaceGet, async () => {
+  handleVault(CH.workspaceGet, async () => {
     const root = getRoot()
     return root ? loadWorkspace(root) : null
   })
 
-  ipcMain.handle(CH.workspaceSet, async (_e, ws: WorkspaceState) => {
+  handleVault(CH.workspaceSet, async (_e, ws: WorkspaceState) => {
     const root = getRoot()
     if (root) await saveWorkspace(root, ws)
     return true
@@ -751,12 +890,12 @@ export function registerIpc(): void {
   /* home dashboard ------------------------------------------------------ */
   // Null means this vault has never had a board, which is the renderer's cue
   // to seed a starter layout rather than show an empty page.
-  ipcMain.handle(CH.homeGet, async () => {
+  handleVault(CH.homeGet, async () => {
     const root = getRoot()
     return root ? loadHome(root) : null
   })
 
-  ipcMain.handle(CH.homeSet, async (_e, layout: HomeLayout) => {
+  handleVault(CH.homeSet, async (_e, layout: HomeLayout) => {
     const root = getRoot()
     if (root) await saveHome(root, layout)
     return true
@@ -790,86 +929,13 @@ export function registerIpc(): void {
   })
 
   /* attachments and export ---------------------------------------------- */
-  ipcMain.handle(
+  handleVault(
     CH.attachmentSave,
     (_e, folder: string, name: string, data: ArrayBuffer) => saveAttachment(folder, name, data)
   )
 
-  const MIME_TYPES: Record<string, string> = {
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.avif': 'image/avif',
-    '.bmp': 'image/bmp',
-    '.ico': 'image/x-icon'
-  }
-  const MAX_IMAGE_EMBED_BYTES = 25 * 1024 * 1024
 
-  const embedLocalImages = async (html: string, notePath?: string): Promise<string> => {
-    const vault = getRoot()
-    if (!vault) return html
-
-    const imgRegex = /<img\b([^>]*\bsrc=["'])([^"']+)(["'][^>]*)>/gi
-    const matches: { full: string; prefix: string; src: string; suffix: string }[] = []
-    let m: RegExpExecArray | null
-    while ((m = imgRegex.exec(html)) !== null) {
-      matches.push({ full: m[0], prefix: m[1], src: m[2], suffix: m[3] })
-    }
-    if (!matches.length) return html
-
-    let result = html
-    const dataUriCache = new Map<string, string>()
-
-    for (const item of matches) {
-      const rawSrc = item.src.trim()
-      if (/^(?:data:|https?:|\/\/)/i.test(rawSrc)) continue
-
-      let cleanPath = rawSrc
-      if (cleanPath.startsWith('lumina://vault/')) {
-        cleanPath = cleanPath.slice('lumina://vault/'.length)
-      }
-      cleanPath = decodeURIComponent(cleanPath.replace(/^\.?\//, ''))
-
-      let dataUri = dataUriCache.get(cleanPath)
-      if (!dataUri) {
-        const candidates = [
-          cleanPath,
-          notePath ? path.join(path.dirname(notePath), cleanPath) : null,
-          path.join('attachments', cleanPath),
-          path.join('.lumina', 'previews', cleanPath)
-        ].filter((c): c is string => !!c)
-
-        for (const candidate of candidates) {
-          const abs = await safeVaultPath(vault, candidate)
-          if (!abs) continue
-          try {
-            const stat = await fs.stat(abs)
-            if (!stat.isFile() || stat.size > MAX_IMAGE_EMBED_BYTES) continue
-            const ext = path.extname(abs).toLowerCase()
-            const mime = MIME_TYPES[ext] || 'application/octet-stream'
-            const bytes = await fs.readFile(abs)
-            dataUri = `data:${mime};base64,${bytes.toString('base64')}`
-            dataUriCache.set(cleanPath, dataUri)
-            break
-          } catch {
-            // try next candidate
-          }
-        }
-      }
-
-      if (dataUri) {
-        const replacement = `<img${item.prefix.slice(4)}${dataUri}${item.suffix}>`
-        result = result.replace(item.full, replacement)
-      }
-    }
-
-    return result
-  }
-
-  ipcMain.handle(CH.exportHtml, async (_e, title: string, html: string, notePath?: string) => {
+  handleVault(CH.exportHtml, async (_e, title: string, html: string, notePath?: string) => {
     if (!win) return { ok: false, error: 'No window' }
     const res = await dialog.showSaveDialog(win, {
       title: 'Export as HTML',
@@ -877,12 +943,12 @@ export function registerIpc(): void {
       filters: [{ name: 'HTML', extensions: ['html'] }]
     })
     if (res.canceled || !res.filePath) return { ok: false }
-    const embeddedHtml = await embedLocalImages(html, notePath)
+    const embeddedHtml = await embedLocalImages(html, getRoot(), notePath)
     await fs.writeFile(res.filePath, embeddedHtml, 'utf8')
     return { ok: true }
   })
 
-  ipcMain.handle(CH.exportPdf, async (_e, title: string, html: string, notePath?: string) => {
+  handleVault(CH.exportPdf, async (_e, title: string, html: string, notePath?: string) => {
     if (!win) return { ok: false, error: 'No window' }
     const res = await dialog.showSaveDialog(win, {
       title: 'Export as PDF',
@@ -891,12 +957,18 @@ export function registerIpc(): void {
     })
     if (res.canceled || !res.filePath) return { ok: false }
 
-    const embeddedHtml = await embedLocalImages(html, notePath)
+    const embeddedHtml = await embedLocalImages(html, getRoot(), notePath)
 
     // Render in an offscreen window so the export is the note, not the app.
     const printer = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+    // Through a temp file rather than a `data:` URL: inlined images are already
+    // base64, and percent-encoding them into a URL inflates that again past the
+    // size Chromium will navigate to — which surfaced as a generic failure on
+    // exactly the notes most worth exporting.
+    let temp: string | null = null
     try {
-      await printer.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(embeddedHtml)}`)
+      temp = await writeTempHtml(embeddedHtml)
+      await printer.loadFile(temp)
       const pdf = await printer.webContents.printToPDF({
         printBackground: true,
         margins: { top: 0.6, bottom: 0.6, left: 0.6, right: 0.6 }
@@ -907,11 +979,16 @@ export function registerIpc(): void {
       return { ok: false, error: (err as Error).message }
     } finally {
       printer.destroy()
+      if (temp) await cleanupTempHtml(temp)
     }
   })
 
+  // `mailto:` is here because the renderer routes it here — `safeExportUrl` in
+  // `lib/render.ts` deliberately allows it, and read mode `preventDefault`s the
+  // click, so refusing it at this end made those links silently dead rather
+  // than safe. `shell.openExternal` hands it to the OS handler, same as http.
   ipcMain.handle(CH.openExternal, (_e, url: string) => {
-    if (/^https?:\/\//i.test(url)) return shell.openExternal(url)
+    if (/^(?:https?:\/\/|mailto:)/i.test(url)) return shell.openExternal(url)
     return Promise.resolve()
   })
 }

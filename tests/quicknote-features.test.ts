@@ -36,6 +36,7 @@ describe('Quick Note Shortcut Matcher', () => {
     expect(DEFAULT_SHORTCUTS.closeTab.defaultKey).toBe('Ctrl+W')
     expect(DEFAULT_SHORTCUTS.closeWindow.defaultKey).toBe('Ctrl+Shift+W')
     expect(DEFAULT_SHORTCUTS.duplicateLine.defaultKey).toBe('Ctrl+D')
+    expect(DEFAULT_SHORTCUTS.toggleReadMode.defaultKey).toBe('Ctrl+E')
   })
 
   it('correctly matches shortcut combinations', () => {

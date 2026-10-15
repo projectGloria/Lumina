@@ -161,6 +161,11 @@ async function copyTree(
       await copyTree(source, target, onBytes)
       continue
     }
+    // `isDirectory` and `isFile` are both false for a symlink, so without this
+    // a link fell through to `copyFile`, which follows it — an imported pack
+    // could name a link `whisper-cli.exe` and have an arbitrary binary become
+    // the one `locateVoiceTools` finds. Same test `snippets.ts` applies.
+    if (!entry.isFile()) continue
     await fs.copyFile(source, target)
     onBytes((await fs.stat(target)).size)
   }

@@ -14,6 +14,7 @@ export default function Toasts(): React.JSX.Element {
           onClick={() => dismiss(t.id)}
         >
           {t.message}
+          {t.repeats && t.repeats > 1 ? <span className="toast-count"> ×{t.repeats}</span> : null}
         </div>
       ))}
     </div>

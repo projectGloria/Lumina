@@ -24,19 +24,46 @@ export function getRoot(): string | null {
   return root
 }
 
+/**
+ * Whether the open vault is still the one a renderer request was composed
+ * against.
+ *
+ * The renderer keeps editing while `openVault` moves the root and spends
+ * seconds building the new index, and its autosave timers stay armed the whole
+ * time — so a write issued against vault A could reach `fs` after `setRoot`
+ * had already pointed everything at vault B, and land on B's file of the same
+ * name. Every write now carries the vault it was written for, and a stale one
+ * is refused rather than redirected.
+ */
+export function rootMatches(expected: string | null | undefined): boolean {
+  if (!expected) return true // a caller that does not know is not second-guessed
+  return !!root && samePath(root, expected)
+}
+
 export function requireRoot(): string {
   if (!root) throw new Error('No vault is open')
   return root
 }
 
-export async function setRoot(dir: string): Promise<void> {
+export async function setRoot(dir: string | null): Promise<void> {
+  if (dir === null) { root = null; return }
   const candidate = path.resolve(dir)
   await ensureLuminaDir(candidate)
   root = candidate
 }
 
 export function markSelfWrite(absPath: string): void {
-  selfWrites.set(path.resolve(absPath), Date.now())
+  const now = Date.now()
+  // Entries are otherwise only evicted by `wasSelfWrite`, which is never called
+  // for a path the watcher does not report — a file in an ignored folder, or
+  // one that ended up not being written at all. Sweeping on insert keeps the
+  // map proportional to recent activity rather than to session length.
+  if (selfWrites.size > 64) {
+    for (const [key, at] of selfWrites) {
+      if (now - at > SELF_WRITE_GRACE_MS) selfWrites.delete(key)
+    }
+  }
+  selfWrites.set(path.resolve(absPath), now)
 }
 
 /** True when the given absolute path was written by us moments ago. */
@@ -144,7 +171,15 @@ export async function readNote(rel: string): Promise<OpResult<{ content: string;
  * Write a note atomically: a temp file next to the target, then a rename.
  * A crash mid-save leaves the previous version intact rather than a half file.
  */
-export async function writeNote(rel: string, content: string): Promise<WriteResult> {
+const noteWrites = new Map<string, Promise<WriteResult>>()
+export function writeNote(rel: string, content: string, expected?: string): Promise<WriteResult> {
+  const previous = noteWrites.get(rel) ?? Promise.resolve()
+  const operation = previous.catch(() => {}).then(() => writeNoteNow(rel, content, expected))
+  noteWrites.set(rel, operation)
+  void operation.finally(() => { if (noteWrites.get(rel) === operation) noteWrites.delete(rel) }).catch(() => {})
+  return operation
+}
+async function writeNoteNow(rel: string, content: string, expected?: string): Promise<WriteResult> {
   const abs = await safeVaultPath(requireRoot(), rel, true)
   if (!abs) return { ok: false, mtime: 0, error: 'Path is outside the vault' }
 
@@ -153,6 +188,13 @@ export async function writeNote(rel: string, content: string): Promise<WriteResu
     await fs.mkdir(path.dirname(abs), { recursive: true })
     markSelfWrite(abs)
     await fs.writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' })
+    if (expected !== undefined) {
+      const current = await fs.readFile(abs, 'utf8').catch(() => null)
+      if (current !== expected) {
+        await fs.rm(tmp, { force: true })
+        return { ok: false, mtime: 0, conflict: true, error: 'The file changed or was removed on disk. Resolve the conflict before saving.' }
+      }
+    }
     await fs.rename(tmp, abs)
     const stat = await fs.stat(abs)
     markSelfWrite(abs)

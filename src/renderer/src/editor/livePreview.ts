@@ -47,6 +47,7 @@ import { attachmentCandidates, isImageTarget, vaultUrl } from './resources'
 
 /** Dispatched when the vault index changes, so link styling re-resolves. */
 export const refreshPreview = StateEffect.define<null>()
+const refreshBlocks = StateEffect.define<null>()
 
 /** Vault-relative path of the note in this editor, for resolving links. */
 export const notePath = Facet.define<string, string>({
@@ -117,6 +118,18 @@ class CheckboxWidget extends WidgetType {
     box.type = 'checkbox'
     box.className = 'cm-task-checkbox'
     box.checked = this.checked
+    // The task text is a separate text node the box is not associated with, so
+    // without this a screen reader announces "checkbox, not checked" and gives
+    // no indication of which task. The line is already read below for the click
+    // handler; naming the box from it costs nothing.
+    try {
+      const line = view.state.doc.lineAt(view.posAtDOM(box))
+      const label = line.text.replace(/^\s*[-*+]\s+\[[ xX]\]\s*/, '').trim()
+      if (label) box.setAttribute('aria-label', label)
+    } catch {
+      // `posAtDOM` throws for an element not yet in the view; an unnamed box is
+      // still better than a failed decoration.
+    }
     box.addEventListener('mousedown', (e) => e.preventDefault())
     box.addEventListener('click', (e) => {
       e.preventDefault()
@@ -558,16 +571,6 @@ class LinkBannerWidget extends WidgetType {
     const mark = document.createElement('div')
     mark.className = 'link-banner-mark'
     mark.appendChild(createIconElement('globe', 22, 'link-banner-glyph'))
-    if (this.meta?.imagePath) {
-      const thumb = document.createElement('img')
-      thumb.className = 'link-banner-thumb'
-      thumb.src = vaultUrl(this.meta.imagePath)
-      thumb.alt = ''
-      thumb.draggable = false
-      // A thumbnail that will not load leaves the site icon behind it.
-      thumb.addEventListener('error', () => thumb.remove())
-      mark.appendChild(thumb)
-    }
     card.appendChild(mark)
 
     const body = document.createElement('div')
@@ -575,7 +578,8 @@ class LinkBannerWidget extends WidgetType {
 
     const title = document.createElement('div')
     title.className = 'link-banner-title'
-    title.textContent = this.label || this.meta?.title || fallback.title
+    const customLabel = this.label && !/^(?:banner|card|bookmark)$/i.test(this.label)
+    title.textContent = (customLabel ? this.label : '') || this.meta?.title || fallback.title
     body.appendChild(title)
 
     const descriptionText = this.meta?.description || fallback.description
@@ -592,6 +596,19 @@ class LinkBannerWidget extends WidgetType {
     body.appendChild(source)
 
     card.appendChild(body)
+
+    if (this.meta?.imagePath) {
+      const thumbWrap = document.createElement('div')
+      thumbWrap.className = 'link-banner-thumb-wrap'
+      const thumb = document.createElement('img')
+      thumb.className = 'link-banner-thumb'
+      thumb.src = vaultUrl(this.meta.imagePath)
+      thumb.alt = ''
+      thumb.draggable = false
+      thumb.addEventListener('error', () => thumbWrap.remove())
+      thumbWrap.appendChild(thumb)
+      card.appendChild(thumbWrap)
+    }
 
     const openIcon = document.createElement('span')
     openIcon.className = 'link-banner-open'
@@ -723,26 +740,57 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
   return ranges.length ? RangeSet.of(ranges, true) : Decoration.none
 }
 
+/**
+ * Line numbers whose "is the caret on me?" answer differs between two states.
+ *
+ * The whole reason this field watches the selection is that moving the caret
+ * into a table or the frontmatter has to bring the raw source back — but that
+ * only matters when the set of active lines actually changed. Arrowing along a
+ * single line changes the selection on every keypress and changes nothing this
+ * field decides, and a full rebuild there meant walking the entire syntax tree
+ * once per keystroke on a document of any size.
+ */
+function activeLinesDiffer(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) return true
+  for (const line of a) if (!b.has(line)) return true
+  return false
+}
+
 const blockPreviewField = StateField.define<DecorationSet>({
   create: (state) => buildBlockDecorations(state),
   update(value, tr) {
-    // Selection matters as much as content here: moving the caret into a table
-    // or the frontmatter is what brings the source back. Parsing is
-    // incremental, so a tree that grew since the last pass counts too —
-    // otherwise a table below the fold never renders until something else
-    // happens to invalidate the field.
-    const reparsed = syntaxTree(tr.startState) !== syntaxTree(tr.state)
-    if (
-      tr.docChanged ||
-      tr.selection ||
-      reparsed ||
-      tr.effects.some((e) => e.is(refreshPreview))
-    ) {
+    // Parsing is incremental, so a tree that grew since the last pass counts
+    // too — otherwise a table below the fold never renders until something
+    // else happens to invalidate the field.
+    if (tr.docChanged) {
+      const changed: { from: number; to: number }[] = []
+      tr.changes.iterChangedRanges((_a, _b, from, to) => changed.push({ from, to }))
+      return value.map(tr.changes).update({ filter: (from, to) => !changed.some((change) => from <= change.to && to >= change.from) })
+    }
+    if (tr.effects.some((e) => e.is(refreshPreview) || e.is(refreshBlocks))) {
+      return buildBlockDecorations(tr.state)
+    }
+    // A selection change only matters when it moved the caret onto or off a
+    // different line; otherwise the existing set is still correct.
+    if (tr.selection && activeLinesDiffer(activeLines(tr.startState), activeLines(tr.state))) {
       return buildBlockDecorations(tr.state)
     }
     return value
   },
   provide: (field) => EditorView.decorations.from(field)
+})
+
+const delayedBlocks = ViewPlugin.fromClass(class {
+  timer: ReturnType<typeof setTimeout> | null = null
+  update(update: ViewUpdate): void {
+    if (!update.docChanged && syntaxTree(update.startState) === syntaxTree(update.state)) return
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = setTimeout(() => {
+      this.timer = null
+      update.view.dispatch({ effects: refreshBlocks.of(null) })
+    }, 150)
+  }
+  destroy(): void { if (this.timer) clearTimeout(this.timer) }
 })
 
 /* --------------------------------------------------- inline decorations */
@@ -1204,6 +1252,7 @@ export function livePreviewExtension(path: string, enabled: boolean): Extension 
     notePath.of(path),
     livePreviewEnabled.of(enabled),
     blockPreviewField,
+    delayedBlocks,
     livePreviewPlugin,
     calloutWidthPlugin
   ]

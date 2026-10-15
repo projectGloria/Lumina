@@ -1,6 +1,6 @@
-/** Turns a pasted bare URL into a markdown link, so it renders as a link chip in live preview. */
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
+import { useUi } from '../store/uiStore'
 
 const BARE_URL = /^https?:\/\/\S+$/i
 
@@ -31,14 +31,46 @@ export function linkPasteExtension(): Extension {
       } catch {
         // Keep the raw URL as the label.
       }
-      const insert = `[${label}](${text})`
-      view.dispatch(
-        state.update({
-          changes: { from: sel.from, to: sel.to, insert },
-          selection: { anchor: sel.from + insert.length }
-        })
-      )
+
       event.preventDefault()
+
+      const coords = view.coordsAtPos(sel.from)
+      const x = coords ? coords.left : Math.max(16, window.innerWidth / 2 - 100)
+      const y = coords ? coords.bottom + 4 : Math.max(16, window.innerHeight / 2 - 50)
+
+      useUi.getState().showContextMenu({
+        x,
+        y,
+        items: [
+          {
+            label: '🔗 Plain link',
+            onSelect: () => {
+              const insert = `[${label}](${text})`
+              view.dispatch(
+                view.state.update({
+                  changes: { from: sel.from, to: sel.to, insert },
+                  selection: { anchor: sel.from + insert.length }
+                })
+              )
+              view.focus()
+            }
+          },
+          {
+            label: '🪪 Banner card',
+            onSelect: () => {
+              const insert = `[banner](${text})`
+              view.dispatch(
+                view.state.update({
+                  changes: { from: sel.from, to: sel.to, insert },
+                  selection: { anchor: sel.from + insert.length }
+                })
+              )
+              view.focus()
+            }
+          }
+        ]
+      })
+
       return true
     }
   })

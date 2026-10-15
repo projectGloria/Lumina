@@ -79,6 +79,8 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
   let phraseStart = 0
   let lastLoud = 0
   let stopped = false
+  let cancelled = false
+  let phraseId = 0
 
   /** Guards against piling requests up when transcription is slower than INTERIM_MS. */
   let interimBusy = false
@@ -128,17 +130,18 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
   const phraseMs = (): number => ((buffer.length - phraseStart) / sampleRate) * 1000
 
   const sendInterim = (): void => {
-    if (interimBusy || stopped) return
+    if (interimBusy || stopped || pending > 0) return
     const wav = phraseWav()
     if (!wav) return
 
+    const id = phraseId
     interimBusy = true
     void window.lumina.voice
       .transcribeLive(wav)
       .then((text) => {
         // Discard a result that arrived after the phrase it described ended —
         // it would overwrite the final with a worse, earlier guess.
-        if (text && speaking && !stopped) options.onInterim(text)
+        if (text && speaking && !stopped && id === phraseId && pending === 0) options.onInterim(text)
       })
       .catch(() => {})
       .finally(() => {
@@ -153,6 +156,7 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
    * spending a transcription on text nobody will see.
    */
   const endPhrase = (keep: boolean): void => {
+    phraseId++
     const long = phraseMs() >= MIN_PHRASE_MS
     const wav = long && keep ? phraseWav() : null
 
@@ -166,13 +170,14 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
     queue = queue
       .then(async () => {
         try {
+          if (cancelled) return
           const text = await window.lumina.voice.transcribeLive(wav)
-          if (text) options.onFinal(text)
+          if (text && !cancelled) options.onFinal(text)
         } finally {
           setPending(-1)
         }
       })
-      .catch(() => setPending(-1))
+      .catch(() => {})
   }
 
   /* The microphone feed. Each frame updates the level, which drives both the
@@ -250,6 +255,7 @@ export function startLiveDictation(stream: MediaStream, options: LiveOptions): L
       await queue
     },
     cancel: () => {
+      cancelled = true
       speaking = false
       buffer = new Float32Array(0)
       phraseStart = 0

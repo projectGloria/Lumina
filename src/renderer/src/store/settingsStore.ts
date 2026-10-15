@@ -1,3 +1,4 @@
+import { useVault } from './vaultStore'
 import { create } from 'zustand'
 import { EXPLORER_SIZES, type Settings, type ThemeFile, type TokenOverrides } from '@shared/types'
 import type { Snippet } from '../../../preload'
@@ -20,7 +21,7 @@ export const FALLBACK_SETTINGS: Settings = {
     livePreview: true,
     smartLists: true,
     showWordCount: false,
-    linkPreviews: false
+    linkPreviews: true
   },
   dailyNotes: { folder: 'Daily', format: 'YYYY-MM-DD', template: '' },
   attachmentFolder: 'attachments',
@@ -149,7 +150,7 @@ function mergeDeep<T>(base: T, patch: DeepPartial<T>): T {
   const out = { ...base } as Record<string, unknown>
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
     const b = (base as Record<string, unknown>)[k]
-    if (b && typeof b === 'object' && !Array.isArray(b) && v && typeof v === 'object') {
+    if (!['iconOverrides', 'colorOverrides', 'customIcons', 'hotkeys', 'snippets'].includes(k) && b && typeof b === 'object' && !Array.isArray(b) && v && typeof v === 'object') {
       out[k] = mergeDeep(b, v as DeepPartial<unknown>)
     } else if (v !== undefined) {
       out[k] = v
@@ -167,11 +168,11 @@ function resolveMode(settings: Settings): 'light' | 'dark' {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
-let pendingSave: { settings: Settings; theme: ThemeFile } | null = null
+let pendingSave: { settings: Settings; theme: ThemeFile; vault: string | null } | null = null
 let saveChain: Promise<void> = Promise.resolve()
 
 function persist(settings: Settings, theme: ThemeFile): void {
-  pendingSave = { settings, theme }
+  pendingSave = { settings, theme, vault: useVault.getState().vault?.path ?? null }
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
@@ -190,12 +191,12 @@ export async function flushSettingsPersistence(): Promise<void> {
   if (pending) {
     saveChain = saveChain.catch(() => {}).then(async () => {
       await Promise.all([
-        window.lumina.settings.set(pending.settings),
-        window.lumina.theme.set(pending.theme)
+        window.lumina.settings.set(pending.settings, pending.vault),
+        window.lumina.theme.set(pending.theme, pending.vault)
       ])
     })
   }
-  await saveChain
+  try { await saveChain } catch (error) { if (!pendingSave) pendingSave = pending; throw error }
 }
 
 export const useSettings = create<SettingsState>((set, get) => {
@@ -315,27 +316,58 @@ export function applyTheme(
   root.style.setProperty('--lum-tree-gap', `${tree.gap}px`)
   root.style.setProperty('--lum-tree-indent', `${tree.indent}px`)
 
-  // Snippets, in a single stylesheet appended last.
+  applySnippets(settings, snippets)
+  syncTitleBar()
+}
+
+/**
+ * The last stylesheet text written, so an unchanged one is not rewritten.
+ *
+ * Assigning `textContent` on a `<style>` element makes the browser discard and
+ * re-parse the whole sheet and recompute style for every element in the
+ * document. `applyTheme` runs on every settings commit — starring a note,
+ * changing the sort order — so doing that unconditionally meant a
+ * document-wide style recalculation for changes that touch no CSS at all.
+ */
+let appliedSnippetCss: string | null = null
+
+function applySnippets(settings: Settings, snippets: Snippet[]): void {
+  const css = snippets
+    .filter((s) => settings.snippets[s.name] !== false)
+    .map((s) => `/* ${s.name} */\n${s.css}`)
+    .join('\n\n')
+
+  if (css === appliedSnippetCss) return
+  appliedSnippetCss = css
+
   if (!snippetStyleEl) {
     snippetStyleEl = document.createElement('style')
     snippetStyleEl.id = 'lumina-snippets'
     document.head.appendChild(snippetStyleEl)
   }
-  snippetStyleEl.textContent = snippets
-    .filter((s) => settings.snippets[s.name] !== false)
-    .map((s) => `/* ${s.name} */\n${s.css}`)
-    .join('\n\n')
-
-  syncTitleBar()
+  snippetStyleEl.textContent = css
 }
 
-/** Repaint the native window buttons to match the current theme. */
+/**
+ * Repaint the native window buttons to match the current theme.
+ *
+ * The colours it reads can only change when the theme does, but `applyTheme`
+ * runs on every settings commit — so this used to fire a `getComputedStyle` and
+ * an IPC round trip for changes like starring a note. The last pair sent is
+ * remembered and an identical one is dropped.
+ */
+let appliedOverlay = ''
+
 export function syncTitleBar(): void {
   requestAnimationFrame(() => {
     const style = getComputedStyle(document.documentElement)
     const bg = style.getPropertyValue('--lum-bg-titlebar').trim()
     const symbol = style.getPropertyValue('--lum-text').trim()
-    if (bg && symbol) void window.lumina.window.setOverlay(toHex(bg), toHex(symbol))
+    if (!bg || !symbol) return
+    const pair = `${bg}|${symbol}`
+    if (pair === appliedOverlay) return
+    appliedOverlay = pair
+    void window.lumina.window.setOverlay(toHex(bg), toHex(symbol))
   })
 }
 

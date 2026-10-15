@@ -150,7 +150,9 @@ export function Icon({
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      // eslint-disable-next-line react/no-danger
+      // Safe by construction: `PATHS` is a hardcoded constant in this file and
+      // `name` is only ever a key into it, with a fallback. No caller-supplied
+      // markup reaches here.
       dangerouslySetInnerHTML={{ __html: PATHS[name] ?? PATHS[FALLBACK_ICON] }}
     />
   )

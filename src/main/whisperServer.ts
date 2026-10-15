@@ -55,7 +55,12 @@ interface Running {
 let running: Running | null = null
 let idleTimer: NodeJS.Timeout | null = null
 
-/** Ask the OS for a free port by briefly binding one. */
+/**
+ * Ask the OS for a free port by briefly binding one.
+ *
+ * Inherently racy — the port is released before whisper-server claims it — so
+ * `ensureWhisperServer` retries rather than treating one failure as final.
+ */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const probe = createServer()
@@ -122,9 +127,22 @@ export async function ensureWhisperServer(tools: VoiceTools): Promise<string | n
     return running.ready
   }
 
+  const ready = tools as ReadyTools
+  // `freePort` can only ever hand back a port that was free a moment ago, so a
+  // failure to bind is expected occasionally rather than fatal. Two attempts
+  // covers the race; a third would only be masking something else.
+  const first = await startOn(ready)
+  if (!first.raced) return first.error
+  return (await startOn(ready)).error
+}
+
+/** Caller has already established that `binary` and `model` are both present. */
+type ReadyTools = VoiceTools & { binary: string; model: string }
+
+async function startOn(tools: ReadyTools): Promise<{ error: string | null; raced: boolean }> {
   const serverBinary = tools.binary.replace(/whisper-cli(\.exe)?$/i, 'whisper-server$1')
   const binaryStat = await fs.stat(serverBinary).catch(() => null)
-  if (!binaryStat) return `Speech server binary not found at ${serverBinary}`
+  if (!binaryStat) return { error: `Speech server binary not found at ${serverBinary}`, raced: false }
 
   const port = await freePort()
   let child: ChildProcess
@@ -144,7 +162,7 @@ export async function ensureWhisperServer(tools: VoiceTools): Promise<string | n
       { windowsHide: true, stdio: 'ignore' }
     )
   } catch (err) {
-    return `Could not spawn speech server: ${(err as Error).message}`
+    return { error: `Could not spawn speech server: ${(err as Error).message}`, raced: false }
   }
 
   let spawnError: Error | null = null
@@ -171,7 +189,12 @@ export async function ensureWhisperServer(tools: VoiceTools): Promise<string | n
   running = state
 
   armIdle()
-  return state.ready
+  const error = await state.ready
+  // An immediate exit is what losing the port race looks like from here: the
+  // binary is present and spawnable, it just could not bind. Worth one retry
+  // on a fresh port; anything else is a real failure to report.
+  const raced = !!error && child.exitCode !== null && child.exitCode !== 0
+  return { error, raced }
 }
 
 /**

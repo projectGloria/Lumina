@@ -1,3 +1,4 @@
+import { useVault } from './vaultStore'
 import { create } from 'zustand'
 import type { LeftPanel, NoteMode, RightPanel, TabState, WorkspaceState } from '@shared/types'
 import { isNoteTab } from '@shared/types'
@@ -60,7 +61,7 @@ export const WORKSPACE_INITIAL: WorkspaceState = {
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
-let pendingWorkspace: WorkspaceState | null = null
+let pendingWorkspace: { value: WorkspaceState; vault: string | null } | null = null
 let persistChain: Promise<void> = Promise.resolve()
 
 function workspaceSnapshot(state: WorkspaceStore): WorkspaceState {
@@ -81,7 +82,7 @@ function workspaceSnapshot(state: WorkspaceStore): WorkspaceState {
 /** Save the layout back to `.lumina/workspace.json`, coalesced. */
 function persist(state: WorkspaceStore): void {
   if (!state.hydrated) return
-  pendingWorkspace = workspaceSnapshot(state)
+  pendingWorkspace = { value: workspaceSnapshot(state), vault: useVault.getState().vault?.path ?? null }
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
@@ -100,9 +101,9 @@ export async function flushWorkspacePersistence(): Promise<void> {
   if (pending) {
     persistChain = persistChain
       .catch(() => {})
-      .then(() => window.lumina.workspace.set(pending).then(() => {}))
+      .then(() => window.lumina.workspace.set(pending.value, pending.vault).then(() => {}))
   }
-  await persistChain
+  try { await persistChain } catch (error) { if (!pendingWorkspace) pendingWorkspace = pending; throw error }
 }
 
 export const useWorkspace = create<WorkspaceStore>((set, get) => {

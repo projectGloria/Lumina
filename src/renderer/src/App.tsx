@@ -1,3 +1,4 @@
+import { flushPendingWork } from './lib/pendingWork'
 import { useEffect } from 'react'
 import type { FileOpenRequest } from '@shared/types'
 import { isNoteTab } from '@shared/types'
@@ -26,14 +27,7 @@ import { Icon } from './components/Icon'
 import { getActiveView } from './editor/activeView'
 import { rememberPosition } from './lib/musicPlayer'
 import { captureActiveSession } from './editor/session'
-import {
-  drainQuickNotes,
-  openNote,
-  removeStarredPaths,
-  removeIconOverrides,
-  removePinnedPaths,
-  requestQuickNote
-} from './lib/actions'
+import { drainQuickNotes, forgetPath, openNote, requestQuickNote } from './lib/actions'
 import { defaultLayout } from './home/widgets/defaults'
 import { drainClips, requestClip } from './lib/clipToNote'
 import { COMMANDS, hotkeyFor, runCommand } from './lib/commands'
@@ -44,7 +38,7 @@ import { useProfiles } from './store/profileStore'
 import { flushSettingsPersistence, useSettings } from './store/settingsStore'
 import { toast, useUi } from './store/uiStore'
 import { useVault } from './store/vaultStore'
-import { activePath, flushWorkspacePersistence, useWorkspace } from './store/workspaceStore'
+import { activePath, flushWorkspacePersistence, useWorkspace, WORKSPACE_INITIAL } from './store/workspaceStore'
 
 export default function App(): React.JSX.Element {
   const vault = useVault((s) => s.vault)
@@ -67,6 +61,10 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     void useProfiles.getState().init()
   }, [])
+
+  useEffect(() => {
+    if (profileStatus === 'ready') { void drainQuickNotes(); void drainClips() }
+  }, [profileStatus])
 
   /* ------------------------------------------- leave focus mode safely */
   useEffect(() => {
@@ -92,6 +90,7 @@ export default function App(): React.JSX.Element {
       // long enough to be saved into the incoming vault's `home.json`.
       useHome.getState().reset()
 
+      useVault.getState().setVault(payload.vault, payload.tree, payload.index)
       const starred = payload.settings.starred.filter((path) => !!payload.index.notes[path])
       useSettings
         .getState()
@@ -107,7 +106,6 @@ export default function App(): React.JSX.Element {
       const activeTab = Math.max(0, tabs.indexOf(activeTabState))
       const workspace = { ...payload.workspace, tabs, activeTab }
       useWorkspace.getState().hydrate(workspace)
-      useVault.getState().setVault(payload.vault, payload.tree, payload.index)
       useProfiles.getState().noteVaultPath(payload.vault.path)
 
       // Load the note that was open last time so the app resumes where it was.
@@ -161,13 +159,11 @@ export default function App(): React.JSX.Element {
         useVault.getState().setIndex(index)
         for (const change of changes) {
           if (change.type === 'change') void useEditor.getState().externalChange(change.path)
-          else if (change.type === 'unlink' || change.type === 'unlinkDir') {
-            useEditor.getState().close(change.path)
-            useWorkspace.getState().removePathFromTabs(change.path)
-            removeStarredPaths(change.path)
-            removeIconOverrides(change.path)
-            removePinnedPaths(change.path)
-          }
+          // Through the same helper the in-app delete uses. These two lists
+          // were maintained separately and had already diverged: colour and
+          // custom-icon overrides survived an external delete and were then
+          // inherited by whatever was next created at that path.
+          else if (change.type === 'unlink' || change.type === 'unlinkDir') forgetPath(change.path)
         }
       }),
 
@@ -191,7 +187,20 @@ export default function App(): React.JSX.Element {
 
       // The app is quitting and the main process is waiting on us. Autosave is
       // debounced, so the last few keystrokes live only here until this runs.
-      window.lumina.app.onFlush(() => {
+      window.lumina.vault.onClosed(() => {
+        useEditor.getState().reset()
+        useHome.getState().reset()
+        useVault.getState().clearVault()
+        useWorkspace.getState().hydrate(WORKSPACE_INITIAL)
+      }),
+      window.lumina.app.onResume(() => { document.body.inert = false; void drainQuickNotes(); void drainClips() }),
+      window.lumina.app.onFlush((id) => {
+        if (useUi.getState().voice) {
+          window.lumina.app.flushed(id, 'Finish or cancel the voice recording before leaving this vault.')
+          toast('Finish or cancel the voice recording first', 'error')
+          return
+        }
+        document.body.inert = true
         // Synchronous, and before the workspace flush below, so the caret in
         // the note on screen is part of what gets written out.
         captureActiveSession(activePath(), getActiveView())
@@ -199,20 +208,22 @@ export default function App(): React.JSX.Element {
         // down — there is no heartbeat, so this is what makes "carry on where
         // I left off" survive a normal quit.
         rememberPosition()
-        void Promise.all([
+        void flushPendingWork().then(() => Promise.all([
           useEditor.getState().saveAll(),
           flushSettingsPersistence(),
           flushWorkspacePersistence(),
           flushHomePersistence()
-        ])
+        ]))
           .then(([savedOk]) => {
             if (savedOk && !anyDirty()) {
-              window.lumina.app.flushed()
+              window.lumina.app.flushed(id)
             } else {
+              window.lumina.app.flushed(id, 'Some notes could not be saved. Resolve conflicts and retry.')
               toast('Some notes could not be saved', 'error')
             }
           })
           .catch(() => {
+            window.lumina.app.flushed(id, 'Failed to save changes')
             toast('Failed to save changes before quit', 'error')
           })
       }),

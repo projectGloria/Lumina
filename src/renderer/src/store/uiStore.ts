@@ -6,7 +6,12 @@ export interface Toast {
   id: number
   message: string
   kind: 'info' | 'error'
+  /** How many times this same message arrived while it was on screen. */
+  repeats?: number
 }
+
+/** Beyond this the oldest is dropped; a stack taller than this hides the app. */
+const MAX_TOASTS = 4
 
 export interface MenuItem {
   label: string
@@ -159,9 +164,26 @@ export const useUi = create<UiState>((set, get) => ({
   showConfirm: (confirm) => set({ confirm, contextMenu: null }),
   hideConfirm: () => set({ confirm: null }),
 
+  /**
+   * Show a toast, collapsing repeats and capping the stack.
+   *
+   * A burst of failures — a vault on a disconnected share, or a `git checkout`
+   * touching twenty dirty notes — used to produce one toast per note, each
+   * lingering six seconds, which covered the window. An identical message
+   * already on screen gets a count instead of a second card.
+   */
   pushToast: (message, kind = 'info') => {
+    const existing = get().toasts.find((t) => t.message === message && t.kind === kind)
+    if (existing) {
+      set((s) => ({
+        toasts: s.toasts.map((t) =>
+          t.id === existing.id ? { ...t, repeats: (t.repeats ?? 1) + 1 } : t
+        )
+      }))
+      return
+    }
     const id = ++toastId
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }))
+    set((s) => ({ toasts: [...s.toasts, { id, message, kind }].slice(-MAX_TOASTS) }))
     setTimeout(() => get().dismissToast(id), kind === 'error' ? 6000 : 3200)
   },
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

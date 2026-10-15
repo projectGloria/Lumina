@@ -74,6 +74,7 @@ function applyReveal(view: EditorView, path: string, reveal: RevealRequest | nul
 export default function Editor({ path }: { path: string }): React.JSX.Element {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
+  const emitted = useRef<string | null>(null)
 
   const buffer = useEditor((s) => s.buffers[path])
   const setContent = useEditor((s) => s.setContent)
@@ -131,7 +132,7 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
         extensions: createExtensions({
           path,
           settings: useSettings.getState().settings.editor,
-          onChange: (content) => setContent(path, content),
+          onChange: (content) => { emitted.current = content; setContent(path, content) },
           onSave: () => void saveNoteWithFeedback(path),
           handlers: {
             openNote: (target, opts) => {
@@ -150,6 +151,7 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
 
     // A parked session restores the caret, selection and undo history intact;
     // without one the note is being opened for the first time this session.
+    emitted.current = buffer.content
     const parked = sessionState(path, buffer.content)
     const state = parked ?? freshState()
 
@@ -181,17 +183,28 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
   }, [path, ready])
 
   /* ------------------------------------------- external content changes */
+  // `buffer` itself is deliberately not a dependency. `setContent` replaces the
+  // buffer object on every keystroke, so including it re-ran this effect — and
+  // therefore serialised the whole document with `doc.toString()` — once per
+  // character typed, purely to discover that the editor already had the text it
+  // had just produced. `content` and `loading` are the only fields read here.
+  //
+  // The cheap length check comes first for the same reason: an edit that
+  // changed the document length cannot be one the editor already has, so the
+  // common typing case never reaches the full serialisation at all.
   useEffect(() => {
     const instance = view.current
     if (!instance || !buffer || buffer.loading) return
-    const current = instance.state.doc.toString()
-    if (current === buffer.content) return
+    if (emitted.current === buffer.content) return
+    if (instance.state.doc.length === buffer.content.length &&
+        instance.state.doc.toString() === buffer.content) return
     instance.dispatch({
       changes: { from: 0, to: instance.state.doc.length, insert: buffer.content },
       // Keep the caret in range rather than resetting it to the top.
       selection: { anchor: Math.min(instance.state.selection.main.anchor, buffer.content.length) }
     })
-  }, [buffer?.content, buffer?.loading, buffer])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buffer?.content, buffer?.loading])
 
   /* ---------------------------------------------------- settings changes */
   useEffect(() => {
@@ -246,5 +259,12 @@ export default function Editor({ path }: { path: string }): React.JSX.Element {
     )
   }
 
-  return <div className="editor-host" ref={host} />
+  return <>
+    {buffer?.conflict && <div role="alert" className="conflict-banner">
+      This file changed or was removed on disk. Autosave is paused.
+      <button className="btn" onClick={() => void useEditor.getState().resolveConflict(path, 'copy')}>Save recovery copy</button>
+      <button className="btn" onClick={() => { if (window.confirm('Discard your local edits and load the disk version?')) void useEditor.getState().resolveConflict(path, 'disk') }}>Use disk version</button>
+    </div>}
+    <div className="editor-host" ref={host} />
+  </>
 }

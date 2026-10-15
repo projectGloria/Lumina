@@ -14,8 +14,8 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { parseOgTags, type LinkMetadata } from '@shared/linkPreview'
-import { fetchWithTimeout, isHttp, readCapped, IMAGE_EXTENSIONS } from './net'
-import { luminaDir, readJson, writeJson } from './settings'
+import { fetchWithTimeout, isHttp, isPubliclyRoutable, readCapped, IMAGE_EXTENSIONS } from './net'
+import { luminaDir, previewRel, readJson, writeJson } from './settings'
 import { safePathUnder } from './paths'
 import { getRoot } from './vault'
 
@@ -32,10 +32,6 @@ interface CacheShape {
 }
 
 const cacheFile = (vault: string): string => path.join(luminaDir(vault), 'linkcache.json')
-const previewDir = (vault: string): string => path.join(luminaDir(vault), 'linkpreviews')
-
-/** Vault-relative, so it can be handed to the renderer as a `lumina://` path. */
-const previewRel = (name: string): string => `.lumina/linkpreviews/${name}`
 
 let cache: CacheShape | null = null
 let cacheVault: string | null = null
@@ -66,10 +62,16 @@ const inFlight = new Map<string, Promise<LinkMetadata | null>>()
  * renderer's CSP as tight as it is: images come from `lumina://` and nothing
  * else. Failure is fine — the card just goes without a thumbnail.
  */
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
 async function cacheImage(vault: string, imageUrl: string): Promise<string | undefined> {
-  if (!isHttp(imageUrl)) return undefined
+  if (!isHttp(imageUrl) || !(await isPubliclyRoutable(imageUrl))) return undefined
   try {
-    const response = await fetchWithTimeout(imageUrl, { accept: 'image/*' })
+    const response = await fetchWithTimeout(imageUrl, {
+      'user-agent': BROWSER_UA,
+      accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+    })
     if (!response.ok) return undefined
 
     const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
@@ -80,10 +82,12 @@ async function cacheImage(vault: string, imageUrl: string): Promise<string | und
     if (!bytes.length) return undefined
 
     const name = `${createHash('sha256').update(imageUrl).digest('hex').slice(0, 32)}.${extension}`
-    const previewTarget = path.join('.lumina', 'previews', name)
-    const safeTarget = await safePathUnder(vault, previewTarget, true)
+    // One constant behind all three of these, so the directory that gets
+    // created, the file that gets written and the path the renderer is handed
+    // can no longer disagree.
+    const safeTarget = await safePathUnder(vault, previewRel(name), true)
     if (!safeTarget) return undefined
-    await fs.mkdir(previewDir(vault), { recursive: true })
+    await fs.mkdir(path.dirname(safeTarget), { recursive: true })
     await fs.writeFile(safeTarget, bytes)
     return previewRel(name)
   } catch {
@@ -94,10 +98,9 @@ async function cacheImage(vault: string, imageUrl: string): Promise<string | und
 async function fetchMetadata(vault: string, url: string): Promise<LinkMetadata | null> {
   try {
     const response = await fetchWithTimeout(url, {
-      accept: 'text/html,application/xhtml+xml',
-      // Some sites serve a different (or no) document to an unknown client;
-      // this is the same string Electron would send from a page.
-      'accept-language': 'en,*;q=0.5'
+      'user-agent': BROWSER_UA,
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'en-US,en;q=0.9'
     })
     if (!response.ok) return null
 
@@ -126,6 +129,12 @@ async function fetchMetadata(vault: string, url: string): Promise<LinkMetadata |
 export async function linkPreview(url: string, refresh = false): Promise<LinkMetadata | null> {
   const vault = getRoot()
   if (!vault || !isHttp(url)) return null
+
+  // Any URL in any note is a candidate, and a note may have been written by
+  // someone else (a clip, a synced vault, a shared folder). Refusing private
+  // and loopback addresses keeps "fetch link previews" from turning into a
+  // probe of the user's own network, with the page title as the oracle.
+  if (!(await isPubliclyRoutable(url))) return null
 
   const store = await loadCache(vault)
   const cached = store.entries[url]

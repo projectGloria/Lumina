@@ -20,12 +20,16 @@ export async function writeExclusive(
   for (let i = 0; i < 1000; i++) {
     const candidate = i === 0 ? target : path.join(dir, `${stem} ${i}${ext}`)
     try {
-      markSelfWrite(candidate)
       if (typeof data === 'string') {
         await fs.writeFile(candidate, data, { flag: 'wx', encoding: encoding ?? 'utf8' })
       } else {
         await fs.writeFile(candidate, data, { flag: 'wx' })
       }
+      // Only the path that actually got written. Marking every candidate meant
+      // a name with many collisions registered up to a thousand paths that do
+      // not exist, and entries are only evicted when the watcher reports the
+      // path again — which for a file that was never created is never.
+      markSelfWrite(candidate)
       return candidate
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
@@ -58,13 +62,7 @@ export async function createNoteAt(vault: string, rel: string, content = '', mar
 }
 
 
-/** Write exactly the path approved by the native Save As dialog. */
-export async function writeChosenNote(file: string, text: string): Promise<void> {
-  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${randomUUID()}.lumina-tmp`)
-  try {
-    await fs.writeFile(temporary, text, { encoding: 'utf8', flag: 'wx' })
-    await fs.rename(temporary, file)
-  } finally {
-    await fs.unlink(temporary).catch(() => {})
-  }
-}
+// `writeChosenNote` used to live here, for Quick Note's one Save As path. Quick
+// Note now writes real files in their own encoding and line endings, which is
+// more than a note writer should know about, so that job moved wholesale to
+// `quicknote/files.ts` — see `writeDocument` there.

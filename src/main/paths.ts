@@ -9,6 +9,20 @@ export const IGNORED_DIRS = new Set(['.lumina', '.git', '.obsidian', 'node_modul
 export const luminaDir = (vault: string): string => path.join(vault, '.lumina')
 
 /**
+ * The folder cached link-preview images live in, named once.
+ *
+ * This sat as a bare string literal in three places and was spelled two
+ * different ways, so the directory that got created was not the one written to
+ * and neither was the one handed back to the renderer — every thumbnail failed
+ * silently, inside a bare `catch`. It lives here rather than in `settings.ts`
+ * because `export.ts` needs it too and cannot import Electron.
+ */
+export const PREVIEW_DIR_NAME = 'previews'
+
+/** Vault-relative path of one cached preview image. */
+export const previewRel = (name: string): string => `.lumina/${PREVIEW_DIR_NAME}/${name}`
+
+/**
  * Resolve a vault-relative path to an absolute one, refusing anything that
  * escapes the vault root.
  *
@@ -115,14 +129,28 @@ export function sanitizeFileName(name: string): string {
 /* ------------------------------------------------- files opened by the OS */
 
 /**
- * Note paths passed on the command line, e.g. by double-clicking a `.md` file.
+ * File paths on a command line, whichever kind the caller is interested in.
  *
  * Electron shifts argv by one when the app is not packaged, because the app
  * directory sits between the binary and the real arguments. Switches are
  * dropped so Chromium's own flags never look like a file.
+ *
+ * The `accept` predicate is a parameter because there are now two callers that
+ * disagree about what counts: Vault wants notes, and the launch router in
+ * `fileRoute.ts` wants any text document at all. The argv arithmetic is the
+ * part that is easy to get wrong, and it should exist once.
  */
+export function argPathsFrom(
+  argv: string[],
+  packaged: boolean,
+  accept: (arg: string) => boolean
+): string[] {
+  return argv.slice(packaged ? 1 : 2).filter((arg) => !!arg && !arg.startsWith('-') && accept(arg))
+}
+
+/** Note paths passed on the command line, e.g. by double-clicking a `.md` file. */
 export function fileArgsFrom(argv: string[], packaged: boolean): string[] {
-  return argv.slice(packaged ? 1 : 2).filter((arg) => !!arg && !arg.startsWith('-') && isMarkdown(arg))
+  return argPathsFrom(argv, packaged, isMarkdown)
 }
 
 /** Every directory from `dir` up to the filesystem root, deepest first. */

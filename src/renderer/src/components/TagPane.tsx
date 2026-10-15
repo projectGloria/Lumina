@@ -79,9 +79,21 @@ function TagRow({ node, depth }: { node: TagNode; depth: number }): React.JSX.El
     <>
       <div
         className={`tree-row tag-row${active ? ' is-active' : ''}`}
+        // A filter toggle, so it says so: `aria-pressed` is what tells a screen
+        // reader whether this tag is currently filtering the list.
+        role="button"
+        tabIndex={0}
+        aria-pressed={active}
         data-tooltip={`Filter by #${node.full}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => setTagFilter(active ? null : node.full)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight' && hasChildren) { setExpanded(true); return }
+          if (e.key === 'ArrowLeft' && hasChildren) { setExpanded(false); return }
+          if (e.key !== 'Enter' && e.key !== ' ') return
+          e.preventDefault()
+          setTagFilter(active ? null : node.full)
+        }}
       >
         {hasChildren ? (
           <button

@@ -56,6 +56,13 @@ function on<T>(channel: string, cb: (payload: T) => void): () => void {
   return () => ipcRenderer.removeListener(channel, listener)
 }
 
+let currentVault: string | null = null
+ipcRenderer.on(CH.vaultClosed, () => { currentVault = null })
+ipcRenderer.on(CH.vaultOpened, (_event, payload: VaultPayload) => { currentVault = payload.vault.path })
+function invokeVault<T>(channel: string, ...args: unknown[]): Promise<T> {
+  return ipcRenderer.invoke(channel, currentVault, ...args)
+}
+
 const api = {
   window: {
     minimize: () => ipcRenderer.send(CH.winMinimize),
@@ -69,17 +76,24 @@ const api = {
 
   app: {
     /** The main process is shutting down and is waiting for pending saves. */
-    onFlush: (cb: () => void) => on<void>(CH.appFlush, cb),
-    flushed: (): void => ipcRenderer.send(CH.appFlushed)
+    onFlush: (cb: (id: string) => void) => on<string>(CH.appFlush, cb),
+    onResume: (cb: () => void) => on<void>(CH.appResume, cb),
+    flushed: (id: string, error?: string): void => ipcRenderer.send(CH.appFlushed, id, error)
   },
 
   vault: {
+    close: (): Promise<void> => ipcRenderer.invoke(CH.vaultClose),
+    onClosed: (cb: () => void) => on<void>(CH.vaultClosed, cb),
     pick: (): Promise<VaultPayload | null> => ipcRenderer.invoke(CH.vaultPick),
     open: (dir: string): Promise<VaultPayload | null> => ipcRenderer.invoke(CH.vaultOpen, dir),
-    current: (): Promise<VaultPayload | null> => ipcRenderer.invoke(CH.vaultCurrent),
+    current: async (): Promise<VaultPayload | null> => {
+      const payload = await ipcRenderer.invoke(CH.vaultCurrent)
+      if (payload) currentVault = payload.vault.path
+      return payload
+    },
     recent: (): Promise<VaultInfo[]> => ipcRenderer.invoke(CH.vaultRecent),
-    tree: (): Promise<TreeNode[]> => ipcRenderer.invoke(CH.vaultTree),
-    reveal: (rel: string): Promise<void> => ipcRenderer.invoke(CH.vaultReveal, rel),
+    tree: (): Promise<TreeNode[]> => invokeVault(CH.vaultTree),
+    reveal: (rel: string): Promise<void> => invokeVault(CH.vaultReveal, rel),
     onOpened: (cb: (p: VaultPayload) => void) => on<VaultPayload>(CH.vaultOpened, cb),
     onChanged: (cb: (p: VaultChangedPayload) => void) =>
       on<VaultChangedPayload>(CH.vaultChanged, cb)
@@ -87,29 +101,35 @@ const api = {
 
   notes: {
     read: (rel: string): Promise<OpResult<{ content: string; mtime: number }>> =>
-      ipcRenderer.invoke(CH.noteRead, rel),
-    write: (rel: string, content: string): Promise<WriteResult> =>
-      ipcRenderer.invoke(CH.noteWrite, rel, content),
-    create: (rel: string, content?: string): Promise<OpResult<string>> =>
-      ipcRenderer.invoke(CH.noteCreate, rel, content ?? ''),
+      invokeVault(CH.noteRead, rel),
+    /**
+     * `forVault` is the vault path the caller composed this text against. Main
+     * refuses the write when the open vault is no longer that one, which is
+     * what stops an autosave fired during a vault switch from landing in the
+     * vault being opened.
+     */
+    write: (rel: string, content: string, forVault?: string, expected?: string): Promise<WriteResult> =>
+      invokeVault(CH.noteWrite, rel, content, forVault, expected),
+    create: (rel: string, content?: string, forVault?: string): Promise<OpResult<string>> =>
+      invokeVault(CH.noteCreate, rel, content ?? '', forVault),
     createFolder: (rel: string): Promise<OpResult<string>> =>
-      ipcRenderer.invoke(CH.noteCreateFolder, rel),
+      invokeVault(CH.noteCreateFolder, rel),
     rename: (from: string, to: string): Promise<OpResult<string>> =>
-      ipcRenderer.invoke(CH.noteRename, from, to),
-    remove: (rel: string): Promise<OpResult> => ipcRenderer.invoke(CH.noteDelete, rel),
-    exists: (rel: string): Promise<boolean> => ipcRenderer.invoke(CH.noteExists, rel)
+      invokeVault(CH.noteRename, from, to),
+    remove: (rel: string): Promise<OpResult> => invokeVault(CH.noteDelete, rel),
+    exists: (rel: string): Promise<boolean> => invokeVault(CH.noteExists, rel)
   },
 
   index: {
-    get: (): Promise<VaultIndex> => ipcRenderer.invoke(CH.indexGet),
+    get: (): Promise<VaultIndex> => invokeVault(CH.indexGet),
     onUpdated: (cb: (i: VaultIndex) => void) => on<VaultIndex>(CH.indexUpdated, cb)
   },
 
   search: {
     query: (q: string, opts?: SearchOptions): Promise<SearchHit[]> =>
-      ipcRenderer.invoke(CH.searchQuery, q, 'full', opts),
+      invokeVault(CH.searchQuery, q, 'full', opts),
     titles: (q: string): Promise<{ path: string; title: string }[]> =>
-      ipcRenderer.invoke(CH.searchQuery, q, 'titles')
+      invokeVault(CH.searchQuery, q, 'titles')
   },
 
   profiles: {
@@ -129,8 +149,8 @@ const api = {
   },
 
   settings: {
-    get: (): Promise<Settings | null> => ipcRenderer.invoke(CH.settingsGet),
-    set: (s: Settings): Promise<boolean> => ipcRenderer.invoke(CH.settingsSet, s),
+    get: (): Promise<Settings | null> => invokeVault(CH.settingsGet),
+    set: (s: Settings, forVault = currentVault): Promise<boolean> => ipcRenderer.invoke(CH.settingsSet, forVault, s),
     fonts: (): Promise<string[]> => ipcRenderer.invoke(CH.fontsList),
     profiles: (): Promise<SettingsPreset[]> => ipcRenderer.invoke(CH.settingsProfilesList),
     saveProfile: (name: string, settings: Settings, theme: ThemeFile): Promise<SettingsPreset> =>
@@ -142,19 +162,19 @@ const api = {
   },
 
   theme: {
-    get: (): Promise<ThemeFile | null> => ipcRenderer.invoke(CH.themeGet),
-    set: (t: ThemeFile): Promise<boolean> => ipcRenderer.invoke(CH.themeSet, t)
+    get: (): Promise<ThemeFile | null> => invokeVault(CH.themeGet),
+    set: (t: ThemeFile, forVault = currentVault): Promise<boolean> => ipcRenderer.invoke(CH.themeSet, forVault, t)
   },
 
   snippets: {
-    get: (): Promise<Snippet[]> => ipcRenderer.invoke(CH.snippetsGet),
-    openFolder: (): Promise<void> => ipcRenderer.invoke(CH.snippetsOpenFolder),
+    get: (): Promise<Snippet[]> => invokeVault(CH.snippetsGet),
+    openFolder: (): Promise<void> => invokeVault(CH.snippetsOpenFolder),
     onChanged: (cb: (s: Snippet[]) => void) => on<Snippet[]>(CH.snippetsChanged, cb)
   },
 
   workspace: {
-    get: (): Promise<WorkspaceState | null> => ipcRenderer.invoke(CH.workspaceGet),
-    set: (w: WorkspaceState): Promise<boolean> => ipcRenderer.invoke(CH.workspaceSet, w)
+    get: (): Promise<WorkspaceState | null> => invokeVault(CH.workspaceGet),
+    set: (w: WorkspaceState, forVault = currentVault): Promise<boolean> => ipcRenderer.invoke(CH.workspaceSet, forVault, w)
   },
 
   /**
@@ -163,8 +183,8 @@ const api = {
    * starter board instead of drawing an empty page.
    */
   home: {
-    get: (): Promise<HomeLayout | null> => ipcRenderer.invoke(CH.homeGet),
-    set: (layout: HomeLayout): Promise<boolean> => ipcRenderer.invoke(CH.homeSet, layout)
+    get: (): Promise<HomeLayout | null> => invokeVault(CH.homeGet),
+    set: (layout: HomeLayout, forVault = currentVault): Promise<boolean> => ipcRenderer.invoke(CH.homeSet, forVault, layout)
   },
 
   music: {
@@ -186,7 +206,7 @@ const api = {
      * is not http(s), or the page said nothing about itself.
      */
      preview: (url: string): Promise<LinkMetadata | null> =>
-      ipcRenderer.invoke(CH.linkPreview, url)
+      invokeVault(CH.linkPreview, url)
   },
 
   quickNote: {
@@ -209,12 +229,12 @@ const api = {
     takeOpenRequests: (): Promise<FileOpenRequest[]> => ipcRenderer.invoke(CH.filePending),
     /** Agree to treat the folder around `fileAbs` as a vault, then open it. */
     adoptVault: (fileAbs: string): Promise<boolean> => ipcRenderer.invoke(CH.fileOpen, fileAbs),
-    saveAttachment: (folder: string, name: string, data: ArrayBuffer): Promise<OpResult<string>> =>
-      ipcRenderer.invoke(CH.attachmentSave, folder, name, data),
+    saveAttachment: (folder: string, name: string, data: ArrayBuffer, forVault = currentVault): Promise<OpResult<string>> =>
+      ipcRenderer.invoke(CH.attachmentSave, forVault, folder, name, data),
     exportHtml: (title: string, html: string, notePath?: string): Promise<OpResult> =>
-      ipcRenderer.invoke(CH.exportHtml, title, html, notePath),
+      invokeVault(CH.exportHtml, title, html, notePath),
     exportPdf: (title: string, html: string, notePath?: string): Promise<OpResult> =>
-      ipcRenderer.invoke(CH.exportPdf, title, html, notePath),
+      invokeVault(CH.exportPdf, title, html, notePath),
     openExternal: (url: string): Promise<void> => ipcRenderer.invoke(CH.openExternal, url)
   },
 
@@ -224,14 +244,14 @@ const api = {
    * the child process, so no path to a binary ever reaches the page.
    */
   voice: {
-    status: (): Promise<VoiceToolStatus> => ipcRenderer.invoke(CH.voiceStatus),
+    status: (): Promise<VoiceToolStatus> => invokeVault(CH.voiceStatus),
     transcribe: (wav: ArrayBuffer, language?: string): Promise<TranscribeResponse> =>
-      ipcRenderer.invoke(CH.voiceTranscribe, wav, language),
+      invokeVault(CH.voiceTranscribe, wav, language),
     /** Bring up the resident model. Resolves with a reason when it could not. */
-    liveStart: (): Promise<string | null> => ipcRenderer.invoke(CH.voiceLiveStart),
+    liveStart: (): Promise<string | null> => invokeVault(CH.voiceLiveStart),
     /** One phrase against the resident model; null when it could not be read. */
     transcribeLive: (wav: ArrayBuffer, language?: string): Promise<string | null> =>
-      ipcRenderer.invoke(CH.voiceLiveChunk, wav, language),
+      invokeVault(CH.voiceLiveChunk, wav, language),
     liveStop: (): Promise<void> => ipcRenderer.invoke(CH.voiceLiveStop),
 
     /**
@@ -261,8 +281,8 @@ const api = {
     status: (): Promise<ClipperStatus> => ipcRenderer.invoke(CH.clipStatus),
     regenerateToken: (): Promise<string> => ipcRenderer.invoke(CH.clipRegenerateToken),
     /** Copy one remote image into the vault; null when it could not be had. */
-    saveImage: (folder: string, url: string): Promise<string | null> =>
-      ipcRenderer.invoke(CH.clipSaveImage, folder, url)
+    saveImage: (folder: string, url: string, forVault = currentVault): Promise<string | null> =>
+      ipcRenderer.invoke(CH.clipSaveImage, forVault, folder, url)
   }
 }
 

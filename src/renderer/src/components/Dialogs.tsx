@@ -11,7 +11,7 @@ import { useModalTrap } from './useModalTrap'
 export function PromptDialog(): React.JSX.Element | null {
   const prompt = useUi((s) => s.prompt)
   const hide = useUi((s) => s.hidePrompt)
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(prompt?.initial ?? '')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const input = useRef<HTMLInputElement>(null)
@@ -22,13 +22,21 @@ export function PromptDialog(): React.JSX.Element | null {
     setValue(prompt.initial)
     setError('')
     setBusy(false)
-    // Select the part worth replacing, leaving the extension alone.
-    requestAnimationFrame(() => {
+
+    const selectText = (): void => {
       const el = input.current
       if (!el) return
       el.focus()
-      el.setSelectionRange(0, prompt.selectLength ?? prompt.initial.length)
+      const end = prompt.selectLength ?? prompt.initial.length
+      el.setSelectionRange(0, end)
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      selectText()
+      setTimeout(selectText, 10)
+      setTimeout(selectText, 50)
     })
+    return () => cancelAnimationFrame(rafId)
   }, [prompt])
 
   if (!prompt) return null
@@ -65,6 +73,10 @@ export function PromptDialog(): React.JSX.Element | null {
             type="text"
             value={value}
             spellCheck={false}
+            onFocus={(e) => {
+              const end = prompt.selectLength ?? e.currentTarget.value.length
+              e.currentTarget.setSelectionRange(0, end)
+            }}
             onChange={(e) => {
               setValue(e.target.value)
               setError('')

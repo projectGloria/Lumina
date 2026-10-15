@@ -1,9 +1,11 @@
+import { trackWork } from '../lib/pendingWork'
+import { useVault } from '../store/vaultStore'
+import { documentPath } from './trackedSpan'
 /** Pasting or dragging an image file into the editor saves it to the vault and inserts a link. */
 import { EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
 import { basename, encodeTarget } from '@shared/markdown-parse'
 import { updateNoteContent } from '../lib/actions'
-import { activePath } from '../store/workspaceStore'
 import { getActiveView } from './activeView'
 import { useSettings } from '../store/settingsStore'
 import { toast } from '../store/uiStore'
@@ -47,19 +49,21 @@ function attachmentName(file: File): string {
   return `Pasted image ${stamp}.${generic[1]}`
 }
 
-async function insertAttachments(
+async function insertAttachmentsImpl(
   notePath: string,
   view: EditorView,
   files: File[],
   from: number,
   to: number
 ): Promise<void> {
+  const vault = useVault.getState().vault?.path
+  const originalDoc = view.state.doc
   const folder = useSettings.getState().settings.attachmentFolder
   const embeds: string[] = []
 
   for (const file of files) {
     const buffer = await file.arrayBuffer()
-    const res = await window.lumina.files.saveAttachment(folder, attachmentName(file), buffer)
+    const res = await window.lumina.files.saveAttachment(folder, attachmentName(file), buffer, vault)
     if (!res.ok || !res.data) {
       toast(res.error ?? `Could not save ${file.name}`, 'error')
       continue
@@ -69,12 +73,12 @@ async function insertAttachments(
     // markdown destination early, so the line would not parse as an image.
     embeds.push(`![${res.data.replace(/^.*\//, '').replace(/\.[^.]+$/, '')}](${encodeTarget(res.data)})`)
   }
-  if (!embeds.length) return
+  if (!embeds.length || vault !== useVault.getState().vault?.path) return
 
   const insert = `${embeds.join('\n')}\n`
 
   // Verify the view is still active and attached to the target note
-  if (activePath() === notePath && getActiveView() === view) {
+  if (view.state.facet(documentPath) === notePath && getActiveView() === view && view.state.doc === originalDoc) {
     const docLen = view.state.doc.length
     const safeFrom = Math.max(0, Math.min(from, docLen))
     const safeTo = Math.max(safeFrom, Math.min(to, docLen))
@@ -112,3 +116,5 @@ export function attachmentDropExtension(notePath: string): Extension {
     }
   })
 }
+
+const insertAttachments = trackWork(insertAttachmentsImpl)

@@ -91,6 +91,16 @@ async function lineMatches(path: string, terms: string[], phrase: string | null)
   return out
 }
 
+/**
+ * How many results get their matching lines read off disk.
+ *
+ * Every snippet costs a full `readFile` of that note, so pulling them for all
+ * 60 results meant ~120 filesystem operations per settled query — for results
+ * that are mostly below the fold. The rest still appear in the list with their
+ * title and score; only the line previews are withheld.
+ */
+const SNIPPET_LIMIT = 20
+
 export async function search(query: string, limit = 60, opts: SearchOptions = {}): Promise<SearchHit[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
@@ -101,7 +111,7 @@ export async function search(query: string, limit = 60, opts: SearchOptions = {}
   const terms = (phrase ?? trimmed).split(/\s+/).filter(Boolean)
 
   const searchOpts = phrase
-    ? { combineWith: 'AND' as const, prefix: false }
+    ? { combineWith: 'AND' as const, prefix: false, fuzzy: false, ...(opts.titleOnly ? { fields: ['title'] } : {}) }
     : opts.titleOnly
       ? { fields: ['title'] }
       : {}
@@ -109,19 +119,23 @@ export async function search(query: string, limit = 60, opts: SearchOptions = {}
   const scoped = opts.folder
     ? raw.filter((r) => (r.id as string).startsWith(`${opts.folder}/`))
     : raw
-  const top = scoped.slice(0, limit)
-
-  const hits = await Promise.all(
-    top.map(async (r) => ({
+  const hits: SearchHit[] = []
+  // Filter before applying the result limit. Read bounded batches so a common
+  // phrase cannot start thousands of file reads at once.
+  const candidates = phrase ? scoped : scoped.slice(0, limit)
+  for (let offset = 0; offset < candidates.length && hits.length < limit; offset += 8) {
+    const batch = await Promise.all(candidates.slice(offset, offset + 8).map(async (r, i) => ({
       path: r.id as string,
       title: (r as unknown as { title: string }).title,
       score: r.score,
-      matches: await lineMatches(r.id as string, terms, phrase)
-    }))
-  )
-
-  // A phrase search only counts if the phrase is really on a line somewhere.
-  return phrase ? hits.filter((h) => h.matches.length > 0) : hits
+      matches: phrase || offset + i < SNIPPET_LIMIT ? await lineMatches(r.id as string, terms, phrase) : []
+    })))
+    for (const hit of batch) {
+      if (!phrase || (opts.titleOnly ? hit.title.toLowerCase().includes(phrase.toLowerCase()) : hit.matches.length > 0)) hits.push(hit)
+      if (hits.length === limit) break
+    }
+  }
+  return hits
 }
 
 /** Note titles for the quick switcher, ranked by fuzzy title match. */

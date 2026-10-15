@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react'
-import { Virtuoso } from 'react-virtuoso'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { TreeNode } from '@shared/types'
 import { dirname } from '@shared/markdown-parse'
 import { Icon, type IconName } from './Icon'
@@ -28,6 +28,132 @@ import { useWorkspace } from '../store/workspaceStore'
 interface FlatNode {
   node: TreeNode
   depth: number
+}
+
+/**
+ * Keyboard navigation for the tree.
+ *
+ * The explorer was the one primary surface with no keyboard route in at all —
+ * rows were bare `<div>`s with an `onClick`, so browsing the vault, expanding a
+ * folder, and every action that lives only in the row's context menu were
+ * mouse-only. `tabIndex` appeared exactly once in the whole renderer.
+ *
+ * Roving focus rather than one tab stop per row: the tree is virtualised, so a
+ * focused row can be unmounted by scrolling, and the authoritative "which row
+ * has focus" has to live in React state rather than in the DOM. The context
+ * carries it down to rows without threading props through `itemContent`.
+ */
+interface TreeNav {
+  focused: string | null
+  setFocused: (path: string | null) => void
+  /** Ordered paths of every row currently on screen, for Up/Down. */
+  order: string[]
+}
+
+const TreeNavContext = React.createContext<TreeNav>({
+  focused: null,
+  setFocused: () => {},
+  order: []
+})
+
+/**
+ * Wire one row up to the tree's keyboard model.
+ *
+ * Returns the props every row needs: roving `tabIndex`, the `treeitem` role,
+ * and a handler for the keys that apply to whichever row has focus. Rows are
+ * focused imperatively when `focused` names them, which is what makes Up and
+ * Down actually move the caret rather than just a highlight.
+ */
+function useTreeRow(
+  path: string,
+  opts: { folder?: boolean; expanded?: boolean; onActivate: () => void; onToggle?: () => void }
+): {
+  ref: React.RefObject<HTMLDivElement | null>
+  tabIndex: number
+  role: 'treeitem'
+  'aria-expanded'?: boolean
+  onKeyDown: (e: React.KeyboardEvent) => void
+  onFocus: () => void
+} {
+  const { focused, setFocused, order } = React.useContext(TreeNavContext)
+  const ref = useRef<HTMLDivElement>(null)
+  const isFocused = focused === path
+
+  useEffect(() => {
+    if (isFocused && ref.current && document.activeElement !== ref.current) ref.current.focus()
+  }, [isFocused])
+
+  const move = (delta: number): void => {
+    const i = order.indexOf(path)
+    if (i === -1) return
+    const next = order[Math.max(0, Math.min(order.length - 1, i + delta))]
+    if (next) setFocused(next)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent): void => {
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); move(1); return
+      case 'ArrowUp': e.preventDefault(); move(-1); return
+      case 'Home': e.preventDefault(); if (order[0]) setFocused(order[0]); return
+      case 'End': e.preventDefault(); if (order.length) setFocused(order[order.length - 1]); return
+      case 'Enter':
+      case ' ':
+        e.preventDefault()
+        opts.onActivate()
+        return
+      case 'ArrowRight':
+        if (!opts.folder) return
+        e.preventDefault()
+        if (!opts.expanded) opts.onToggle?.()
+        else move(1)
+        return
+      case 'ArrowLeft':
+        if (opts.folder && opts.expanded) {
+          e.preventDefault()
+          opts.onToggle?.()
+          return
+        }
+        // Not a folder, or already closed: step out to the parent row.
+        e.preventDefault()
+        {
+          const parent = dirname(path)
+          if (parent && order.includes(parent)) setFocused(parent)
+        }
+        return
+      case 'F2':
+        e.preventDefault()
+        promptRename(path)
+        return
+      case 'Delete':
+        e.preventDefault()
+        confirmDelete(path)
+        return
+      default:
+        // Shift+F10 and the dedicated Menu key are how a keyboard opens a
+        // context menu everywhere else; the row's own handler reads the
+        // pointer position, so synthesise one from the row's box.
+        if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+          e.preventDefault()
+          const rect = ref.current?.getBoundingClientRect()
+          ref.current?.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              clientX: rect ? rect.left + 24 : 0,
+              clientY: rect ? rect.bottom : 0
+            })
+          )
+        }
+    }
+  }
+
+  return {
+    ref,
+    tabIndex: isFocused || (focused === null && order[0] === path) ? 0 : -1,
+    role: 'treeitem',
+    ...(opts.folder ? { 'aria-expanded': !!opts.expanded } : {}),
+    onKeyDown,
+    onFocus: () => setFocused(path)
+  }
 }
 
 /** Reorders siblings for the file explorer: pinned first, then by the chosen sort order. */
@@ -70,6 +196,7 @@ const Scroller = React.forwardRef<HTMLDivElement, React.HTMLProps<HTMLDivElement
     <div
       {...props}
       ref={ref}
+      role="tree"
       className={`panel-scroll tree${alwaysCount ? ' always-count' : ''} ${props.className || ''}`}
       onContextMenu={(e) => {
         if ((e.target as HTMLElement).closest('.tree-row')) return
@@ -120,8 +247,26 @@ export default function FileTree(): React.JSX.Element {
     return flattenTree(tree, expanded, pinned, sortOrder)
   }, [tree, expanded, pinned, sortOrder])
 
+  const [focused, setFocused] = useState<string | null>(null)
+  // The rows Up/Down step through, in the order they are drawn.
+  const order = useMemo(
+    () => (filtered ? filtered : flatTree.map((row) => row.node.path)),
+    [filtered, flatTree]
+  )
+  const nav = useMemo<TreeNav>(() => ({ focused, setFocused, order }), [focused, order])
+
+  // Scroll a row reached by keyboard into view — it may be outside the
+  // virtualised window entirely, in which case it has no DOM node to focus
+  // until Virtuoso renders it.
+  const listRef = useRef<VirtuosoHandle>(null)
+  useEffect(() => {
+    if (!focused) return
+    const index = order.indexOf(focused)
+    if (index >= 0) listRef.current?.scrollIntoView({ index, behavior: 'auto' })
+  }, [focused, order])
+
   return (
-    <>
+    <TreeNavContext.Provider value={nav}>
       <PanelHeader
         title={tagFilter ? `#${tagFilter}` : (vault?.name ?? 'Vault')}
         subtitle={tagFilter ? `${filtered?.length ?? 0} matches` : `${Object.keys(index.notes).length} files`}
@@ -174,6 +319,7 @@ export default function FileTree(): React.JSX.Element {
       {filtered ? (
         filtered.length ? (
           <Virtuoso
+            ref={listRef}
             style={{ flex: 1 }}
             components={{ Scroller }}
             data={filtered}
@@ -190,6 +336,7 @@ export default function FileTree(): React.JSX.Element {
         )
       ) : flatTree.length ? (
         <Virtuoso
+          ref={listRef}
           style={{ flex: 1 }}
           components={{ Scroller }}
           data={flatTree}
@@ -209,7 +356,7 @@ export default function FileTree(): React.JSX.Element {
           </div>
         </div>
       )}
-    </>
+    </TreeNavContext.Provider>
   )
 }
 
@@ -286,7 +433,19 @@ const COLOR_CHOICES: { label: string; value: string }[] = [
   { label: 'Gray', value: '#97958d' }
 ]
 
-/** Opens a native color input off-screen and resolves with the chosen color, or null if cancelled. */
+/**
+ * Opens a native color input off-screen and resolves with the chosen color, or
+ * null if cancelled.
+ *
+ * On `change`, not `input`: Chromium fires `input` continuously as the pointer
+ * moves inside the picker, so resolving there settled on the first colour the
+ * cursor happened to pass over and then removed the element, closing the picker
+ * before the user had chosen anything. `change` fires once, on confirmation.
+ *
+ * `cancel` rather than `blur` for the same reason `pickImageFile` uses it:
+ * opening the native picker moves focus off the input, so a `blur` handler
+ * cancelled the interaction it was meant to be waiting on.
+ */
 function pickCustomColor(initial: string | undefined): Promise<string | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
@@ -302,8 +461,8 @@ function pickCustomColor(initial: string | undefined): Promise<string | null> {
     input.style.position = 'fixed'
     input.style.opacity = '0'
     input.style.pointerEvents = 'none'
-    input.oninput = () => finish(input.value)
-    input.onblur = () => finish(null)
+    input.onchange = () => finish(input.value)
+    input.oncancel = () => finish(null)
     document.body.appendChild(input)
     input.click()
   })
@@ -356,12 +515,24 @@ function FolderRow({
   const colorOverride = useSettings((s) => s.settings.colorOverrides[node.path])
   const pinned = useSettings((s) => s.settings.pinned.includes(node.path))
   const [dropping, setDropping] = useState(false)
-  const notes = noteCount(node.children)
+  // Recursive walk of the whole subtree, so it does not belong in the render
+  // body — this row re-renders on every settings change, and a top-level folder
+  // counts the entire vault.
+  const notes = useMemo(() => noteCount(node.children), [node.children])
+
+  const nav = useTreeRow(node.path, {
+    folder: true,
+    expanded,
+    onActivate: () => toggle(node.path),
+    onToggle: () => toggle(node.path)
+  })
 
   return (
     <div
+      {...nav}
       className={`tree-row folder${dropping ? ' is-dropping' : ''}`}
       data-depth={depth}
+      aria-level={depth + 1}
         style={{
           // The extra step is the gutter the chevron hangs in; file rows at the
           // same depth start one indent to the left of their folder's label.
@@ -447,10 +618,15 @@ function FileRow({ path, depth }: { path: string; depth: number }): React.JSX.El
   const isActive = tabs[activeTab]?.path === path
   const title = titleOf(path)
 
+  const nav = useTreeRow(path, { onActivate: () => openNote(path) })
+
   return (
     <div
+      {...nav}
       className={`tree-row file${isActive ? ' is-active' : ''}`}
       data-depth={depth}
+      aria-level={depth + 1}
+      aria-selected={isActive}
       style={{
         paddingLeft: `calc(10px + ${depth} * var(--lum-tree-indent))`,
         color: colorOverride

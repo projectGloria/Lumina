@@ -94,3 +94,44 @@ export function createQuickNoteDesktopShortcut(): Promise<ShortcutResult> {
     }
   })
 }
+
+export function ensureQuickNoteStartMenuShortcut(): void {
+  if (process.platform !== 'win32') return
+  try {
+    let target = process.execPath
+    let args = '--quicknote'
+    let cwd = path.dirname(target)
+    let iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'quicknote-icon.ico')
+      : path.join(app.getAppPath(), 'resources', 'quicknote-icon.ico')
+
+    const installedExe = process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Lumina', 'Lumina.exe')
+      : null
+
+    if (!app.isPackaged && installedExe && fs.existsSync(installedExe)) {
+      target = installedExe
+      cwd = path.dirname(installedExe)
+      const installedIcon = path.join(cwd, 'resources', 'quicknote-icon.ico')
+      if (fs.existsSync(installedIcon)) iconPath = installedIcon
+    } else if (!app.isPackaged && (!installedExe || !fs.existsSync(installedExe))) {
+      args = `"${app.getAppPath()}" --quicknote`
+    }
+
+    const appData = app.getPath('appData')
+    const startMenuPath = path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Quick Note.lnk')
+    const startOp = fs.existsSync(startMenuPath) ? 'replace' : 'create'
+    shell.writeShortcutLink(startMenuPath, startOp, {
+      target,
+      args,
+      cwd,
+      icon: iconPath,
+      iconIndex: 0,
+      description: 'Lumina Quick Note',
+      appUserModelId: 'com.nihil.lumina.quicknote'
+    })
+  } catch {
+    // Non-fatal
+  }
+}
+

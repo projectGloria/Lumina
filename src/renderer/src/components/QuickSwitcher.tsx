@@ -87,6 +87,10 @@ export default function QuickSwitcher(): React.JSX.Element {
           }
         ]
     return [...results, ...commandResults, ...createItems]
+    // `hotkeys` is a trigger rather than an input: the accelerators are read
+    // inside `toCommandItem` through the command registry, so a rebind has to
+    // rebuild this list even though the value is never referenced here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deferredQuery, queryIsStale, notes, history, hotkeys])
 
   return (

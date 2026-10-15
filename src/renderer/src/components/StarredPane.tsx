@@ -25,9 +25,20 @@ export default function StarredPane(): React.JSX.Element {
           live.map((path) => (
             <div
               key={path}
+              // Reachable by keyboard, like every other list in the app: this
+              // pane is a short flat list, so a plain tab stop per row is the
+              // right shape — the file tree needs roving focus only because it
+              // is virtualised and can be thousands of rows long.
+              role="button"
+              tabIndex={0}
               className={`tree-row file${current === path ? ' is-active' : ''}`}
               style={{ paddingLeft: 10 }}
               onClick={(e) => openNote(path, { newTab: e.ctrlKey || e.metaKey })}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                openNote(path, { newTab: e.ctrlKey || e.metaKey })
+              }}
             >
               <PathIcon path={path} size={14} className="tree-icon" />
               <span className="tree-label truncate">{titleOf(path)}</span>

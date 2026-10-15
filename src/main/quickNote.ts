@@ -35,11 +35,18 @@ let registered = ''
  * owns the combination — leaving nothing bound rather than the old key.
  */
 export function bindQuickNoteShortcut(accelerator: string, onTrigger: () => void): boolean {
+  const wanted = accelerator.trim()
+
+  // Settings are saved for reasons that have nothing to do with the shortcut —
+  // starring a note, changing the sort order — and re-registering on each of
+  // those left a window, between the unregister and the register, in which a
+  // press reached nothing at all.
+  if (wanted && wanted === registered && globalShortcut.isRegistered(wanted)) return true
+
   if (registered) {
     globalShortcut.unregister(registered)
     registered = ''
   }
-  const wanted = accelerator.trim()
   if (!wanted) return true
 
   try {
@@ -68,5 +75,13 @@ export function applyLoginItem(startAtLogin: boolean): void {
   // Linux has no login-item API in Electron, and dev runs would register the
   // electron binary rather than Lumina.
   if (process.platform === 'linux' || !app.isPackaged) return
+  // On Windows this is a registry write, and it used to run on every settings
+  // save — so starring a note wrote to HKCU\...\Run. Read first, write only on
+  // an actual change.
+  try {
+    if (app.getLoginItemSettings({ args: [HIDDEN_FLAG] }).openAtLogin === startAtLogin) return
+  } catch {
+    // Unreadable on this platform; fall through and set it.
+  }
   app.setLoginItemSettings({ openAtLogin: startAtLogin, args: [HIDDEN_FLAG] })
 }

@@ -51,8 +51,12 @@ export function titleOf(path: string): string {
 }
 
 /** Every note path known to the index, used for link resolution in the editor. */
+let pathCacheKey: VaultIndex | null = null
+let pathCache: string[] = []
 export function knownPaths(): string[] {
-  return Object.keys(useVault.getState().index.notes)
+  const index = useVault.getState().index
+  if (index !== pathCacheKey) { pathCacheKey = index; pathCache = Object.keys(index.notes) }
+  return pathCache
 }
 
 // Rebuilding the alias map on every decoration pass would be wasteful, and the

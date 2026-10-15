@@ -25,7 +25,16 @@ function Calendar({ config }: WidgetProps<CalendarConfig>): React.JSX.Element {
   const weekStart = oneOf(config.weekStart, ['monday', 'sunday'] as const, 'monday')
 
   const today = new Date()
-  const month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1)
+  // Memoised on the offset, not constructed inline: a fresh `Date` every render
+  // is a fresh identity, which made the `weeks` memo below rebuild the whole
+  // grid on every render rather than only when the month actually changed.
+  const month = useMemo(
+    () => new Date(today.getFullYear(), today.getMonth() + monthOffset, 1),
+    // `today` is re-read each render by design — the grid should roll over at
+    // midnight — but only its month matters to this value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [today.getFullYear(), today.getMonth(), monthOffset]
+  )
 
   /** How many notes were written on each day, for the shading behind the date. */
   const created = useMemo(() => {

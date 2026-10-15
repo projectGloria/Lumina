@@ -86,7 +86,7 @@ const DEFAULT_SETTINGS: Settings = {
     livePreview: true,
     smartLists: true,
     showWordCount: false,
-    linkPreviews: false
+    linkPreviews: true
   },
   dailyNotes: {
     folder: 'Daily',
@@ -152,6 +152,29 @@ function merge<T>(base: T, patch: unknown): T {
 export const normalizeSettings = (value: unknown): Settings => merge(DEFAULT_SETTINGS, value)
 export const normalizeTheme = (value: unknown): ThemeFile => merge(DEFAULT_THEME, value)
 
+/**
+ * Strip the fields a settings file has no business carrying between machines.
+ *
+ * A preset is shared the way a theme is — pasted into a forum post, committed
+ * to a dotfiles repo — and nothing about a `.json` file signals that opening it
+ * could run code. But `voice.binaryPath` is handed to `execFile`, and
+ * `clipper` decides whether a socket opens and with what shared secret. Both
+ * describe *this machine* rather than a preference, which is the same argument
+ * that already keeps them in app-level state; an import has no business setting
+ * either.
+ *
+ * Applied to anything arriving from outside — `settingsProfilesImport` — and
+ * deliberately not to `settingsProfilesSave`, where the values came from the
+ * running app and are already the user's own.
+ */
+export function stripMachineSettings(value: Settings): Settings {
+  return {
+    ...value,
+    voice: { ...value.voice, binaryPath: '', modelPath: '' },
+    clipper: { ...value.clipper, enabled: false, token: '' }
+  }
+}
+
 async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
     // These files are meant to be editable by hand, and a Windows editor will
@@ -165,13 +188,21 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJson(file: string, value: unknown): Promise<void> {
+/**
+ * Write a JSON file atomically, serialised per path.
+ *
+ * `pretty` is on by default because these files are meant to be readable and
+ * hand-editable. The index cache is the exception: it is machine-written,
+ * rebuildable, and large enough that indenting it is a measurable synchronous
+ * stall on the main process every few seconds.
+ */
+async function writeJson(file: string, value: unknown, pretty = true): Promise<void> {
   const previous = writeQueues.get(file) ?? Promise.resolve()
   const operation = previous.catch(() => {}).then(async () => {
     await fs.mkdir(path.dirname(file), { recursive: true })
     const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`)
     try {
-      await fs.writeFile(tmp, JSON.stringify(value, null, 2), { encoding: 'utf8', flag: 'wx' })
+      await fs.writeFile(tmp, JSON.stringify(value, null, pretty ? 2 : undefined), { encoding: 'utf8', flag: 'wx' })
       await fs.rename(tmp, file)
     } catch (err) {
       await fs.rm(tmp, { force: true }).catch(() => {})
@@ -300,6 +331,10 @@ const homeFile = (v: string): string => path.join(luminaDir(v), 'home.json')
 
 export const cacheFile = (v: string): string => path.join(luminaDir(v), 'cache.json')
 export const snippetsDir = (v: string): string => path.join(luminaDir(v), 'snippets')
+
+// The link-preview folder is named in `paths.ts`, which `export.ts` can also
+// reach — see `PREVIEW_DIR_NAME` there.
+export { PREVIEW_DIR_NAME, previewRel } from './paths'
 
 export async function ensureLuminaDir(vault: string): Promise<void> {
   const realVault = await fs.realpath(path.resolve(vault))

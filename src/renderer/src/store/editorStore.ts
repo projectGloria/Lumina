@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { isPathAtOrBelow, rebaseDescendantPath } from '@shared/markdown-parse'
 import { useSettings } from './settingsStore'
 import { toast } from './uiStore'
+import { useVault } from './vaultStore'
 
 export interface Buffer {
   content: string
@@ -9,6 +10,7 @@ export interface Buffer {
   saved: string
   mtime: number
   loading: boolean
+  conflict?: boolean
   error?: string
 }
 
@@ -26,6 +28,8 @@ interface EditorState {
   close: (path: string) => void
   rename: (from: string, to: string) => void
   externalChange: (path: string) => Promise<void>
+  markConflict: (path: string) => void
+  resolveConflict: (path: string, choice: 'disk' | 'copy') => Promise<void>
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -91,6 +95,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!latest) return
     // Guard against overwriting edits made while the asynchronous read was in flight
     if (latest.content !== initialContent || latest.content !== latest.saved) {
+      get().markConflict(path)
       toast(`${path} changed on disk while you were editing. Your edits are kept here.`, 'error')
       return
     }
@@ -109,6 +114,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => ({ buffers: { ...s.buffers, [path]: { ...buffer, content } } }))
 
     cancelAutosave(path)
+    if (buffer.conflict) return
     const delay = useSettings.getState().settings.editor.autosaveDelay
     timers.set(
       path,
@@ -121,14 +127,16 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   save: async (path) => {
     cancelAutosave(path)
+    const generation = vaultGeneration
     const existingSave = saves.get(path)
     if (existingSave) {
       await existingSave
-      return get().save(path)
+      return generation === vaultGeneration ? get().save(path) : false
     }
 
     const buffer = get().buffers[path]
     if (!buffer || buffer.loading) return true
+    if (buffer.conflict) return false
     if (buffer.content === buffer.saved) return true
 
     const content = buffer.content
@@ -136,8 +144,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     const operation = (async (): Promise<void> => {
       set((s) => ({ saving: s.saving.includes(path) ? s.saving : [...s.saving, path] }))
       try {
-        const res = await window.lumina.notes.write(path, content)
+        // Stamped with the vault this text belongs to. Main refuses it if the
+        // root has moved on, rather than writing it into the new vault.
+        const forVault = useVault.getState().vault?.path
+        const res = await window.lumina.notes.write(path, content, forVault, buffer.saved)
+        if (generation !== vaultGeneration) return
         if (!res.ok) {
+          if (res.conflict) get().markConflict(path)
           toast(`Could not save ${path}: ${res.error ?? 'unknown error'}`, 'error')
           return
         }
@@ -156,7 +169,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       } catch (err) {
         toast(`Could not save ${path}: ${(err as Error).message}`, 'error')
       } finally {
-        set((s) => ({ saving: s.saving.filter((p) => p !== path) }))
+        if (generation === vaultGeneration) set((s) => ({ saving: s.saving.filter((p) => p !== path) }))
       }
     })()
 
@@ -171,7 +184,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   saveAll: async () => {
     const dirty = Object.entries(get().buffers)
-      .filter(([, b]) => b.content !== b.saved)
+      .filter(([, b]) => b.conflict || b.content !== b.saved)
       .map(([p]) => p)
     const results = await Promise.all(dirty.map((p) => get().save(p)))
     return results.every(Boolean)
@@ -242,10 +255,36 @@ export const useEditor = create<EditorState>((set, get) => ({
    * A clean buffer silently takes the new content. A dirty one keeps the user's
    * unsaved work and says so, rather than choosing a winner on their behalf.
    */
+  markConflict: (path) => {
+    cancelAutosave(path)
+    const buffer = get().buffers[path]
+    if (buffer) set((s) => ({ buffers: { ...s.buffers, [path]: { ...buffer, conflict: true } } }))
+  },
+
+  resolveConflict: async (path, choice) => {
+    const generation = vaultGeneration
+    const buffer = get().buffers[path]
+    if (!buffer) return
+    const vault = useVault.getState().vault?.path
+    if (choice === 'copy') {
+      const copy = await window.lumina.notes.create(path.replace(/(\.[^/.]+)$/, ' (recovered)$1'), buffer.content, vault)
+      if (!copy.ok) { toast(copy.error ?? 'Could not save recovery copy', 'error'); return }
+      toast(`Saved your edits to ${copy.data}`)
+    }
+    const disk = await window.lumina.notes.read(path)
+    if (generation !== vaultGeneration || get().buffers[path]?.content !== buffer.content) return
+    if (disk.ok && disk.data) {
+      set((s) => ({ buffers: { ...s.buffers, [path]: { content: disk.data!.content, saved: disk.data!.content, mtime: disk.data!.mtime, loading: false } } }))
+    } else if (choice === 'copy') {
+      get().close(path)
+    } else toast('The file is missing. Save a recovery copy to keep your edits.', 'error')
+  },
+
   externalChange: async (path) => {
     const buffer = get().buffers[path]
     if (!buffer || buffer.loading) return
     if (buffer.content !== buffer.saved) {
+      get().markConflict(path)
       toast(`${path} changed on disk. Your unsaved edits are kept here.`, 'error')
       return
     }
@@ -255,9 +294,9 @@ export const useEditor = create<EditorState>((set, get) => ({
 
 export function isDirty(path: string): boolean {
   const b = useEditor.getState().buffers[path]
-  return !!b && !b.loading && b.content !== b.saved
+  return !!b && !b.loading && (b.conflict || b.content !== b.saved)
 }
 
 export function anyDirty(): boolean {
-  return Object.values(useEditor.getState().buffers).some((b) => !b.loading && b.content !== b.saved)
+  return Object.values(useEditor.getState().buffers).some((b) => !b.loading && (b.conflict || b.content !== b.saved))
 }

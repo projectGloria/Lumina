@@ -48,6 +48,8 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
   const frame = useRef(0)
 
   const view = useRef({ x: 0, y: 0, k: 1 })
+  /** Whether the viewport has been centred once; a later rebuild must not re-centre. */
+  const centred = useRef(false)
   const hovered = useRef<GraphNode | null>(null)
   const dragged = useRef<GraphNode | null>(null)
   const panning = useRef<{ x: number; y: number } | null>(null)
@@ -64,6 +66,12 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
   const [hoverLabel, setHoverLabel] = useState<string | null>(null)
 
   /* ------------------------------------------------------- build the graph */
+  // The previous graph, kept so an index update that did not change the shape
+  // of the graph hands back the same object. `index` is replaced wholesale
+  // after *every* note write, so without this the simulation was torn down and
+  // re-scattered on each autosave while the graph was open.
+  const previous = useRef<{ signature: string; value: { nodes: GraphNode[]; links: GraphLink[] } } | null>(null)
+
   const graph = useMemo(() => {
     const notes = index.notes
     const degree = new Map<string, number>()
@@ -128,7 +136,16 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
       links.push({ source: byId.get(a)!, target: byId.get(b)! })
     }
 
-    return { nodes, links }
+    // Nodes carry live simulation coordinates, so they cannot be compared by
+    // value — the signature is over what actually determines the layout.
+    const signature = `${nodes.map((n) => `${n.id}:${n.degree}`).join(',')}|${links
+      .map((l) => `${(l.source as GraphNode).id}>${(l.target as GraphNode).id}`)
+      .join(',')}`
+    if (previous.current?.signature === signature) return previous.current.value
+
+    const value = { nodes, links }
+    previous.current = { signature, value }
+    return value
   }, [index, scope, activeNote, depth])
 
   /* ---------------------------------------------------------------- sizing */
@@ -144,15 +161,25 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
   }, [])
 
   /* ------------------------------------------------------------- rendering */
-  const draw = useCallback(() => {
-    const cv = canvas.current
-    if (!cv || !size.w || !size.h) return
-    const ctx = cv.getContext('2d')
-    if (!ctx) return
+  // Which node is highlighted is read through a ref rather than closed over, so
+  // that opening a note does not give `draw` a new identity — which used to
+  // restart the whole force simulation and reset the pan (see the simulation
+  // effect below).
+  const activeRef = useRef(activeNote)
+  activeRef.current = activeNote
+  useEffect(() => {
+    // The highlight still has to repaint when it changes; it just must not
+    // invalidate the simulation to do it.
+    frame.current = requestAnimationFrame(() => drawRef.current())
+  }, [activeNote])
 
+  // Resolved once per theme rather than inside the frame: `getComputedStyle` on
+  // the document element forces a style recalculation, and this sits directly
+  // in the `requestAnimationFrame` callback the simulation ticks.
+  const palette = useMemo(() => {
     const style = getComputedStyle(document.documentElement)
     const token = (name: string): string => style.getPropertyValue(`--lum-${name}`).trim()
-    const colors = {
+    return {
       bg: token('bg'),
       node: token('graph-node'),
       active: token('graph-node-active') || token('accent'),
@@ -160,8 +187,22 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
       edge: token('graph-edge'),
       edgeActive: token('graph-edge-active'),
       label: token('graph-label') || token('text-muted'),
-      accent: token('accent')
+      accent: token('accent'),
+      fontUi: style.getPropertyValue('--lum-font-ui')
     }
+    // `mode` is the trigger, not an input: the values come from the DOM, and a
+    // theme switch is the only thing that changes them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  const draw = useCallback(() => {
+    const cv = canvas.current
+    if (!cv || !size.w || !size.h) return
+    const ctx = cv.getContext('2d')
+    if (!ctx) return
+
+    const colors = palette
+    const activeNote = activeRef.current
 
     const dpr = window.devicePixelRatio || 1
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -227,7 +268,7 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
     // Labels only where they will be readable and not a solid wall of text.
     const showLabels = k > 0.75 || nodesRef.current.length < 40
     if (showLabels) {
-      ctx.font = `${11 / k}px ${style.getPropertyValue('--lum-font-ui')}`
+      ctx.font = `${11 / k}px ${palette.fontUi}`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
       for (const node of nodesRef.current) {
@@ -241,7 +282,12 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
     }
 
     ctx.restore()
-  }, [size, activeNote, perf, mode])
+  }, [size, perf, palette])
+
+  // A stable handle on the current `draw`, so effects can repaint without
+  // taking a dependency on its identity.
+  const drawRef = useRef(draw)
+  drawRef.current = draw
 
   /* ------------------------------------------------------------ simulation */
   useEffect(() => {
@@ -250,7 +296,7 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
     linksRef.current = graph.links
 
     if (!graph.nodes.length || !size.w) {
-      draw()
+      drawRef.current()
       return
     }
 
@@ -265,23 +311,32 @@ export default function GraphView({ scope, depth = 2 }: Props): React.JSX.Elemen
 
     simulation.on('tick', () => {
       cancelAnimationFrame(frame.current)
-      frame.current = requestAnimationFrame(draw)
+      frame.current = requestAnimationFrame(() => drawRef.current())
     })
     // Settling the simulation is what keeps an open graph at zero CPU.
-    simulation.on('end', draw)
+    simulation.on('end', () => drawRef.current())
 
     sim.current = simulation
-    view.current = { x: size.w / 2, y: size.h / 2, k: view.current.k }
+    // Centre only the first time the graph is laid out. Re-centring on every
+    // rebuild threw away a pan the user had arranged, which — since clicking a
+    // node used to trigger a rebuild — happened on the graph's primary gesture.
+    if (!centred.current) {
+      view.current = { x: size.w / 2, y: size.h / 2, k: view.current.k }
+      centred.current = true
+    }
 
     return () => {
       simulation.stop()
       cancelAnimationFrame(frame.current)
     }
-  }, [graph, size.w, size.h, perf, draw])
+    // `draw` is deliberately absent: it changes identity with the theme and the
+    // canvas size, neither of which is a reason to restart the simulation. It
+    // is reached through `drawRef` above for exactly that reason.
+  }, [graph, size.w, size.h, perf])
 
   useEffect(() => {
     draw()
-  }, [draw, mode])
+  }, [draw])
 
   /* --------------------------------------------------------- interactions */
   const toWorld = (e: React.PointerEvent | React.MouseEvent): { x: number; y: number } => {

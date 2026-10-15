@@ -1,3 +1,4 @@
+import { trackWork } from './pendingWork'
 /**
  * Turning a clipped page into a note.
  *
@@ -17,6 +18,7 @@ import { clipFrontmatter, clipNoteName, isHttpUrl, type ClipPayload } from '@sha
 import { encodeTarget, joinPath } from '@shared/markdown-parse'
 import { openNote } from './actions'
 import { useSettings } from '../store/settingsStore'
+import { useProfiles } from '../store/profileStore'
 import { useVault } from '../store/vaultStore'
 import { toast } from '../store/uiStore'
 
@@ -161,7 +163,7 @@ function converter(): TurndownService {
  * are left pointing at the original URL rather than dropped — a remote image
  * that still loads beats a broken embed.
  */
-async function localizeImages(body: HTMLElement, folder: string): Promise<number> {
+async function localizeImages(body: HTMLElement, folder: string, vault: string): Promise<number> {
   const images = Array.from(body.querySelectorAll('img'))
     .map((img) => ({ img, src: img.getAttribute('src') ?? '' }))
     .filter(({ src }) => isHttpUrl(src))
@@ -170,12 +172,14 @@ async function localizeImages(body: HTMLElement, folder: string): Promise<number
   // One request per distinct URL, however many times the page uses it.
   const unique = [...new Set(images.map(({ src }) => src))]
   const saved = new Map<string, string>()
-  await Promise.all(
-    unique.map(async (src) => {
-      const path = await window.lumina.clipper.saveImage(folder, src)
+  const limited = unique.slice(0, 32)
+  for (let i = 0; i < limited.length; i += 4) {
+    if (useVault.getState().vault?.path !== vault) throw new Error('Vault changed while clipping; the clip is kept for retry')
+    await Promise.all(limited.slice(i, i + 4).map(async (src) => {
+      const path = await window.lumina.clipper.saveImage(folder, src, vault)
       if (path) saved.set(src, path)
-    })
-  )
+    }))
+  }
 
   for (const { img, src } of images) {
     const local = saved.get(src)
@@ -224,7 +228,9 @@ function markdownFor(clip: ClipPayload, body: HTMLElement | null): string {
  * has already told the browser the clip was accepted, so a failure here has to
  * surface in the app rather than being swallowed.
  */
-export async function clipToNote(clip: ClipPayload): Promise<string | null> {
+async function clipToNoteImpl(clip: ClipPayload): Promise<string | null> {
+  const vault = useVault.getState().vault?.path
+  if (!vault) return null
   const { clipper } = useSettings.getState().settings
   const folder = clipper.folder || 'Clippings'
 
@@ -236,7 +242,7 @@ export async function clipToNote(clip: ClipPayload): Promise<string | null> {
   let imageFolder = ''
   if (body && clipper.downloadImages) {
     imageFolder = joinPath(folder, 'images')
-    await localizeImages(body, imageFolder)
+    await localizeImages(body, imageFolder, vault)
   }
 
   const parts = [clipFrontmatter(clip, clipper.tags)]
@@ -250,12 +256,13 @@ export async function clipToNote(clip: ClipPayload): Promise<string | null> {
   if (markdown) parts.push(`\n${markdown}\n`)
 
   const name = clipNoteName(clip.title, clip.url, new Date(clip.clippedAt))
-  const created = await window.lumina.notes.create(joinPath(folder, name), parts.join(''))
+  const created = await window.lumina.notes.create(joinPath(folder, name), parts.join(''), vault)
   if (!created.ok || !created.data) {
     toast(created.error ?? 'Could not save the clip', 'error')
     return null
   }
 
+  if (useVault.getState().vault?.path !== vault) return created.data
   if (clipper.openOnClip) openNote(created.data, { newTab: true })
   else toast(`Clipped “${clip.title || hostOf(clip.url)}”`)
   return created.data
@@ -278,6 +285,7 @@ function hostOf(url: string): string {
  * browser already reported as sent, so these are queued rather than counted.
  */
 const pending: ClipPayload[] = []
+let draining = false
 
 export function requestClip(clip: ClipPayload): void {
   pending.push(clip)
@@ -286,13 +294,20 @@ export function requestClip(clip: ClipPayload): void {
 
 /** Called again once a vault opens, so a clip taken at the lock screen lands. */
 export async function drainClips(): Promise<void> {
-  if (!useVault.getState().vault) return
-  while (pending.length) {
-    const clip = pending.shift() as ClipPayload
-    try {
-      await clipToNote(clip)
-    } catch (err) {
-      toast(`Could not save the clip: ${(err as Error).message}`, 'error')
+  if (document.body.inert || draining || !useVault.getState().vault || useProfiles.getState().status !== 'ready') return
+  draining = true
+  try {
+    while (pending.length && useProfiles.getState().status === 'ready') {
+      const clip = pending[0]
+      try {
+        if (!await clipToNote(clip)) break
+        pending.shift()
+      } catch (err) {
+        toast(`Could not save the clip; kept for retry: ${(err as Error).message}`, 'error')
+        break
+      }
     }
-  }
+  } finally { draining = false }
 }
+
+export const clipToNote = trackWork(clipToNoteImpl)

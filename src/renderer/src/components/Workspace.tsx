@@ -1,3 +1,4 @@
+import { useDeferredValue, useMemo, useEffect } from 'react'
 import { isNoteTab } from '@shared/types'
 import Editor from '../editor/Editor'
 import ReadView from '../editor/ReadView'
@@ -6,7 +7,7 @@ import TabBar from './TabBar'
 import HomeView from '../home/HomeView'
 import { Icon } from './Icon'
 import { countWords } from '@shared/markdown-parse'
-import { promptNewNote } from '../lib/actions'
+import { promptNewNote, holdNote, dropNote, releaseNote } from '../lib/actions'
 import { getCommand, hotkeyFor, runCommand } from '../lib/commands'
 import { acceleratorChips } from '../lib/hotkeys'
 import { useEditor } from '../store/editorStore'
@@ -67,6 +68,10 @@ function PrimaryPane(): React.JSX.Element {
 
 /** The second, split-view pane — a single note, no tabs of its own. */
 function SplitPane({ path }: { path: string }): React.JSX.Element {
+  useEffect(() => {
+    holdNote(path)
+    return () => { dropNote(path); void releaseNote(path) }
+  }, [path])
   const closeSplit = useWorkspace((s) => s.closeSplit)
 
   return (
@@ -86,10 +91,14 @@ function SplitPane({ path }: { path: string }): React.JSX.Element {
 function WordCountBar({ path }: { path: string }): React.JSX.Element | null {
   const show = useSettings((s) => s.settings.editor.showWordCount)
   const content = useEditor((s) => s.buffers[path]?.content)
+  // Same reasoning as the status bar: `countWords` is a full-document pass, so
+  // it is deferred and memoised rather than run on every keystroke. Hooks come
+  // before the early return so their order stays stable when the setting flips.
+  const deferredContent = useDeferredValue(content ?? '')
+  const words = useMemo(() => show ? countWords(deferredContent) : 0, [deferredContent, show])
 
   if (!show || content === undefined) return null
 
-  const words = countWords(content)
   return (
     <div className="word-count-bar">
       {words} word{words === 1 ? '' : 's'} · {content.length} character{content.length === 1 ? '' : 's'}

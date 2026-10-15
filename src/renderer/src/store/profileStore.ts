@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import type { Profile } from '@shared/types'
 import { useEditor } from './editorStore'
-import { useVault } from './vaultStore'
-import { WORKSPACE_INITIAL, useWorkspace } from './workspaceStore'
+import { toast } from './uiStore'
 
 type Status = 'loading' | 'picker' | 'locked' | 'ready'
 
@@ -86,7 +85,8 @@ export const useProfiles = create<ProfileStore>((set, get) => ({
   },
 
   signOut: async () => {
-    await useEditor.getState().saveAll()
+    if (!await useEditor.getState().saveAll()) { toast('Resolve unsaved notes before signing out', 'error'); return }
+    try { await window.lumina.vault.close() } catch (error) { toast(String(error), 'error'); return }
     await window.lumina.profiles.signOut()
     set({ status: 'picker', activeId: null, pendingId: null })
   },
@@ -103,24 +103,25 @@ export const useProfiles = create<ProfileStore>((set, get) => ({
   }
 }))
 
+let finalizing = false
 async function finalize(id: string): Promise<void> {
-  const profile = useProfiles.getState().profiles.find((p) => p.id === id)
+  if (finalizing) return
+  const previous = useProfiles.getState()
+  const profile = previous.profiles.find((p) => p.id === id)
   if (!profile) return
-  await useEditor.getState().saveAll()
-  if (!profile.passwordHash) await window.lumina.profiles.switch(id)
-  useProfiles.setState({ status: 'ready', activeId: id, pendingId: null, error: null })
-  if (profile.vaultPath) {
-    try {
+  finalizing = true
+  try {
+    if (!await useEditor.getState().saveAll()) throw new Error('Resolve unsaved notes before switching profiles')
+    // The opened event associates the vault with this profile.
+    useProfiles.setState({ activeId: id })
+    if (profile.vaultPath) {
       const payload = await window.lumina.vault.open(profile.vaultPath)
-      if (payload) return
-    } catch {
-      // Folder moved or deleted — fall through to the welcome screen, same as
-      // the old lastVault auto-open behaviour.
-    }
-  }
-  // No vault for this profile yet (or it failed to open) — drop whatever the
-  // previous profile had in view rather than leaking it through.
-  useVault.getState().clearVault()
-  useEditor.getState().reset()
-  useWorkspace.getState().hydrate(WORKSPACE_INITIAL)
+      if (!payload) throw new Error('The profile vault is unavailable. Choose another folder.')
+    } else await window.lumina.vault.close()
+    if (!profile.passwordHash) await window.lumina.profiles.switch(id)
+    useProfiles.setState({ status: 'ready', activeId: id, pendingId: null, error: null })
+  } catch (error) {
+    useProfiles.setState({ activeId: previous.activeId, status: previous.status, error: (error as Error).message })
+    toast((error as Error).message, 'error')
+  } finally { finalizing = false }
 }

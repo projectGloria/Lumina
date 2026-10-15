@@ -32,25 +32,61 @@ extraResources:
 asar: true
 compression: normal
 
-# Double-clicking a note opens it in Lumina. The installer registers these so
-# the app shows up under "Open with"; Windows still lets the user decide which
-# editor owns the extension by default.
+# Double-clicking a document opens it in Lumina. Every entry is `role: Editor`,
+# so the app shows up under "Open with" and Windows still lets the user decide
+# which editor owns an extension by default — registering these does not take
+# .json away from whatever they already use.
+#
+# Which of the two applications actually opens the file is decided at launch by
+# `src/main/fileRoute.ts`: a markdown note inside a vault goes to Vault,
+# everything below goes to Quick Note. The markdown types therefore carry the
+# Lumina icon and the rest carry Quick Note's, which is the app that will open
+# them. Keep this list in step with `TEXT_EXTENSIONS` in `src/shared/textFiles.ts`
+# — a type registered here that Quick Note refuses would open an error instead
+# of a file.
 fileAssociations:
-  - ext: md
+  - ext: [md, markdown, mdx]
     name: Markdown Document
     description: Markdown note
     role: Editor
     icon: resources/icon.ico
-  - ext: markdown
-    name: Markdown Document
-    description: Markdown note
+  - ext: [txt, text, log, rst, adoc, tex]
+    name: Text Document
+    description: Plain text document
     role: Editor
-    icon: resources/icon.ico
-  - ext: mdx
-    name: Markdown Document
-    description: Markdown note
+    icon: resources/quicknote-icon.ico
+  - ext: [ini, cfg, conf, config, properties, env, toml, editorconfig]
+    name: Configuration File
+    description: Configuration file
     role: Editor
-    icon: resources/icon.ico
+    icon: resources/quicknote-icon.ico
+  - ext: [json, json5, jsonc, yaml, yml, xml, csv, tsv, plist]
+    name: Data Document
+    description: Structured data document
+    role: Editor
+    icon: resources/quicknote-icon.ico
+  - ext: [html, htm, xhtml, css, scss, sass, less, vue, svelte, svg]
+    name: Web Document
+    description: Web source file
+    role: Editor
+    icon: resources/quicknote-icon.ico
+  - ext: [js, mjs, cjs, jsx, ts, tsx, mts, cts, py, pyw, rb, go, rs, lua, pl, php, r,
+          c, h, cpp, cc, cxx, hpp, hh, cs, java, kt, kts, swift, scala, dart,
+          sql, graphql, gql, proto]
+    name: Source File
+    description: Source code file
+    role: Editor
+    icon: resources/quicknote-icon.ico
+  - ext: [sh, bash, zsh, fish, ps1, psm1, bat, cmd]
+    name: Script File
+    description: Shell or batch script
+    role: Editor
+    icon: resources/quicknote-icon.ico
+  - ext: [gradle, cmake, mk, make, dockerfile, gitignore, gitattributes, patch, diff]
+    name: Build File
+    description: Build or version-control file
+    role: Editor
+    icon: resources/quicknote-icon.ico
 
 win:
   target:

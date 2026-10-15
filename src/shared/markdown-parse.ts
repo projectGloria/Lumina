@@ -399,54 +399,54 @@ export function extractLinks(src: string): RawLink[] {
  * Filenames beat aliases deliberately: renaming a note should not be quietly
  * overridden by an alias someone declared on an unrelated note.
  */
+type LinkLookup = { literal: Map<string, string>; stem: Map<string, string>; name: Map<string, string>; filename: Map<string, string> }
+const linkLookups = new WeakMap<readonly string[], LinkLookup>()
+
+function linkLookup(paths: readonly string[]): LinkLookup {
+  const cached = linkLookups.get(paths)
+  if (cached) return cached
+  const lookup: LinkLookup = { literal: new Map(), stem: new Map(), name: new Map(), filename: new Map() }
+  for (const path of paths) {
+    const key = normalizePath(path).toLowerCase()
+    if (!lookup.literal.has(key)) lookup.literal.set(key, path)
+    const stem = stripExtension(key)
+    if (!lookup.stem.has(stem)) lookup.stem.set(stem, path)
+    for (const [map, name] of [[lookup.name, basename(stem)], [lookup.filename, basename(key)]] as const) {
+      const previous = map.get(name)
+      if (!previous || path.split('/').length < previous.split('/').length) map.set(name, path)
+    }
+  }
+  linkLookups.set(paths, lookup)
+  return lookup
+}
+
 export function resolveLink(
   target: string,
   fromPath: string,
   allPaths: readonly string[],
   aliases?: ReadonlyMap<string, string>
 ): string | null {
-  const t = normalizePath(target)
-  const tNoExt = stripExtension(t).toLowerCase()
-  const sourceDir = dirname(fromPath)
-
-  // Relative targets like `../Notes/Thing` resolve against the source folder.
-  if (t.startsWith('../') || t.startsWith('./')) {
-    const parts = (sourceDir ? sourceDir.split('/') : []).concat(t.split('/'))
-    const stack: string[] = []
-    for (const part of parts) {
-      if (part === '.' || part === '') continue
-      if (part === '..') stack.pop()
-      else stack.push(part)
+  const lookup = linkLookup(allPaths)
+  const raw = target.replace(/\\/g, '/')
+  const sourceDir = dirname(fromPath).toLowerCase()
+  const explicitExtension = isMarkdownPath(raw)
+  const map = explicitExtension ? lookup.literal : lookup.stem
+  const keyFor = (value: string): string => (explicitExtension ? value : stripExtension(value)).toLowerCase()
+  if (raw.startsWith('../') || raw.startsWith('./')) {
+    const stack = sourceDir ? sourceDir.split('/') : []
+    for (const part of raw.split('/')) {
+      if (part === '..') {
+        if (!stack.length) return null
+        stack.pop()
+      } else if (part && part !== '.') stack.push(part)
     }
-    const abs = stripExtension(stack.join('/')).toLowerCase()
-    const hit = allPaths.find((p) => stripExtension(p).toLowerCase() === abs)
-    if (hit) return hit
+    return map.get(keyFor(stack.join('/'))) ?? null
   }
-
-  // A target that spells out its extension means that file and no other, so
-  // `[[Note.mdx]]` cannot land on `Note.md` in a vault holding both.
-  if (isMarkdownPath(t)) {
-    const tLower = t.toLowerCase()
-    const literal = allPaths.find((p) => p.toLowerCase() === tLower)
-    if (literal) return literal
-  }
-
-  let exact: string | null = null
-  let sameFolder: string | null = null
-  let shallowest: string | null = null
-
-  for (const p of allPaths) {
-    const pNoExt = stripExtension(p).toLowerCase()
-    if (pNoExt === tNoExt) {
-      exact = p
-      break
-    }
-    if (basename(pNoExt) !== basename(tNoExt)) continue
-    if (dirname(p) === sourceDir && !sameFolder) sameFolder = p
-    if (!shallowest || p.split('/').length < shallowest.split('/').length) shallowest = p
-  }
-
-  return exact ?? sameFolder ?? shallowest ?? aliases?.get(tNoExt) ?? null
+  const key = keyFor(normalizePath(raw))
+  const name = basename(key)
+  return map.get(key) ?? map.get(joinPath(sourceDir, name)) ??
+    (explicitExtension ? lookup.filename : lookup.name).get(name) ??
+    aliases?.get(key) ?? null
 }
 
 /**
@@ -491,9 +491,14 @@ export function toPlainText(src: string): string {
     .replace(/\r/g, '')
 }
 
+let countedText: string | null = null
+let countedWords = 0
 export function countWords(text: string): number {
+  if (text === countedText) return countedWords
   const m = toPlainText(text).match(/[\p{L}\p{N}'’-]+/gu)
-  return m ? m.length : 0
+  countedText = text
+  countedWords = m ? m.length : 0
+  return countedWords
 }
 
 /**

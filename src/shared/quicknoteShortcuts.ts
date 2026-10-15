@@ -6,7 +6,9 @@ export interface ShortcutDefinition {
 
 export const DEFAULT_SHORTCUTS: Record<string, ShortcutDefinition> = {
   newDraft: { name: 'New Note', description: 'Create a new blank note draft', defaultKey: 'Ctrl+N' },
-  save: { name: 'Save As…', description: 'Save current note to a file', defaultKey: 'Ctrl+S' },
+  open: { name: 'Open File', description: 'Open an existing file in a new tab', defaultKey: 'Ctrl+O' },
+  save: { name: 'Save', description: 'Write the current file to disk, or ask where to put a new note', defaultKey: 'Ctrl+S' },
+  saveAs: { name: 'Save As…', description: 'Save the current tab under a new name', defaultKey: 'Ctrl+Shift+S' },
   find: { name: 'Find in Note', description: 'Open Find & Replace bar', defaultKey: 'Ctrl+F' },
   replace: { name: 'Replace', description: 'Open Replace field', defaultKey: 'Ctrl+H' },
   closeTab: { name: 'Close Note', description: 'Close active note draft', defaultKey: 'Ctrl+W' },
@@ -17,7 +19,8 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutDefinition> = {
   nextTab: { name: 'Next Note', description: 'Switch to next note tab', defaultKey: 'Ctrl+PageDown' },
   prevTab: { name: 'Previous Note', description: 'Switch to previous note tab', defaultKey: 'Ctrl+PageUp' },
   openTheme: { name: 'Theme Editor', description: 'Open Theme & Font Customizer', defaultKey: 'Ctrl+Alt+T' },
-  openShortcuts: { name: 'Shortcut Editor', description: 'Open Keyboard Shortcuts Editor', defaultKey: 'Ctrl+Alt+K' }
+  openShortcuts: { name: 'Shortcut Editor', description: 'Open Keyboard Shortcuts Editor', defaultKey: 'Ctrl+Alt+K' },
+  toggleReadMode: { name: 'Toggle Read Mode', description: 'Toggle Markdown preview / read mode', defaultKey: 'Ctrl+E' }
 }
 
 export interface KeyPressLike {

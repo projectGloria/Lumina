@@ -3,6 +3,7 @@ import { CH } from '@shared/channels'
 import type { QuickNoteSettings, Settings } from '@shared/types'
 import {
   flushRenderer,
+  resumeRenderer,
   onSettingsChanged,
   openFileFromDisk,
   pushQuickNote,
@@ -101,17 +102,18 @@ if (!app.requestSingleInstanceLock()) {
       // flush still runs: the window may not come back before the machine does.
       if (quickNote.closeToTray && !allowQuit) {
         event.preventDefault()
-        void flushRenderer().finally(() => {
+        void flushRenderer().then(() => {
+          resumeRenderer()
           if (!win.isDestroyed()) win.hide()
-        })
+        }).catch(() => {})
         return
       }
       if (flushed) return
       event.preventDefault()
-      flushed = true
-      void flushRenderer().finally(() => {
+      void flushRenderer().then(() => {
+        flushed = true
         if (!win.isDestroyed()) win.close()
-      })
+      }).catch(() => {})
     })
     win.on('closed', () => {
       if (mainWindow === win) mainWindow = null
@@ -191,10 +193,7 @@ if (!app.requestSingleInstanceLock()) {
   queueFiles(fileArgsFrom(process.argv, app.isPackaged))
 
   app.on('second-instance', (_event, argv) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
+    showWindow()
     // Double-clicking a note while Lumina is running launches a second copy,
     // which hands its arguments to us and exits.
     queueFiles(fileArgsFrom(argv, app.isPackaged))
@@ -261,18 +260,23 @@ if (!app.requestSingleInstanceLock()) {
   // idempotent: saving a buffer that is already clean does nothing.
   let quitting = false
   app.on('before-quit', async (event) => {
-    allowQuit = true
-    if (quitting) return
-    releaseQuickNoteShortcut()
-    destroyTray()
-    void stopClipServer()
-    void stopWhisperServer()
+    if (quitting) { event.preventDefault(); return }
     if (!getRoot()) return
     event.preventDefault()
     quitting = true
-    await flushRenderer().catch(() => {})
-    await saveCache().catch(() => {})
-    await teardown()
-    app.exit(0)
+    try {
+      await flushRenderer()
+      allowQuit = true
+      releaseQuickNoteShortcut()
+      destroyTray()
+      await Promise.all([stopClipServer(), stopWhisperServer()])
+      await saveCache()
+      await teardown()
+      app.exit(0)
+    } catch {
+      quitting = false
+      allowQuit = false
+      resumeRenderer()
+    }
   })
 }

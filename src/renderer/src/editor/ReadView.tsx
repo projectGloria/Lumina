@@ -103,12 +103,15 @@ export default function ReadView({ path }: { path: string }): React.JSX.Element 
           }
         }
         if (meta.imagePath && !card.querySelector('.link-banner-thumb')) {
+          const wrap = document.createElement('span')
+          wrap.className = 'link-banner-thumb-wrap'
           const thumb = document.createElement('img')
           thumb.className = 'link-banner-thumb'
           thumb.src = `lumina://vault/${meta.imagePath.split('/').map(encodeURIComponent).join('/')}`
           thumb.alt = ''
-          thumb.addEventListener('error', () => thumb.remove())
-          card.querySelector('.link-banner-mark')?.appendChild(thumb)
+          thumb.addEventListener('error', () => wrap.remove())
+          wrap.appendChild(thumb)
+          card.appendChild(wrap)
         }
       })
     }

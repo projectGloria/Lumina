@@ -1,3 +1,7 @@
+import { StateEffect } from '@codemirror/state'
+import type { EditorView } from '@codemirror/view'
+import { documentPath, trackedSpan, setTrackedSpan } from '../editor/trackedSpan'
+import { useVault } from '../store/vaultStore'
 /**
  * Voice notes and dictation, from pressing record to the text in the note.
  *
@@ -22,6 +26,14 @@ export type VoiceMode = 'note' | 'dictate'
 
 let handle: RecorderHandle | null = null
 let recordingPath: string | null = null
+let recordingVault: string | undefined
+let recordingView: EditorView | null = null
+let recordingIdentity: symbol | null = null
+let generation = 0
+function ownsView(): boolean {
+  return !!recordingView && getActiveView() === recordingView && useVault.getState().vault?.path === recordingVault &&
+    recordingView.state.field(trackedSpan, false)?.identity === recordingIdentity
+}
 
 /**
  * The live segmenter, when dictation is writing as the user speaks.
@@ -49,7 +61,7 @@ function stamp(): string {
  * nothing provisional on screen — either nothing has been said yet, or the
  * last phrase has already settled.
  */
-let interim: { from: number; to: number } | null = null
+
 
 /**
  * Replace the provisional span with `text`, or insert at the caret if there is
@@ -63,30 +75,28 @@ let interim: { from: number; to: number } | null = null
  */
 function writeDictated(text: string, provisional: boolean): boolean {
   const view = getActiveView()
-  if (!view || !recordingPath || activePath() !== recordingPath) {
-    interim = null
+  if (!view || !recordingPath || !ownsView()) {
+    clearInterim()
     return false
   }
 
-  const span = interim
-  const valid =
-    span !== null && span.to <= view.state.doc.length && span.from <= span.to
+  const span = view.state.field(trackedSpan).span
+  const valid = span !== null
   const from = valid ? (span as { from: number; to: number }).from : view.state.selection.main.from
   const to = valid ? (span as { from: number; to: number }).to : view.state.selection.main.to
 
   view.dispatch({
     changes: { from, to, insert: text },
     selection: { anchor: from + text.length },
-    scrollIntoView: true
+    scrollIntoView: true,
+    effects: setTrackedSpan.of(provisional ? { from, to: from + text.length, text } : null)
   })
-
-  interim = provisional ? { from, to: from + text.length } : null
   return true
 }
 
 /** Forget any provisional span, e.g. when a recording ends or is abandoned. */
 function clearInterim(): void {
-  interim = null
+  if (recordingView?.state.field(trackedSpan, false)) recordingView.dispatch({ effects: setTrackedSpan.of(null) })
 }
 
 /**
@@ -98,7 +108,7 @@ function clearInterim(): void {
  */
 function insertAtCaret(text: string): boolean {
   const view = getActiveView()
-  if (!view || !recordingPath || activePath() !== recordingPath) return false
+  if (!view || !recordingPath || !ownsView()) return false
   const sel = view.state.selection.main
   view.dispatch({
     changes: { from: sel.from, to: sel.to, insert: text },
@@ -121,18 +131,26 @@ export async function startVoice(mode: VoiceMode): Promise<void> {
   // second recording there would overwrite the phase the bar is showing and
   // orphan the transcript that is still on its way.
   if (handle || useUi.getState().voice) return
-  const currentPath = activePath()
+  const currentPath = getActiveView()?.state.facet(documentPath) || activePath()
   if (!getActiveView() || !currentPath) {
     toast('Open a note first', 'error')
     return
   }
+  const request = ++generation
   recordingPath = currentPath
+  recordingVault = useVault.getState().vault?.path
+  recordingView = getActiveView()
+  if (!recordingView!.state.field(trackedSpan, false)) recordingView!.dispatch({ effects: StateEffect.appendConfig.of(trackedSpan) })
+  recordingIdentity = recordingView!.state.field(trackedSpan).identity
 
   const ui = useUi.getState()
   ui.setVoice({ mode, phase: 'starting', startedAt: Date.now() })
   try {
-    handle = await startRecording(useSettings.getState().settings.voice.deviceId)
+    const started = await startRecording(useSettings.getState().settings.voice.deviceId)
+    if (request !== generation) { started.cancel(); return }
+    handle = started
   } catch (err) {
+    if (request !== generation) return
     recordingPath = null
     ui.setVoice(null)
     toast((err as Error).message, 'error')
@@ -145,17 +163,19 @@ export async function startVoice(mode: VoiceMode): Promise<void> {
   const settings = useSettings.getState().settings.voice
   if (mode === 'dictate' && settings.liveDictation) {
     const failure = await window.lumina.voice.liveStart()
+    if (request !== generation) return
     if (failure) {
       toast(`${failure} — the transcript will arrive when you finish`, 'info')
     } else if (handle) {
       clearInterim()
       live = startLiveDictation(handle.stream, {
         // Provisional: rewritten in place each time the guess improves.
-        onInterim: (text) => writeDictated(text, true),
+        onInterim: (text) => { if (request === generation) writeDictated(text, true) },
         // Settled: the space ends the span, so the next phrase starts after it.
         // A space rather than a newline, because consecutive phrases are one
         // paragraph and joining them back up is harder than splitting them.
         onFinal: (text) => {
+          if (request !== generation) return
           if (!writeDictated(`${text} `, false)) toast(text)
         },
         onPending: (pending) => useUi.getState().setVoicePending(pending)
@@ -166,6 +186,7 @@ export async function startVoice(mode: VoiceMode): Promise<void> {
 
 /** Throw the recording away and release the microphone. */
 export function cancelVoice(): void {
+  generation++
   live?.cancel()
   live = null
   clearInterim()
@@ -185,6 +206,8 @@ export function cancelVoice(): void {
  * a failed transcription costs only the words.
  */
 export async function stopVoice(): Promise<void> {
+  const request = generation
+  const vault = recordingVault
   const current = handle
   if (!current) return
   handle = null
@@ -217,6 +240,7 @@ export async function stopVoice(): Promise<void> {
       return
     }
 
+    if (request !== generation) return
     const voice = useSettings.getState().settings.voice
     const keepAudio = mode === 'note' && voice.keepAudio
     let savedPath: string | null = null
@@ -226,7 +250,7 @@ export async function stopVoice(): Promise<void> {
       const res = await window.lumina.files.saveAttachment(
         voice.folder || 'attachments',
         name,
-        await recording.blob.arrayBuffer()
+        await recording.blob.arrayBuffer(), vault
       )
       if (!res.ok || !res.data) {
         toast(res.error ?? 'Could not save the recording', 'error')
@@ -263,6 +287,7 @@ export async function stopVoice(): Promise<void> {
 
       const wav = await toWhisperWav(recording.blob)
       const result = await window.lumina.voice.transcribe(wav, voice.language)
+      if (request !== generation) return
       if (!result.ok) {
         toast(result.error ?? 'Transcription failed', 'error')
         return
@@ -281,8 +306,7 @@ export async function stopVoice(): Promise<void> {
       toast(`Transcription failed: ${(err as Error).message}`, 'error')
     }
   } finally {
-    recordingPath = null
-    ui.setVoice(null)
+    if (request === generation) { recordingPath = null; ui.setVoice(null) }
   }
 }
 

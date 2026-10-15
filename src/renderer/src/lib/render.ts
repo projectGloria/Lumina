@@ -86,7 +86,12 @@ function bannerifyLoneLinks(doc: Document): void {
     const url = anchor.getAttribute('href') ?? ''
     if (!/^https?:\/\//i.test(url)) continue
 
-    const label = (anchor.textContent ?? '').trim()
+    const rawLabel = (anchor.textContent ?? '').trim()
+    const bannerMatch = /^(?:banner|card|bookmark)(?::\s*(.*))?$/i.exec(rawLabel)
+    const isBanner = !!bannerMatch || /#banner$/i.test(url)
+    if (!isBanner) continue
+
+    const customLabel = bannerMatch?.[1]?.trim() || (!bannerMatch && !/#banner$/i.test(rawLabel) ? rawLabel : '')
     const { host } = parseLinkUrl(url)
     const fallback = fallbackLinkDetails(url)
 
@@ -107,11 +112,11 @@ function bannerifyLoneLinks(doc: Document): void {
     body.className = 'link-banner-body'
     const title = doc.createElement('span')
     title.className = 'link-banner-title'
-    const hasLabel = !!label && label !== url
-    title.textContent = hasLabel ? label : fallback.title
+    const hasCustomLabel = !!customLabel && customLabel !== url
+    title.textContent = hasCustomLabel ? customLabel : fallback.title
     // Guessed from the URL, so a fetched page title may replace it later
     // (see ReadView); a label the note actually wrote never gets overwritten.
-    if (!hasLabel) title.dataset.fromUrl = 'true'
+    if (!hasCustomLabel) title.dataset.fromUrl = 'true'
     body.appendChild(title)
     const description = doc.createElement('span')
     description.className = 'link-banner-desc'

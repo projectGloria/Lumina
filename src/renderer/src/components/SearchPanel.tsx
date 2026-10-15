@@ -1,3 +1,4 @@
+import { useVault } from '../store/vaultStore'
 import { useEffect, useRef, useState } from 'react'
 import type { SearchHit } from '@shared/types'
 import { dirname } from '@shared/markdown-parse'
@@ -8,6 +9,7 @@ import { useUi } from '../store/uiStore'
 import { useWorkspace } from '../store/workspaceStore'
 
 export default function SearchPanel(): React.JSX.Element {
+  const index = useVault((s) => s.index)
   const query = useUi((s) => s.searchQuery)
   const setQuery = useUi((s) => s.setSearchQuery)
   const [hits, setHits] = useState<SearchHit[]>([])
@@ -53,7 +55,7 @@ export default function SearchPanel(): React.JSX.Element {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [query, titleOnly, scoped, currentFolder])
+  }, [query, titleOnly, scoped, currentFolder, index])
 
   const totalMatches = hits.reduce((sum, h) => sum + Math.max(1, h.matches.length), 0)
 
@@ -89,13 +91,17 @@ export default function SearchPanel(): React.JSX.Element {
         >
           Titles only
         </button>
+        {/* Named rather than just "This folder": the scope follows the active
+            note, so switching tabs changes which folder is being searched, and
+            the results moved underneath the user with nothing on screen saying
+            why. */}
         <button
           className={`search-filter${scoped ? ' on' : ''}`}
           data-tooltip={currentFolder ? `Scope to ${currentFolder}` : 'Open a note to scope to its folder'}
           disabled={!currentFolder}
           onClick={() => setScoped((v) => !v)}
         >
-          This folder
+          {scoped && currentFolder ? `In ${currentFolder.split('/').pop()}` : 'This folder'}
         </button>
       </div>
 

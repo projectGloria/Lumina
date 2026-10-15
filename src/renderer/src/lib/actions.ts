@@ -1,3 +1,4 @@
+import { trackWork } from './pendingWork'
 /**
  * Operations that span more than one store.
  *
@@ -123,7 +124,7 @@ export function dropNote(path: string): void {
 /** Whether anything still needs this buffer: a tab, or a holder. */
 function wanted(path: string): boolean {
   if ((holds.get(path) ?? 0) > 0) return true
-  return useWorkspace.getState().tabs.some((tab) => tab.path === path)
+  return useWorkspace.getState().splitPath === path || useWorkspace.getState().tabs.some((tab) => tab.path === path)
 }
 
 /**
@@ -148,9 +149,19 @@ export async function releaseNote(path: string): Promise<void> {
 
 /* ------------------------------------------------------------ creating */
 
+/**
+ * The vault a write is being composed against, stamped onto every create and
+ * save so main can refuse one that arrives after the root has moved.
+ */
+function currentVault(): string | undefined {
+  return useVault.getState().vault?.path
+}
+
 /** Create a note and open it. Returns the path actually used. */
-export async function createNote(folder = '', title = 'Untitled', content = ''): Promise<string | null> {
-  const res = await window.lumina.notes.create(joinPath(folder, `${title}.md`), content)
+async function createNoteImpl(folder = '', title = 'Untitled', content = ''): Promise<string | null> {
+  const vault = currentVault()
+  const res = await window.lumina.notes.create(joinPath(folder, `${title}.md`), content, vault)
+  if (vault !== currentVault()) return null
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the note', 'error')
     return null
@@ -161,9 +172,12 @@ export async function createNote(folder = '', title = 'Untitled', content = ''):
 }
 
 /** Create a note at `path` if it is not there yet, without opening a tab. */
-export async function ensureNote(path: string, content = ''): Promise<string | null> {
-  if (await window.lumina.notes.exists(path)) return path
-  const res = await window.lumina.notes.create(path, content)
+async function ensureNoteImpl(path: string, content = ''): Promise<string | null> {
+  const vault = currentVault()
+  const exists = await window.lumina.notes.exists(path)
+  if (vault !== currentVault()) return null
+  if (exists) return path
+  const res = await window.lumina.notes.create(path, content, vault)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the note', 'error')
     return null
@@ -172,14 +186,16 @@ export async function ensureNote(path: string, content = ''): Promise<string | n
 }
 
 /** Create the note an unresolved `[[link]]` points at, then open it. */
-export async function createFromLink(target: string, fromPath: string | null): Promise<void> {
+async function createFromLinkImpl(target: string, fromPath: string | null): Promise<void> {
+  const vault = currentVault()
   const path = pathForNewNote(target, fromPath)
   const exists = await window.lumina.notes.exists(path)
+  if (vault !== currentVault()) return
   if (exists) {
     openNote(path)
     return
   }
-  const res = await window.lumina.notes.create(path, `# ${stripExtension(basename(path))}\n\n`)
+  const res = await window.lumina.notes.create(path, `# ${stripExtension(basename(path))}\n\n`, vault)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the note', 'error')
     return
@@ -205,7 +221,7 @@ export function requestQuickNote(): void {
 
 /** Called again once a vault opens, so a note asked for at the lock screen still lands. */
 export async function drainQuickNotes(): Promise<void> {
-  if (!useVault.getState().vault) return
+  if (document.body?.inert || !useVault.getState().vault) return
   while (pendingQuickNotes > 0) {
     pendingQuickNotes--
     await createQuickNote()
@@ -249,7 +265,11 @@ let generatedNoteChain: Promise<void> = Promise.resolve()
 
 /** File a timestamp-named note, without opening it. */
 async function newGeneratedNote(folder: string, content = ''): Promise<string | null> {
-  const res = await window.lumina.notes.create(joinPath(folder, `${quickNoteName()}.md`), content)
+  const res = await window.lumina.notes.create(
+    joinPath(folder, `${quickNoteName()}.md`),
+    content,
+    currentVault()
+  )
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the note', 'error')
     return null
@@ -271,7 +291,8 @@ async function createOrReuseGeneratedNote(folder: string): Promise<string | null
 
 /** Create a timestamped blank note, unless an open generated one is still blank. */
 export function createGeneratedNote(folder = ''): Promise<string | null> {
-  const operation = generatedNoteChain.then(() => createOrReuseGeneratedNote(folder))
+  const vault = currentVault()
+  const operation = generatedNoteChain.then(() => vault === currentVault() ? createOrReuseGeneratedNote(folder) : null)
   generatedNoteChain = operation.then(
     () => undefined,
     () => undefined
@@ -296,7 +317,7 @@ export function createQuickNote(): Promise<string | null> {
  * not open what it writes — the point of capturing from a dashboard is that
  * the dashboard is still in front of you afterwards.
  */
-export async function captureText(
+async function captureTextImpl(
   text: string,
   target: 'quick' | 'daily' = 'quick'
 ): Promise<boolean> {
@@ -321,16 +342,18 @@ export async function captureText(
  * store instead. The buffer is released again unless a tab is holding it, so
  * a board full of widgets does not end up carrying half the vault in memory.
  */
-export async function updateNoteContent(
+async function updateNoteContentImpl(
   path: string,
   edit: (content: string) => string
 ): Promise<boolean> {
   // Held for the length of the write. A tab closing or a widget unmounting
   // part way through must not close the buffer being written through, and two
   // of these running on one note must not close it under each other.
+  const vault = currentVault()
   holdNote(path)
   try {
     await useEditor.getState().open(path)
+    if (vault !== currentVault()) return false
     const buffer = useEditor.getState().buffers[path]
     if (!buffer || buffer.loading || buffer.error) {
       toast(buffer?.error ?? `Could not read ${basename(path)}`, 'error')
@@ -343,7 +366,7 @@ export async function updateNoteContent(
   } finally {
     // The hold goes first, or the release below finds the note still held.
     dropNote(path)
-    await releaseNote(path)
+    if (vault === currentVault()) await releaseNote(path)
   }
 }
 
@@ -353,6 +376,7 @@ export function promptNewNote(folder = ''): void {
     label: 'Name',
     initial: 'Untitled',
     confirmLabel: 'Create',
+    selectLength: 'Untitled'.length,
     onSubmit: async (value) => {
       const name = value.trim()
       if (!name) return 'Give the note a name'
@@ -377,6 +401,56 @@ export function promptNewFolder(parent = ''): void {
   })
 }
 
+/* --------------------------------------------- path bookkeeping, in one place */
+
+/**
+ * Move every stored reference to `from` so it points at `to`.
+ *
+ * A path lives in more places than the tab strip: five settings maps keyed by
+ * path, plus whatever the Home board's widgets have stored. This used to be
+ * seven calls written out at each of the three sites that need them, which is
+ * how the delete path below came to be missing two of them.
+ */
+export function rebasePath(from: string, to: string): void {
+  useEditor.getState().rename(from, to)
+  useWorkspace.getState().renamePathInTabs(from, to)
+  renameStarredPaths(from, to)
+  renameIconOverrides(from, to)
+  renameColorOverrides(from, to)
+  renameCustomIcons(from, to)
+  renamePinnedPaths(from, to)
+  renameWidgetPaths(from, to)
+}
+
+/**
+ * Forget every stored reference to `path` and anything beneath it.
+ *
+ * Used both when Lumina deletes something and when the watcher reports that
+ * something was deleted from outside — those two had drifted apart, so a note
+ * deleted in Explorer left its colour and uploaded icon behind, and a new note
+ * later created at the same path silently inherited both.
+ *
+ * No widget counterpart on purpose: a path that has gone is shown by the card
+ * that stored it, not quietly edited out from under it.
+ */
+export function forgetPath(path: string, explicit = false): void {
+  if (!explicit) {
+    const affected = Object.entries(useEditor.getState().buffers).filter(([p]) => isPathAtOrBelow(p, path))
+    if (affected.some(([, b]) => b.conflict || b.content !== b.saved)) {
+      for (const [p] of affected) useEditor.getState().markConflict(p)
+      toast(`${path} was removed on disk. Your edits are still available; save a recovery copy.`, 'error')
+      return
+    }
+  }
+  useEditor.getState().close(path)
+  useWorkspace.getState().removePathFromTabs(path)
+  removeStarredPaths(path)
+  removeIconOverrides(path)
+  removeColorOverrides(path)
+  removeCustomIcons(path)
+  removePinnedPaths(path)
+}
+
 /* ------------------------------------------------------------ renaming */
 
 export function promptRename(path: string): void {
@@ -392,44 +466,30 @@ export function promptRename(path: string): void {
       const next = value.trim()
       if (!next) return 'Give it a name'
       if (next === name) return
-      await useEditor.getState().saveAll()
+      if (!await useEditor.getState().saveAll()) return 'Resolve unsaved notes before renaming'
       const target = joinPath(dirname(path), isFolder || isMarkdownPath(next) ? next : `${next}.md`)
       const res = await window.lumina.notes.rename(path, target)
       if (!res.ok || !res.data) return res.error ?? 'Could not rename'
-      useEditor.getState().rename(path, res.data)
-      useWorkspace.getState().renamePathInTabs(path, res.data)
-      renameStarredPaths(path, res.data)
-      renameIconOverrides(path, res.data)
-      renameColorOverrides(path, res.data)
-      renameCustomIcons(path, res.data)
-      renamePinnedPaths(path, res.data)
-      renameWidgetPaths(path, res.data)
+      rebasePath(path, res.data)
     }
   })
 }
 
 /** Move a note or folder into another folder, used by tree drag and drop. */
-export async function movePath(path: string, targetFolder: string): Promise<void> {
+async function movePathImpl(path: string, targetFolder: string): Promise<void> {
   const target = joinPath(targetFolder, basename(path))
   if (target === path) return
   if (targetFolder === path || targetFolder.startsWith(`${path}/`)) {
     toast('A folder cannot be moved inside itself', 'error')
     return
   }
-  await useEditor.getState().saveAll()
+  if (!await useEditor.getState().saveAll()) return
   const res = await window.lumina.notes.rename(path, target)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not move', 'error')
     return
   }
-  useEditor.getState().rename(path, res.data)
-  useWorkspace.getState().renamePathInTabs(path, res.data)
-  renameStarredPaths(path, res.data)
-  renameIconOverrides(path, res.data)
-  renameColorOverrides(path, res.data)
-  renameCustomIcons(path, res.data)
-  renamePinnedPaths(path, res.data)
-  renameWidgetPaths(path, res.data)
+  rebasePath(path, res.data)
 }
 
 /* ------------------------------------------------------------ deleting */
@@ -447,13 +507,7 @@ export function confirmDelete(path: string): void {
         toast(res.error ?? 'Could not delete', 'error')
         return
       }
-      useEditor.getState().close(path)
-      useWorkspace.getState().removePathFromTabs(path)
-      removeStarredPaths(path)
-      removeIconOverrides(path)
-      removeColorOverrides(path)
-      removeCustomIcons(path)
-      removePinnedPaths(path)
+      forgetPath(path, true)
     }
   })
 }
@@ -477,12 +531,15 @@ export function dailyNotePath(day = new Date()): string {
  * Split out of `openDailyNote` so Home's daily widget can offer today's note
  * without the command's side effect of opening a tab.
  */
-export async function ensureDailyNote(): Promise<string | null> {
+async function ensureDailyNoteImpl(): Promise<string | null> {
+  const vault = currentVault()
   const { dailyNotes } = useSettings.getState().settings
   const name = formatDate(dailyNotes.format || 'YYYY-MM-DD')
   const path = dailyNotePath()
 
-  if (await window.lumina.notes.exists(path)) return path
+  const exists = await window.lumina.notes.exists(path)
+  if (vault !== currentVault()) return null
+  if (exists) return path
 
   let body = `# ${name}\n\n`
   if (dailyNotes.template) {
@@ -490,7 +547,7 @@ export async function ensureDailyNote(): Promise<string | null> {
     if (tpl.ok && tpl.data) body = applyTemplate(tpl.data.content, name)
   }
 
-  const res = await window.lumina.notes.create(path, body)
+  const res = await window.lumina.notes.create(path, body, vault)
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not create the daily note', 'error')
     return null
@@ -565,13 +622,33 @@ export function setIconOverride(path: string, icon: string | null): void {
   patch({ iconOverrides })
 }
 
+/**
+ * Rebase the keys of a path-keyed settings map, or return null when a rename
+ * elsewhere in the vault did not touch this one.
+ *
+ * The null case is the point: these three used to call `patch` unconditionally,
+ * so every rename queued a settings write — and a settings write reaches the
+ * clip server, the global shortcut and the login item.
+ */
+function rebaseKeys<T>(
+  map: Record<string, T>,
+  from: string,
+  to: string
+): Record<string, T> | null {
+  let changed = false
+  const out: Record<string, T> = {}
+  for (const [path, value] of Object.entries(map)) {
+    const next = rebaseDescendantPath(path, from, to)
+    if (next !== path) changed = true
+    out[next] = value
+  }
+  return changed ? out : null
+}
+
 export function renameIconOverrides(from: string, to: string): void {
   const { settings, patch } = useSettings.getState()
-  const entries = Object.entries(settings.iconOverrides).map(
-    ([path, icon]) => [rebaseDescendantPath(path, from, to), icon] as const
-  )
-  const iconOverrides = Object.fromEntries(entries)
-  patch({ iconOverrides })
+  const iconOverrides = rebaseKeys(settings.iconOverrides, from, to)
+  if (iconOverrides) patch({ iconOverrides })
 }
 
 export function removeIconOverrides(parent: string): void {
@@ -596,10 +673,8 @@ export function setColorOverride(path: string, color: string | null): void {
 
 export function renameColorOverrides(from: string, to: string): void {
   const { settings, patch } = useSettings.getState()
-  const entries = Object.entries(settings.colorOverrides).map(
-    ([path, color]) => [rebaseDescendantPath(path, from, to), color] as const
-  )
-  patch({ colorOverrides: Object.fromEntries(entries) })
+  const colorOverrides = rebaseKeys(settings.colorOverrides, from, to)
+  if (colorOverrides) patch({ colorOverrides })
 }
 
 export function removeColorOverrides(parent: string): void {
@@ -668,10 +743,8 @@ export function setCustomIcon(path: string, iconPath: string | null): void {
 
 export function renameCustomIcons(from: string, to: string): void {
   const { settings, patch } = useSettings.getState()
-  const entries = Object.entries(settings.customIcons).map(
-    ([path, icon]) => [rebaseDescendantPath(path, from, to), icon] as const
-  )
-  patch({ customIcons: Object.fromEntries(entries) })
+  const customIcons = rebaseKeys(settings.customIcons, from, to)
+  if (customIcons) patch({ customIcons })
 }
 
 export function removeCustomIcons(parent: string): void {
@@ -694,13 +767,15 @@ export function removeCustomIcons(parent: string): void {
  * or null when the user cancelled or the copy failed.
  */
 export async function pickHomeCover(): Promise<string | null> {
+  const vault = currentVault()
   const file = await pickImageFile()
+  if (vault !== currentVault()) return null
   if (!file) return null
 
   const res = await window.lumina.files.saveAttachment(
     HOME_COVER_DIR,
     file.name,
-    await file.arrayBuffer()
+    await file.arrayBuffer(), vault
   )
   if (!res.ok || !res.data) {
     toast(res.error ?? 'Could not save the picture', 'error')
@@ -730,6 +805,7 @@ function pickImageFile(): Promise<File | null> {
  * uploaded image never shows up as a note.
  */
 export function uploadCustomIcon(path: string): void {
+  const vault = currentVault()
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
@@ -738,12 +814,12 @@ export function uploadCustomIcon(path: string): void {
     if (!file) return
     void (async () => {
       const buffer = await file.arrayBuffer()
-      const res = await window.lumina.files.saveAttachment(CUSTOM_ICON_FOLDER, file.name, buffer)
+      const res = await window.lumina.files.saveAttachment(CUSTOM_ICON_FOLDER, file.name, buffer, vault)
       if (!res.ok || !res.data) {
         toast(res.error ?? 'Could not save the icon', 'error')
         return
       }
-      setCustomIcon(path, res.data)
+      if (vault === currentVault()) setCustomIcon(path, res.data)
     })()
   }
   input.click()
@@ -774,3 +850,17 @@ export async function openVaultPath(dir: string): Promise<void> {
     toast(`Could not open the vault: ${(err as Error).message}`, 'error')
   }
 }
+
+export const createNote = trackWork(createNoteImpl)
+
+export const ensureNote = trackWork(ensureNoteImpl)
+
+export const createFromLink = trackWork(createFromLinkImpl)
+
+export const ensureDailyNote = trackWork(ensureDailyNoteImpl)
+
+export const updateNoteContent = trackWork(updateNoteContentImpl)
+
+export const captureText = trackWork(captureTextImpl)
+
+export const movePath = trackWork(movePathImpl)

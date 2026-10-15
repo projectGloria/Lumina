@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { BrowserWindow, screen, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import { CH } from '@shared/channels'
 import { saveAppState } from './settings'
 
@@ -114,6 +114,19 @@ export function createWindow(
   })
 
   grantMicrophoneOnly(win)
+
+  if (process.platform === 'win32') {
+    const iconPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.ico')
+      : path.join(app.getAppPath(), 'resources', 'icon.ico')
+    win.setAppDetails({
+      appId: 'com.nihil.lumina',
+      appIconPath: iconPath,
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}"`,
+      relaunchDisplayName: 'Lumina'
+    })
+  }
 
   if (show) win.once('ready-to-show', () => win.show())
 

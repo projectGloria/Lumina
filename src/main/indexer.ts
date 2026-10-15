@@ -186,7 +186,8 @@ export async function buildIndex(): Promise<BuildStats> {
   let parsed = 0
   let reused = 0
 
-  for (const rel of paths) {
+  for (let i = 0; i < paths.length; i += 8) {
+    await Promise.all(paths.slice(i, i + 8).map(async (rel) => {
     const cached = usable ? cache.notes[rel] : undefined
     if (cached && searchLoaded) {
       const mtime = await statMtime(rel)
@@ -194,11 +195,15 @@ export async function buildIndex(): Promise<BuildStats> {
         notes.set(rel, cached)
         markDirty()
         reused++
-        continue
+        return
       }
     }
     if (await indexNote(rel)) parsed++
+    }))
   }
+  const ordered = paths.map((rel) => notes.get(rel)).filter((entry): entry is NoteIndexEntry => !!entry)
+  notes.clear()
+  for (const entry of ordered) notes.set(entry.path, entry)
 
   // Anything left in the cache but gone from disk must leave the search index.
   if (searchLoaded) {
@@ -242,7 +247,10 @@ export async function saveCache(): Promise<void> {
     search: serializeSearch()
   }
   try {
-    await writeJson(cacheFile(vault), payload)
+    // Not pretty-printed: nobody reads this file, and indenting a whole vault's
+    // index plus the serialised search tree is a synchronous stall on the main
+    // process that blocks IPC and the clip listener along with it.
+    await writeJson(cacheFile(vault), payload, false)
   } catch {
     // A cache we cannot write is not worth interrupting the user over.
   }

@@ -98,14 +98,14 @@ export interface StandaloneLink {
  * link is part of a sentence and should stay inline. Only http(s) qualifies;
  * `mailto:` and friends have nothing to preview.
  */
-const BARE_LINE = /^\s*<?(https?:\/\/[^\s<>()]+)>?\s*$/i
-const MD_LINE = /^\s*\[([^\]]*)\]\(\s*<?(https?:\/\/[^\s<>()]+)>?\s*\)\s*$/i
+const BANNER_EXPLICIT_LINE = /^\s*\[(?:banner|card|bookmark)(?::\s*([^\]]*))?\]\(\s*<?(https?:\/\/[^\s<>()]+)>?\s*\)\s*$/i
+const BANNER_HASH_LINE = /^\s*\[([^\]]*)\]\(\s*<?(https?:\/\/[^\s<>()]+)>?\s*#banner\s*\)\s*$/i
 
 export function standaloneLink(lineText: string): StandaloneLink | null {
-  const md = MD_LINE.exec(lineText)
-  if (md) return { label: md[1].trim(), url: md[2] }
-  const bare = BARE_LINE.exec(lineText)
-  if (bare) return { label: '', url: bare[1] }
+  const explicit = BANNER_EXPLICIT_LINE.exec(lineText)
+  if (explicit) return { label: (explicit[1] ?? '').trim(), url: explicit[2] }
+  const hash = BANNER_HASH_LINE.exec(lineText)
+  if (hash) return { label: hash[1].trim(), url: hash[2] }
   return null
 }
 
@@ -131,9 +131,10 @@ function decodeEntities(value: string): string {
 function metaContent(html: string, property: string): string | undefined {
   // Attribute order varies by site, so match a whole tag and read inside it.
   const tags = html.match(/<meta\b[^>]*>/gi) ?? []
+  const propLower = property.toLowerCase()
   for (const tag of tags) {
     const name = tag.match(/(?:property|name)\s*=\s*["']([^"']+)["']/i)?.[1]
-    if (name?.toLowerCase() !== property) continue
+    if (name?.toLowerCase() !== propLower) continue
     const content = tag.match(/content\s*=\s*["']([^"']*)["']/i)?.[1]
     if (content) return decodeEntities(content)
   }
@@ -149,7 +150,7 @@ function metaContent(html: string, property: string): string | undefined {
  * document that a real parser would have to guess its way through anyway.
  */
 export function parseOgTags(html: string): Omit<LinkMetadata, 'fetchedAt'> {
-  const head = html.slice(0, 200_000)
+  const head = html.slice(0, 250_000)
   const title =
     metaContent(head, 'og:title') ??
     metaContent(head, 'twitter:title') ??
@@ -162,7 +163,12 @@ export function parseOgTags(html: string): Omit<LinkMetadata, 'fetchedAt'> {
     metaContent(head, 'twitter:description') ??
     metaContent(head, 'description')
 
-  const image = metaContent(head, 'og:image') ?? metaContent(head, 'twitter:image')
+  const image =
+    metaContent(head, 'og:image') ??
+    metaContent(head, 'og:image:url') ??
+    metaContent(head, 'og:image:secure_url') ??
+    metaContent(head, 'twitter:image') ??
+    metaContent(head, 'twitter:image:src')
 
   return {
     title: title?.replace(/\s+/g, ' ').trim() || undefined,

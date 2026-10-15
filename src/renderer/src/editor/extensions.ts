@@ -1,3 +1,4 @@
+import { documentPath, trackedSpan } from './trackedSpan'
 /** Assembles the CodeMirror extension set for one open note. */
 import {
   autocompletion,
@@ -134,6 +135,7 @@ export function createExtensions(opts: EditorOptions): Extension[] {
   const { settings } = opts
 
   return [
+    documentPath.of(opts.path), trackedSpan,
     history(),
     drawSelection(),
     dropCursor(),

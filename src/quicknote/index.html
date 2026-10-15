@@ -13,15 +13,26 @@
   </div>
   <div class="toolbar" aria-label="Editor toolbar">
     <div class="toolbar-left">
-      <button id="new" title="New draft (Ctrl+N)">▧ New</button>
-      <button id="save" title="Save As (Ctrl+S)">▣ Save As…</button>
+      <button id="new" title="New note (Ctrl+N)">▧ New</button>
+      <button id="open" title="Open file (Ctrl+O)">▤ Open</button>
+      <button id="save" title="Save (Ctrl+S)">▣ Save</button>
+      <button id="save-as" title="Save As (Ctrl+Shift+S)">▤ Save As…</button>
       <i></i>
-      <button id="find-btn" title="Find & Replace (Ctrl+F)">🔍 Find</button>
+      <button id="find-btn" title="Find &amp; Replace (Ctrl+F)">🔍 Find</button>
     </div>
     <div class="toolbar-spacer"></div>
     <div class="toolbar-right">
+      <button id="read-mode-btn" class="read-mode-btn" title="Toggle Read Mode (Ctrl+E)" aria-label="Toggle Read Mode" aria-pressed="false">
+        <svg class="glasses-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="14" r="4"></circle>
+          <circle cx="18" cy="14" r="4"></circle>
+          <path d="M10 14h4"></path>
+          <path d="M2 14l2-6a2 2 0 0 1 2-1.5h1"></path>
+          <path d="M22 14l-2-6a2 2 0 0 0-2-1.5h-1"></path>
+        </svg>
+      </button>
       <div class="toolbar-hover-group">
-        <button id="theme-btn" title="Theme & Typography Editor (Ctrl+Alt+T)">🎨 Theme</button>
+        <button id="theme-btn" title="Theme &amp; Typography Editor (Ctrl+Alt+T)">🎨 Theme</button>
         <button id="shortcuts-btn" title="Keyboard Shortcuts (Ctrl+Alt+K)">⌨ Shortcuts</button>
         <button id="settings-btn" title="Import / Export Settings">⚙ Settings</button>
         <i></i>
@@ -32,7 +43,7 @@
       </div>
     </div>
   </div>
-  <div id="drafts" role="tablist" aria-label="Unsaved notes"></div>
+  <div id="drafts" role="tablist" aria-label="Open files and notes"></div>
   <div id="find-replace-container" class="find-replace-panel"></div>
   <main>
     <div id="gutter" aria-hidden="true"><pre id="lines">1</pre></div>
@@ -40,12 +51,16 @@
       <div id="backdrop" aria-hidden="true"><pre id="highlights"></pre></div>
       <textarea id="editor" aria-label="Quick note text" wrap="off" spellcheck="false" disabled></textarea>
     </div>
+    <div id="reader-wrap" class="reader-wrap" style="display: none;">
+      <article id="reader" class="markdown-preview"></article>
+    </div>
   </main>
   <footer>
-    <span id="status" role="status">Restoring drafts…</span>
+    <span id="status" role="status">Restoring…</span>
     <span id="metrics">length: 0   lines: 1</span>
     <span id="position">Ln: 1   Col: 1</span>
-    <span>UTF-8</span>
+    <span id="eol" title="Line ending">LF</span>
+    <span id="encoding" title="Encoding">UTF-8</span>
     <span>INS</span>
   </footer>
   <div id="modal-container"></div>

@@ -1,3 +1,4 @@
+import { useDeferredValue, useMemo } from 'react'
 import { Icon } from './Icon'
 import MiniPlayer from './MiniPlayer'
 import { commandTooltip, runCommand, useCommandHotkey } from '../lib/commands'
@@ -23,7 +24,14 @@ export default function StatusBar(): React.JSX.Element {
   const focusHotkey = useCommandHotkey('view.focusMode')
   const settingsHotkey = useCommandHotkey('settings.open')
 
-  const words = buffer && !buffer.loading ? countWords(buffer.content) : 0
+  // `countWords` runs eleven full-document regex passes and allocates an array
+  // of every word in the note, and this bar is mounted for the whole session —
+  // computing it inline made every keystroke cost a pass over the entire
+  // document. Deferred so typing never waits on it, memoised so an unrelated
+  // re-render does not repeat it.
+  const content = buffer && !buffer.loading ? buffer.content : ''
+  const deferredContent = useDeferredValue(content)
+  const words = useMemo(() => countWords(deferredContent), [deferredContent])
   const minutes = Math.max(1, Math.round(words / WORDS_PER_MINUTE))
   const backlinks = path ? (index.backlinks[path]?.length ?? 0) : 0
   const dirty = !!buffer && !buffer.loading && buffer.content !== buffer.saved

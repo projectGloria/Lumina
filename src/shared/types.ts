@@ -604,6 +604,7 @@ export const HOME_LAYOUT_VERSION = 1
 /* ------------------------------------------------------------------ misc */
 
 export interface WriteResult {
+  conflict?: boolean
   ok: boolean
   mtime: number
   error?: string

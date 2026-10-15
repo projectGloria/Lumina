@@ -242,6 +242,8 @@ export class FindReplaceController {
   }
 
   public search(autoSelect = false): void {
+    this.hasSelectedMatch = false
+    if (!this.isOpen) return
     const query = this.queryInput.value
     if (!query) {
       this.matches = []

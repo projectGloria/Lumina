@@ -11,6 +11,8 @@ export const CH = {
   vaultPick: 'vault:pick',
   vaultCreate: 'vault:create',
   vaultOpen: 'vault:open',
+  vaultClose: 'vault:close',
+  vaultClosed: 'vault:closed',
   vaultCurrent: 'vault:current',
   vaultRecent: 'vault:recent',
   vaultTree: 'vault:tree',
@@ -72,6 +74,7 @@ export const CH = {
   // shutdown
   appFlush: 'app:flush',
   appFlushed: 'app:flushed',
+  appResume: 'app:resume',
 
   // profiles
   profileList: 'profile:list',

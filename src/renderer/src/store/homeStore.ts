@@ -1,3 +1,4 @@
+import { useVault } from './vaultStore'
 /**
  * The Home board's layout.
  *
@@ -54,7 +55,7 @@ interface HomeStore {
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
-let pendingLayout: HomeLayout | null = null
+let pendingLayout: { value: HomeLayout; vault: string | null } | null = null
 let persistChain: Promise<void> = Promise.resolve()
 
 /**
@@ -70,7 +71,7 @@ let vaultGeneration = 0
 /** Save the board back to `.lumina/home.json`, coalesced. */
 function persist(state: HomeStore): void {
   if (!state.hydrated) return
-  pendingLayout = state.layout
+  pendingLayout = { value: state.layout, vault: useVault.getState().vault?.path ?? null }
   if (persistTimer) clearTimeout(persistTimer)
   persistTimer = setTimeout(() => {
     persistTimer = null
@@ -89,9 +90,9 @@ export async function flushHomePersistence(): Promise<void> {
   if (pending) {
     persistChain = persistChain
       .catch(() => {})
-      .then(() => window.lumina.home.set(pending).then(() => {}))
+      .then(() => window.lumina.home.set(pending.value, pending.vault).then(() => {}))
   }
-  await persistChain
+  try { await persistChain } catch (error) { if (!pendingLayout) pendingLayout = pending; throw error }
 }
 
 export const useHome = create<HomeStore>((set, get) => {
