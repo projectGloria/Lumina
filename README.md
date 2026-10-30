@@ -23,10 +23,10 @@
   <a href="#-about-lumina">About</a> •
   <a href="#-key-features">Key Features</a> •
   <a href="#️-application-suite">Application Suite</a> •
-  <a href="#-modular-dashboard">Home Dashboard</a> •
+  <a href="#️-modular-home-dashboard">Home Dashboard</a> •
   <a href="#-web-clipper">Web Clipper</a> •
   <a href="#-installation--usage">Installation</a> •
-  <a href="#-building-from-source">Building</a> •
+  <a href="#️-building-from-source">Building</a> •
   <a href="#-icon--design-philosophy">Design</a> •
   <a href="#-license--credits">License</a>
 </p>
@@ -56,8 +56,8 @@
 
 Lumina brings together a deep personal vault with a blazing-fast companion text editor under a single intelligent runtime:
 
-- 🏛️ **Independent Windows Desktop Application**: Seamless Windows integration with custom taskbar identity, system tray support, dedicated user data partitions, and file associations for 90+ text and code formats.
-- 🔒 **Zero Telemetry & 100% Offline**: Your notes never leave your computer. No telemetry trackers, no background cloud synchronizations, and no external tracking pings.
+- 🏛️ **Independent Windows Desktop Application**: Seamless Windows integration with custom taskbar identity, system tray support, dedicated user data partitions, and "Open with" file associations for markdown, text, config, and source-code formats.
+- 🔒 **Zero Telemetry, No Cloud**: Your notes live only on your disk. No telemetry, no accounts, no cloud sync. The only outbound requests are link previews for URLs in your notes (on by default; turn off under **Settings → Editor**) and the pages and images you choose to clip.
 - ⚡ **Intelligent Dual-Engine Dispatch**: Double-clicking a markdown note inside an indexed vault opens **Lumina Vault**; opening any standalone text document, script, or external file launches **Quick Note** instantly without waiting for vault indexing.
 - 📖 **Human-Centric Markdown Architecture**: Every document is pure plain text formatted with Markdown and YAML frontmatter. Open and edit your files anytime in any text editor.
 
@@ -83,7 +83,7 @@ Lumina brings together a deep personal vault with a blazing-fast companion text 
     </td>
     <td width="50%">
       <h3>⚡ Instant Quick Note Companion</h3>
-      <p>Sub-second cold startup, multi-tab editing, line-number gutters, character metrics, and non-destructive session restoration for transient thoughts.</p>
+      <p>Sub-second cold startup, multi-tab editing, a line-number gutter, and non-destructive session restoration for transient thoughts.</p>
     </td>
   </tr>
   <tr>
@@ -93,7 +93,7 @@ Lumina brings together a deep personal vault with a blazing-fast companion text 
     </td>
     <td width="50%">
       <h3>🛡️ Security, Passlock &amp; Privacy</h3>
-      <p>Protect your private vaults with built-in passlock encryption, strictly local loopback IPC, sandboxed Electron context, and traversal-guarded filesystem access.</p>
+      <p>Optional per-profile passlock, a loopback-only clipper listener, sandboxed Electron renderers, and traversal-guarded filesystem access. The passlock locks the app's UI only; it does <b>not</b> encrypt your notes, which stay plain files on disk.</p>
     </td>
   </tr>
 </table>
@@ -111,8 +111,8 @@ Lumina ships as an integrated ecosystem containing two specialized desktop modes
 </p>
 
 Designed for sustained contemplation, deep research, and long-form writing:
-- **Bi-Directional Wikilinks**: Autocomplete notes with `[[`, discover inbound backlinks, and trace unlinked mentions across your entire vault.
-- **Interactive Knowledge Graph**: Explore clusters of ideas, filter by tags or folders, and adjust physics forces to explore connections visually.
+- **Bi-Directional Wikilinks**: Autocomplete notes with `[[` and discover inbound backlinks across your entire vault.
+- **Interactive Knowledge Graph**: Explore clusters of ideas in a force-directed map of every note and the links between them.
 - **Full-Text Instant Search**: Lightning-fast keyword and fuzzy search powered by MiniSearch, indexing note content, headings, and tags.
 - **Profiles & Multiple Vaults**: Switch seamlessly between distinct vaults (e.g. *Personal*, *Work*, *Research*) with isolated configuration and custom theme overrides.
 
@@ -138,12 +138,11 @@ Lumina's Vault view opens into a welcoming, customizable dashboard designed to o
 
 | Widget | Description |
 | --- | --- |
-| 🟩 **Activity Heatmap** | Visualizes daily editing frequency and writing streaks across the vault in a GitHub-inspired grid. |
+| 🟩 **Activity Heatmap** | Visualizes daily editing frequency across the vault in a GitHub-inspired grid. |
 | 📅 **Daily Note &amp; Calendar** | Single-click jumping to today's daily log with calendar date navigation and previous entry lookup. |
 | ⏳ **On This Day** | Surfaces journal entries and notes created on this exact calendar date in previous years. |
 | ✅ **Aggregated Tasks** | Automatically aggregates uncompleted Markdown task items (`- [ ]`) across all vault documents into a centralized checklist. |
 | 🎶 **Ambient Music Player** | Plays local audio files directly inside Lumina with ID3 album art extraction and volume controls. |
-| 🎙️ **Voice &amp; Dictation** | Audio recording with offline local transcription support for capturing voice memos without third-party APIs. |
 | 📌 **Recent &amp; Starred** | Instant access to your frequently touched files, pinned notes, and categorized tag clouds. |
 
 ---
@@ -158,7 +157,7 @@ Clip anything you read on the web directly into your local Lumina vault as clean
 
 - **Local-Only Communication**: The extension communicates exclusively with Lumina's local HTTP listener on `127.0.0.1:41999`. Nothing ever leaves your machine.
 - **Authenticated Bridge**: Protected by a unique local authorization token minted inside Lumina's **Settings → Web Clipper** panel.
-- **Queueing When Locked**: Clips sent while Lumina is closed or passlocked queue safely and flush into your vault the moment you authenticate.
+- **Queueing When Locked**: Clips sent while Lumina is on the profile picker or passlocked wait, and land in your vault the moment you unlock. Lumina has to be running (closing it to the tray is fine); a clip sent while it is fully closed fails with "Could not reach Lumina".
 
 ### Clipping Modes
 
@@ -167,7 +166,7 @@ Clip anything you read on the web directly into your local Lumina vault as clean
 | **Article** | Cleansed article body with ads, navigation, and clutter stripped away via Readability. |
 | **Selection** | Captures the highlighted text snippet formatted as a Markdown blockquote. |
 | **Full Page** | Preserves the entire page structure and content converted to GitHub Flavored Markdown. |
-| **Bookmark** | Saves the page title, URL, author, and description as metadata frontmatter without body text. |
+| **Bookmark** | Saves the title, URL, author, and site as frontmatter, plus the page's own summary as a quote, with no page body. |
 
 *To install the clipper, see instructions in the [extension/ directory](extension/README.md).*
 
@@ -188,22 +187,22 @@ Upon installation, Lumina configures:
 - Isolated user data directories:
   - `%APPDATA%\Lumina` (Vault workspace & preferences)
   - `%APPDATA%\lumina-quicknote` (Quick Note cache & session buffers)
-- Default file associations for over 90 text, markdown, and config file extensions (`role: Editor`).
+- "Open with" file associations (`role: Editor`) for the markdown, text, config, and source-code extensions listed in `electron-builder.yml`. Lumina doesn't take over the default app for any of them.
 
 ### Command-Line Usage
 
-Launch Lumina directly from PowerShell, Windows Terminal, or CMD:
+The installer doesn't add Lumina to `PATH`, so call the executable by its full path. A per-user install goes to `%LOCALAPPDATA%\Programs\Lumina` unless you picked another folder. Pass files, not folders: a folder argument is ignored and Lumina opens your last vault.
 
 ```powershell
-# Open Lumina Vault in the current directory
-lumina .
+# Open Lumina Vault (your last-opened vault)
+& "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe"
 
-# Open a specific vault folder
-lumina C:\Notes\PersonalVault
+# A markdown note inside a vault opens in Vault; any other text file opens in Quick Note
+& "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" C:\Notes\PersonalVault\Ideas.md
+& "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" C:\Projects\script.py
 
-# Open a standalone text document or note in Quick Note
-lumina my-draft.txt
-lumina C:\Projects\script.py
+# Open Quick Note directly
+& "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" --quicknote
 ```
 
 ---
@@ -215,8 +214,10 @@ lumina C:\Projects\script.py
 Ensure you have the following installed on your machine:
 - **Node.js** (v22 or later)
 - **npm** (v10 or later)
-- **PowerShell 7+** (for release verification scripts)
-- **Visual Studio C++ Build Tools** (for compiling native audio and file watching modules)
+- **Windows PowerShell 5.1** (built into Windows; `npm run release` runs `scripts/verify-release.ps1` with it)
+- **PowerShell 7+** (`pwsh`), only if you want to run `scripts/fetch-speech-packs.ps1` to bundle offline speech packs
+
+No native modules are compiled, so you don't need the Visual Studio C++ Build Tools.
 
 ### Development & Build Steps
 
@@ -249,7 +250,13 @@ Ensure you have the following installed on your machine:
    ```powershell
    npm run release
    ```
-   This compiles the Electron application, bundles assets, builds the NSIS installer into `release/`, and executes `scripts/verify-release.ps1` to validate package signatures, file hashes, and app integrity.
+   This compiles the Electron application, builds the NSIS installer and the portable executable into `release/`, and runs `scripts/verify-release.ps1`. That script requires a valid Authenticode signature, checks each artifact's version metadata, prints its SHA-256 hash, and confirms `app.asar` contains the built entry points.
+
+   A local build is unsigned, so the signature check fails. To verify an unsigned build, allow it explicitly:
+   ```powershell
+   $env:LUMINA_ALLOW_UNSIGNED = '1'; npm run release
+   ```
+   To build the installer without verifying, run `npm run build:win`.
 
 ---
 
@@ -266,7 +273,7 @@ Ensure you have the following installed on your machine:
 Lumina was designed around the idea that digital writing tools should feel as calm, warm, and inviting as a quiet study:
 - **Warm Terracotta & Sandstone**: Inspired by the warm Claude color palette, eliminating harsh bright whites and high-contrast blacks in favor of restful tones.
 - **Typographic Precision**: Thoughtful font pairing and generous line height for effortless long-form reading and editing.
-- **Spatial Focus**: UI chrome recedes into the background when typing; sidebars, status metrics, and toolbars collapse to keep your attention on your thoughts.
+- **Spatial Focus**: Focus mode hides the sidebars so only your writing is left (press `Esc` to leave it).
 - **Distinct Dual Identity**:
   - **Lumina Vault Icon**: Warm amber radiating outward, symbolizing deep knowledge synthesis and illumination.
   - **Quick Note Icon**: Sleek, sharp, and focused badge representing rapid capture and agile text manipulation.
@@ -275,7 +282,7 @@ Lumina was designed around the idea that digital writing tools should feel as ca
 
 ## 📜 License & Credits
 
-Lumina is open-source software licensed under the **[MIT License](LICENSE)**.
+Lumina is open-source software licensed under the **[MIT License](LICENSE)**. Third-party code keeps its own license: `extension/vendor/Readability.js` is Mozilla's Readability under the Apache License 2.0 (see its header).
 
 ### Open-Source Acknowledgments
 
