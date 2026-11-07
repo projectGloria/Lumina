@@ -275,8 +275,8 @@ Lumina was designed around the idea that digital writing tools should feel as ca
 - **Typographic Precision**: Thoughtful font pairing and generous line height for effortless long-form reading and editing.
 - **Spatial Focus**: Focus mode hides the sidebars so only your writing is left (press `Esc` to leave it).
 - **Distinct Dual Identity**:
-  - **Lumina Vault Icon**: Warm amber radiating outward, symbolizing deep knowledge synthesis and illumination.
-  - **Quick Note Icon**: Sleek, sharp, and focused badge representing rapid capture and agile text manipulation.
+  - **Lumina Vault Icon**: An engraved silver serif "L" entwined with a quill and fountain-pen nib on deep royal blue, for considered, long-form writing.
+  - **Quick Note Icon**: The same engraved quill-and-nib treatment curled into a "Q" on vivid orange, a bright companion built for fast capture.
 
 ---
 
