@@ -108,6 +108,15 @@ list in step with `TEXT_EXTENSIONS` in `src/shared/textFiles.ts` — a type
 registered in the installer that Quick Note refuses would open an error rather
 than a file.
 
+## "Open with Quick Note" context menu
+`resources/installer.nsh` adds a `LuminaQuickNote` verb under
+`HKCU\Software\Classes\SystemFileAssociations\.<ext>\shell` for every entry in
+`TEXT_EXTENSIONS`, running `Lumina.exe --quicknote "%1"`. The switch bypasses
+`fileRoute.ts`, so a vault note can be opened in Quick Note explicitly. The
+uninstaller deletes only that verb's subtree. `tests/installerVerbs.test.ts`
+fails if the installer's list drifts from `TEXT_EXTENSIONS`. On Windows 11 the
+verb sits under "Show more options".
+
 ## Validation
 Typechecking, production compilation and 162 Vitest cases pass. Earlier Electron
 smoke checks using isolated appData and a disposable vault verified debounce
