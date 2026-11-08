@@ -9,6 +9,7 @@ import { acceleratorChips, acceleratorFromEvent } from '../../lib/hotkeys'
 import { listVoices, onVoicesChanged, previewVoice, speechAvailable, stopReading } from '../../lib/readAloud'
 import { slashCommandName } from '@shared/template'
 import { WHISPER_LANGUAGES } from '@shared/audio'
+import { QUICKNOTE_NAME } from '@shared/appNames'
 import type {
   ClipperStatus,
   CustomSlashCommand,
@@ -1051,7 +1052,7 @@ function QuickNoteTab(): React.JSX.Element {
           <div>
             <div className="field-label">Desktop shortcut</div>
             <div className="field-hint">
-              Create a dedicated Quick Note shortcut with its own custom amber lightning icon on your desktop.
+              Create a dedicated {QUICKNOTE_NAME} shortcut with its own custom amber lightning icon on your desktop.
             </div>
           </div>
           <div className="field-control">
@@ -1062,7 +1063,7 @@ function QuickNoteTab(): React.JSX.Element {
                 void (async () => {
                   const res = await window.lumina.quickNote.createDesktopShortcut()
                   if (res.ok) {
-                    toast('Quick Note shortcut created on your desktop!')
+                    toast(`${QUICKNOTE_NAME} shortcut created on your desktop!`)
                   } else {
                     toast(res.error || 'Failed to create shortcut.')
                   }

@@ -32,61 +32,31 @@ extraResources:
 asar: true
 compression: normal
 
-# Double-clicking a document opens it in Lumina. Every entry is `role: Editor`,
-# so the app shows up under "Open with" and Windows still lets the user decide
-# which editor owns an extension by default — registering these does not take
-# .json away from whatever they already use.
+# Double-clicking a document opens it in Lumina. `role: Editor` puts the app
+# under "Open with" without seizing an extension's existing default.
 #
-# Which of the two applications actually opens the file is decided at launch by
-# `src/main/fileRoute.ts`: a markdown note inside a vault goes to Vault,
-# everything below goes to Quick Note. The markdown types therefore carry the
-# Lumina icon and the rest carry Quick Note's, which is the app that will open
-# them. Keep this list in step with `TEXT_EXTENSIONS` in `src/shared/textFiles.ts`
-# — a type registered here that Quick Note refuses would open an error instead
-# of a file.
+# Only markdown is registered to Lumina.exe here: it's the one type that may
+# belong to Vault, and `src/main/fileRoute.ts` decides at launch whether a note
+# goes to Vault or Quick Note. Every other text type is registered by
+# `resources/installer.nsh` to "Lumina Quick Note.exe" instead, a separate
+# executable so Windows can list Quick Note as its own app in "Open with" and
+# Settings > Default apps. electron-builder can only point associations at the
+# main exe, which is why those live in the NSIS script.
+#
+# Markdown carries the Quick Note icon too, so every text file Lumina handles
+# looks the same in Explorer whichever app the user picked as its default.
 fileAssociations:
   - ext: [md, markdown, mdx]
     name: Markdown Document
     description: Markdown note
     role: Editor
-    icon: resources/icon.ico
-  - ext: [txt, text, log, rst, adoc, tex]
-    name: Text Document
-    description: Plain text document
-    role: Editor
     icon: resources/quicknote-icon.ico
-  - ext: [ini, cfg, conf, config, properties, env, toml, editorconfig]
-    name: Configuration File
-    description: Configuration file
-    role: Editor
-    icon: resources/quicknote-icon.ico
-  - ext: [json, json5, jsonc, yaml, yml, xml, csv, tsv, plist]
-    name: Data Document
-    description: Structured data document
-    role: Editor
-    icon: resources/quicknote-icon.ico
-  - ext: [html, htm, xhtml, css, scss, sass, less, vue, svelte, svg]
-    name: Web Document
-    description: Web source file
-    role: Editor
-    icon: resources/quicknote-icon.ico
-  - ext: [js, mjs, cjs, jsx, ts, tsx, mts, cts, py, pyw, rb, go, rs, lua, pl, php, r,
-          c, h, cpp, cc, cxx, hpp, hh, cs, java, kt, kts, swift, scala, dart,
-          sql, graphql, gql, proto]
-    name: Source File
-    description: Source code file
-    role: Editor
-    icon: resources/quicknote-icon.ico
-  - ext: [sh, bash, zsh, fish, ps1, psm1, bat, cmd]
-    name: Script File
-    description: Shell or batch script
-    role: Editor
-    icon: resources/quicknote-icon.ico
-  - ext: [gradle, cmake, mk, make, dockerfile, gitignore, gitattributes, patch, diff]
-    name: Build File
-    description: Build or version-control file
-    role: Editor
-    icon: resources/quicknote-icon.ico
+
+# The launcher has to sit beside Lumina.exe (it resolves it relative to itself),
+# so it goes in extraFiles (app root) rather than extraResources (resources/).
+extraFiles:
+  - from: resources/launcher/Lumina Quick Note.exe
+    to: Lumina Quick Note.exe
 
 win:
   target:

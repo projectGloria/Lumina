@@ -12,7 +12,7 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutDefinition> = {
   find: { name: 'Find in Note', description: 'Open Find & Replace bar', defaultKey: 'Ctrl+F' },
   replace: { name: 'Replace', description: 'Open Replace field', defaultKey: 'Ctrl+H' },
   closeTab: { name: 'Close Note', description: 'Close active note draft', defaultKey: 'Ctrl+W' },
-  closeWindow: { name: 'Close Window', description: 'Close Quick Note window', defaultKey: 'Ctrl+Shift+W' },
+  closeWindow: { name: 'Close Window', description: 'Close Lumina Quick Note window', defaultKey: 'Ctrl+Shift+W' },
   undo: { name: 'Undo', description: 'Undo last editor change', defaultKey: 'Ctrl+Z' },
   redo: { name: 'Redo', description: 'Redo previously undone change', defaultKey: 'Ctrl+Y' },
   duplicateLine: { name: 'Duplicate Line', description: 'Duplicate current line below', defaultKey: 'Ctrl+D' },

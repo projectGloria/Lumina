@@ -2,6 +2,7 @@ import { app } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { documentArgsFrom, liveRouteEnv, routeForFiles } from './fileRoute'
+import { QUICKNOTE_NAME } from '@shared/appNames'
 
 // Synchronous dispatch preserves Vault's pre-ready protocol registration.
 //
@@ -35,7 +36,7 @@ if (quick) {
   fs.mkdirSync(data, { recursive: true })
   app.setPath('userData', data)
   app.setPath('sessionData', data)
-  app.setName('Lumina Quick Note')
+  app.setName(QUICKNOTE_NAME)
   if (process.platform === 'win32') app.setAppUserModelId('com.nihil.lumina.quicknote')
   require('./quicknote.js').startQuickNote()
 } else {

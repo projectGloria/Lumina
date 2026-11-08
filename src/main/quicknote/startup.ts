@@ -14,6 +14,7 @@ import {
 } from '@shared/quicknoteSession'
 import { TEXT_EXTENSIONS } from '@shared/textFiles'
 import { quickNoteName } from '@shared/quickNote'
+import { QUICKNOTE_NAME } from '@shared/appNames'
 import { documentArgsFrom } from '../fileRoute'
 import { createQuickNoteDesktopShortcut, ensureQuickNoteStartMenuShortcut } from './shortcut'
 
@@ -122,7 +123,7 @@ export function startQuickNote(): void {
       ? path.join(process.resourcesPath, 'quicknote-icon.ico')
       : path.join(app.getAppPath(), 'resources', 'quicknote-icon.ico')
     win = new BrowserWindow({
-      title: 'Lumina Quick Note', width: 900, height: 570, minWidth: 360, minHeight: 260,
+      title: QUICKNOTE_NAME, width: 900, height: 570, minWidth: 360, minHeight: 260,
       icon: iconPath,
       backgroundColor: '#101010', titleBarStyle: 'hidden', titleBarOverlay: { color: '#101010', symbolColor: '#dddddd', height: 30 }, show: true,
       webPreferences: { preload: path.join(__dirname, '../preload/quicknote.js'),
@@ -136,7 +137,7 @@ export function startQuickNote(): void {
         appIconPath: iconPath,
         appIconIndex: 0,
         relaunchCommand: `"${process.execPath}" ${relaunchArgs}`,
-        relaunchDisplayName: 'Lumina Quick Note'
+        relaunchDisplayName: QUICKNOTE_NAME
       })
     }
 
@@ -305,7 +306,7 @@ export function startQuickNote(): void {
       if (!trusted(event)) throw new Error('Invalid sender')
       if (!win) return false
       const choice = await dialog.showSaveDialog(win, {
-        title: 'Export Quick Note Settings',
+        title: `Export ${QUICKNOTE_NAME} Settings`,
         defaultPath: 'quicknote-settings.json',
         filters: [{ name: 'JSON Settings', extensions: ['json'] }]
       })
@@ -317,7 +318,7 @@ export function startQuickNote(): void {
       if (!trusted(event)) throw new Error('Invalid sender')
       if (!win) return null
       const choice = await dialog.showOpenDialog(win, {
-        title: 'Import Quick Note Settings',
+        title: `Import ${QUICKNOTE_NAME} Settings`,
         filters: [{ name: 'JSON Settings', extensions: ['json'] }],
         properties: ['openFile']
       })

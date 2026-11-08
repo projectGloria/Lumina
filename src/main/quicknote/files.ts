@@ -64,7 +64,7 @@ export async function readDocument(filePath: string): Promise<FileOpenResult> {
       return {
         ok: false,
         path: abs,
-        error: `That file is ${mb} MB — Quick Note opens files up to ${MAX_FILE_BYTES / (1024 * 1024)} MB.`
+        error: `That file is ${mb} MB — Lumina Quick Note opens files up to ${MAX_FILE_BYTES / (1024 * 1024)} MB.`
       }
     }
 

@@ -3,6 +3,10 @@ import { marked } from 'marked'
 import type { Draft, FileDocument, FileOpenResult, FileSaveResult, QuickApi, Session } from '../shared/quicknoteSession'
 import { draftTitle, isDirty } from '../shared/quicknoteSession'
 import { baseName, encodingLabel, eolLabel, type Eol } from '../shared/textFiles'
+import { QUICKNOTE_NAME } from '../shared/appNames'
+
+// Window and title-bar suffix; one const so the four call sites can't drift.
+const TITLE_SUFFIX = ` - ${QUICKNOTE_NAME}`
 import { initTheme, buildThemeEditorModal } from './themeManager'
 import { initShortcuts, getShortcuts, matchesShortcut, buildShortcutModal } from './shortcutManager'
 import { FindReplaceController } from './findReplace'
@@ -236,8 +240,8 @@ function syncDirtyMarks(): void {
 
   const mark = dirty ? '*' : ''
   const label = draftTitle(active, index)
-  document.title = `${mark}${label} - Quick Note`
-  document.querySelector('#title')!.textContent = `${mark}${active.filePath ?? label} - Quick Note`
+  document.title = `${mark}${label}${TITLE_SUFFIX}`
+  document.querySelector('#title')!.textContent = `${mark}${active.filePath ?? label}${TITLE_SUFFIX}`
 }
 
 /** The status bar's account of the active buffer's file. */
@@ -305,10 +309,10 @@ function render(): void {
   shownDirty = isDirty(active)
   const mark = shownDirty ? '*' : ''
   const label = draftTitle(active, session.buffers.indexOf(active))
-  document.title = `${mark}${label} - Quick Note`
+  document.title = `${mark}${label}${TITLE_SUFFIX}`
   // The title bar gets the whole path when there is one; the tab already
   // carries the short name, so repeating it there would say nothing new.
-  document.querySelector('#title')!.textContent = `${mark}${active.filePath ?? label} - Quick Note`
+  document.querySelector('#title')!.textContent = `${mark}${active.filePath ?? label}${TITLE_SUFFIX}`
   syncFileStatus()
   metrics()
   if (findController) findController.search(false)

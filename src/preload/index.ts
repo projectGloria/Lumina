@@ -217,7 +217,7 @@ const api = {
     /** Whether the accelerator could be bound after a settings change. */
     onStatus: (cb: (s: { accelerator: string; registered: boolean }) => void) =>
       on<{ accelerator: string; registered: boolean }>(CH.quickNoteStatus, cb),
-    /** Create a dedicated Quick Note shortcut with custom icon on the desktop. */
+    /** Create a "Lumina Quick Note" shortcut (targets the launcher exe) on the desktop. */
     createDesktopShortcut: (): Promise<{ ok: boolean; path?: string; error?: string }> =>
       ipcRenderer.invoke(CH.quickNoteCreateShortcut)
   },

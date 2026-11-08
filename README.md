@@ -183,11 +183,12 @@ release/Lumina-0.1.0-x64.exe
 ```
 
 Upon installation, Lumina configures:
-- Start Menu and Desktop shortcuts with high-resolution app icons.
+- Start Menu and Desktop shortcuts for **Lumina** and **Lumina Quick Note**, with high-resolution app icons.
 - Isolated user data directories:
   - `%APPDATA%\Lumina` (Vault workspace & preferences)
   - `%APPDATA%\lumina-quicknote` (Quick Note cache & session buffers)
-- "Open with" file associations (`role: Editor`) for the markdown, text, config, and source-code extensions listed in `electron-builder.yml`. Lumina doesn't take over the default app for any of them.
+- Two apps Windows can offer under "Open with" and in Settings > Default apps: **Lumina** for markdown, and **Lumina Quick Note** (`Lumina Quick Note.exe`, a small launcher next to `Lumina.exe`) for every supported text, config, data and source-code type, markdown included. Neither takes over an existing default; pick one with Open with → Always.
+- An "Open with Lumina Quick Note" right-click entry on those types (under "Show more options" on Windows 11).
 
 ### Command-Line Usage
 
@@ -197,11 +198,12 @@ The installer doesn't add Lumina to `PATH`, so call the executable by its full p
 # Open Lumina Vault (your last-opened vault)
 & "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe"
 
-# A markdown note inside a vault opens in Vault; any other text file opens in Quick Note
+# A markdown note inside a vault opens in Vault; any other text file opens in Lumina Quick Note
 & "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" C:\Notes\PersonalVault\Ideas.md
 & "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" C:\Projects\script.py
 
-# Open Quick Note directly
+# Open Lumina Quick Note directly (either form; the launcher just adds --quicknote)
+& "$env:LOCALAPPDATA\Programs\Lumina\Lumina Quick Note.exe" C:\Projects\notes.txt
 & "$env:LOCALAPPDATA\Programs\Lumina\Lumina.exe" --quicknote
 ```
 

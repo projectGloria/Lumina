@@ -16,3 +16,7 @@ test-vault/
 # binaries and model weights — fetched by scripts/fetch-speech-packs.ps1, never
 # committed.
 resources/speech/
+
+# "Lumina Quick Note.exe" launcher stub — compiled from build/quicknote-launcher
+# by scripts/build-quicknote-launcher.ps1 during build:win / build:dir.
+resources/launcher/

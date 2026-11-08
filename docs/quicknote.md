@@ -99,23 +99,34 @@ HTML lives at out/renderer/renderer/index.html; its loader and release verifier
 are updated together.
 
 ## File associations
-`electron-builder.yml` registers roughly 90 extensions across markdown, text,
-config, data, web, source, script and build groups. Every entry is
-`role: Editor`, so Lumina appears under "Open with" and never seizes an
-extension's existing default. Markdown carries the Lumina icon; everything else
-carries Quick Note's, since that is the application that will open it. Keep the
-list in step with `TEXT_EXTENSIONS` in `src/shared/textFiles.ts` — a type
-registered in the installer that Quick Note refuses would open an error rather
-than a file.
+Windows' "Open with" list and Settings > Default apps enumerate executables,
+not launch flags, so Quick Note ships as a second one: `Lumina Quick Note.exe`,
+a ~10 KB launcher (`build/quicknote-launcher/Launcher.cs`, compiled by
+`scripts/build-quicknote-launcher.ps1` with the .NET Framework `csc.exe` that is
+part of Windows) that runs `Lumina.exe --quicknote <args>` and exits. All real
+behaviour stays in Lumina.exe.
 
-## "Open with Quick Note" context menu
-`resources/installer.nsh` adds a `LuminaQuickNote` verb under
-`HKCU\Software\Classes\SystemFileAssociations\.<ext>\shell` for every entry in
-`TEXT_EXTENSIONS`, running `Lumina.exe --quicknote "%1"`. The switch bypasses
-`fileRoute.ts`, so a vault note can be opened in Quick Note explicitly. The
-uninstaller deletes only that verb's subtree. `tests/installerVerbs.test.ts`
-fails if the installer's list drifts from `TEXT_EXTENSIONS`. On Windows 11 the
-verb sits under "Show more options".
+- `electron-builder.yml` registers only markdown (`md`, `markdown`, `mdx`) to
+  `Lumina.exe`; `fileRoute.ts` sends a vault note to Vault and anything else to
+  Quick Note.
+- `resources/installer.nsh` registers every extension in `TEXT_EXTENSIONS`,
+  markdown included, to the launcher: ProgID `Lumina.QuickNote.Document`, an
+  `OpenWithProgids` value, `Applications\Lumina Quick Note.exe\SupportedTypes`,
+  and `Capabilities` + `RegisteredApplications` so it appears in Default apps.
+
+Nothing seizes an existing default: Windows 10/11 let only the user set one, via
+Open with → Always or Settings > Default apps. Every registered type carries the
+Quick Note icon. The uninstaller removes only our values and keys.
+`tests/installerVerbs.test.ts` fails if the installer's list drifts from
+`TEXT_EXTENSIONS` — a type Quick Note refuses would open an error.
+
+## "Open with Lumina Quick Note" context menu
+The same installer macro adds a `LuminaQuickNote` verb under
+`HKCU\Software\Classes\SystemFileAssociations\.<ext>\shell`, running the
+launcher with `"%1"`. That key is consulted whichever app owns the extension,
+so it also works on a `.json` VS Code opens, and it bypasses `fileRoute.ts` so a
+vault note can be opened in Quick Note explicitly. On Windows 11 the verb sits
+under "Show more options".
 
 ## Validation
 Typechecking, production compilation and 162 Vitest cases pass. Earlier Electron

@@ -1,6 +1,7 @@
 import { getThemeConfig, setThemeConfig, DEFAULT_THEME_CONFIG } from './themeManager'
 import { getShortcuts, setShortcuts, DEFAULT_SHORTCUTS } from './shortcutManager'
 import { serializeSettingsPayload, parseSettingsPayload, type FullQuickNoteSettings } from '../shared/quicknoteSettings'
+import { QUICKNOTE_NAME } from '../shared/appNames'
 
 export { type FullQuickNoteSettings }
 
@@ -83,7 +84,7 @@ export function buildSettingsModal(onStatus?: (msg: string) => void): HTMLElemen
     modal.innerHTML = `
       <div class="modal-dialog settings-dialog">
         <div class="modal-header">
-          <h3>Quick Note Settings & Backups</h3>
+          <h3>${QUICKNOTE_NAME} Settings &amp; Backups</h3>
           <button class="modal-close-btn" id="settings-modal-close" title="Close (Esc)">×</button>
         </div>
         <div class="modal-body settings-body">
@@ -102,8 +103,8 @@ export function buildSettingsModal(onStatus?: (msg: string) => void): HTMLElemen
 
           <section class="settings-section">
             <h4>Desktop Shortcut</h4>
-            <p>Create a dedicated Quick Note shortcut with its own custom amber lightning icon on your desktop.</p>
-            <button id="btn-create-desktop-shortcut" class="secondary-btn">🗲 Create Quick Note Shortcut on Desktop</button>
+            <p>Create a dedicated ${QUICKNOTE_NAME} shortcut with its own custom amber lightning icon on your desktop.</p>
+            <button id="btn-create-desktop-shortcut" class="secondary-btn">🗲 Create ${QUICKNOTE_NAME} Shortcut on Desktop</button>
           </section>
 
           <section class="settings-section danger-zone">
@@ -145,7 +146,7 @@ export function buildSettingsModal(onStatus?: (msg: string) => void): HTMLElemen
       if (window.quicknote?.createDesktopShortcut) {
         const res = await window.quicknote.createDesktopShortcut()
         if (res.ok) {
-          renderContent('✓ Quick Note shortcut created on Desktop!')
+          renderContent(`✓ ${QUICKNOTE_NAME} shortcut created on Desktop!`)
           if (onStatus) onStatus('Shortcut created on Desktop')
         } else {
           renderContent(`⚠ ${res.error || 'Failed to create shortcut'}`)

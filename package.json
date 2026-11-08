@@ -15,8 +15,9 @@
     "lint": "eslint src tests",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:win": "electron-vite build && electron-builder --win",
-    "build:dir": "electron-vite build && electron-builder --dir",
+    "build:launcher": "powershell -NoProfile -File scripts/build-quicknote-launcher.ps1",
+    "build:win": "electron-vite build && npm run build:launcher && electron-builder --win",
+    "build:dir": "electron-vite build && npm run build:launcher && electron-builder --dir",
     "verify:release": "powershell -NoProfile -File scripts/verify-release.ps1",
     "release": "npm run build:win && npm run verify:release"
   },
