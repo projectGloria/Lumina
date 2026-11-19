@@ -4,8 +4,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $releaseDir = Join-Path $projectRoot 'release'
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
 $artifacts = @(
-  (Join-Path $releaseDir "Lumina-$version-x64.exe"),
-  (Join-Path $releaseDir "Lumina-$version-portable.exe")
+  (Join-Path $releaseDir "Lumina-$version-x64.exe")
 )
 
 foreach ($artifact in $artifacts) {

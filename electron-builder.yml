@@ -62,8 +62,6 @@ win:
   target:
     - target: nsis
       arch: [x64]
-    - target: portable
-      arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
 
 nsis:
@@ -76,6 +74,3 @@ nsis:
   include: resources/installer.nsh
   # Vaults live wherever the user put them, so nothing of theirs is touched.
   deleteAppDataOnUninstall: false
-
-portable:
-  artifactName: ${productName}-${version}-portable.${ext}

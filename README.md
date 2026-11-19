@@ -252,7 +252,7 @@ No native modules are compiled, so you don't need the Visual Studio C++ Build To
    ```powershell
    npm run release
    ```
-   This compiles the Electron application, builds the NSIS installer and the portable executable into `release/`, and runs `scripts/verify-release.ps1`. That script requires a valid Authenticode signature, checks each artifact's version metadata, prints its SHA-256 hash, and confirms `app.asar` contains the built entry points.
+   This compiles the Electron application, builds the NSIS installer into `release/`, and runs `scripts/verify-release.ps1`. That script requires a valid Authenticode signature, checks each artifact's version metadata, prints its SHA-256 hash, and confirms `app.asar` contains the built entry points.
 
    A local build is unsigned, so the signature check fails. To verify an unsigned build, allow it explicitly:
    ```powershell
@@ -262,7 +262,7 @@ No native modules are compiled, so you don't need the Visual Studio C++ Build To
 
 ### How to Release
 
-GitHub Actions (`.github/workflows/build-installers.yml`) automatically builds and verifies the Windows x64 NSIS installer (`Lumina-<version>-win-x64.exe`) and portable executable (`Lumina-<version>-win-x64-portable.exe`) whenever a `v*` tag is pushed:
+GitHub Actions (`.github/workflows/build-installers.yml`) automatically builds and verifies the Windows x64 NSIS installer (`Lumina-<version>-win-x64.exe`) whenever a `v*` tag is pushed:
 
 ```powershell
 git tag v1.0.0

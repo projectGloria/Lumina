@@ -79,7 +79,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path installers | Out-Null
           Copy-Item -LiteralPath "release/Lumina-$env:APP_VERSION-x64.exe" -Destination "installers/Lumina-$env:APP_VERSION-win-x64.exe"
-          Copy-Item -LiteralPath "release/Lumina-$env:APP_VERSION-portable.exe" -Destination "installers/Lumina-$env:APP_VERSION-win-x64-portable.exe"
           Get-ChildItem -Path installers
 
       - name: Upload installers artifact
