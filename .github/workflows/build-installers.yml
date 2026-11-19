@@ -1,0 +1,111 @@
+name: Build Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Windows x64 Installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Electron and electron-builder
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -match '^v(.+)$') {
+            $ver = $Matches[1]
+            npm version $ver --no-git-tag-version --allow-same-version
+          } else {
+            $ver = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          }
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Building Lumina version $ver"
+
+      - name: Build Windows installers
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run build:win -- --publish never
+
+      - name: Verify release artifacts
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
+            $env:LUMINA_ALLOW_UNSIGNED = '1'
+          }
+          npm run verify:release
+
+      - name: Collect installers
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path installers | Out-Null
+          Copy-Item -LiteralPath "release/Lumina-$env:APP_VERSION-x64.exe" -Destination "installers/Lumina-$env:APP_VERSION-win-x64.exe"
+          Copy-Item -LiteralPath "release/Lumina-$env:APP_VERSION-portable.exe" -Destination "installers/Lumina-$env:APP_VERSION-win-x64-portable.exe"
+          Get-ChildItem -Path installers
+
+      - name: Upload installers artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers
+          path: installers/
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download installers artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: installers
+          path: installers
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installers/*
+          generate_release_notes: true

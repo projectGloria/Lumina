@@ -260,6 +260,18 @@ No native modules are compiled, so you don't need the Visual Studio C++ Build To
    ```
    To build the installer without verifying, run `npm run build:win`.
 
+### How to Release
+
+GitHub Actions (`.github/workflows/build-installers.yml`) automatically builds and verifies the Windows x64 NSIS installer (`Lumina-<version>-win-x64.exe`) and portable executable (`Lumina-<version>-win-x64-portable.exe`) whenever a `v*` tag is pushed:
+
+```powershell
+git tag v1.0.0
+git push --tags
+```
+
+- **Tagged releases**: Download the installers from the repository's **Releases** page on GitHub (they are also attached to the workflow run as the `installers` artifact).
+- **Manual builds**: Trigger **Build Installers** from the **Actions** tab (`workflow_dispatch`) and download the `installers` artifact from the completed run.
+
 ---
 
 ## 🎨 Icon & Design Philosophy
