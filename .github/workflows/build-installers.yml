@@ -63,7 +63,7 @@ jobs:
         run: npm run build:win -- --publish never
 
       - name: Verify release artifacts
-        shell: pwsh
+        shell: powershell
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
         run: |
