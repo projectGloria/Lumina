@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lumina Web Clipper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Clip the page you are reading into your Lumina vault, as Markdown, on your own machine.",
   "permissions": [
     "activeTab",
