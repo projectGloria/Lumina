@@ -1,0 +1,11 @@
+id             = "Lumina"
+name           = "Lumina"
+version        = "1.0.0"
+main_exe       = "Lumina.exe"
+icon           = "resources/icon.ico"
+accent         = "#d97706"
+description    = "Claude-styled knowledge workspace & notes"
+needs_webview2 = false
+data_folders   = ["%APPDATA%\\lumina", "%APPDATA%\\lumina-quicknote"]
+legacy_names   = ["Lumina"]
+app_user_model_id = "com.nihil.lumina"

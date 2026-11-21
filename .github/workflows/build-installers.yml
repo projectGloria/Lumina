@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build:
-    name: Build Windows x64 Installers
+  release:
+    name: Build and pack Windows x64 setup
     runs-on: windows-latest
 
     steps:
@@ -42,69 +42,47 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Resolve version
-        id: version
+      - name: Set version from the tag
+        if: github.ref_type == 'tag'
         shell: pwsh
         run: |
-          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -match '^v(.+)$') {
-            $ver = $Matches[1]
-            npm version $ver --no-git-tag-version --allow-same-version
-          } else {
-            $ver = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
-          }
-          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          $ver = $env:GITHUB_REF_NAME -replace '^v', ''
+          npm version $ver --no-git-tag-version --allow-same-version
           Write-Host "Building Lumina version $ver"
 
-      - name: Build Windows installers
+      # Unpacked build only: GloriaSetup replaces the NSIS installer.
+      - name: Build Lumina (unpacked)
+        shell: pwsh
+        run: npm run build:dir -- --publish never
+
+      - name: Collect runtime files into app-dist
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = 'release/win-unpacked'
+          if (-not (Test-Path (Join-Path $src 'Lumina.exe'))) { throw "Lumina.exe not found in $src" }
+          if (-not (Test-Path (Join-Path $src 'Lumina Quick Note.exe'))) { throw "Lumina Quick Note.exe not found in $src" }
+          New-Item -ItemType Directory -Force -Path app-dist | Out-Null
+          # win-unpacked is exactly the runtime layout (exe, dlls, pak files, resources/).
+          Copy-Item -Path (Join-Path $src '*') -Destination app-dist -Recurse -Force
+          Get-ChildItem app-dist | Select-Object -First 50
+
+      - name: Make sure the release exists
+        if: github.ref_type == 'tag'
         shell: pwsh
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run build:win -- --publish never
-
-      - name: Verify release artifacts
-        shell: powershell
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK)) {
-            $env:LUMINA_ALLOW_UNSIGNED = '1'
+          gh release view $env:GITHUB_REF_NAME 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:GITHUB_REF_NAME --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw 'could not create the release' }
           }
-          npm run verify:release
 
-      - name: Collect installers
-        shell: pwsh
-        env:
-          APP_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          New-Item -ItemType Directory -Force -Path installers | Out-Null
-          Copy-Item -LiteralPath "release/Lumina-$env:APP_VERSION-x64.exe" -Destination "installers/Lumina-$env:APP_VERSION-win-x64.exe"
-          Get-ChildItem -Path installers
-
-      - name: Upload installers artifact
-        uses: actions/upload-artifact@v4
+      - name: Pack setup with GloriaSetup
+        uses: projectGloria/GloriaSetup@v0.1.0
         with:
-          name: installers
-          path: installers/
-          if-no-files-found: error
-
-  release:
-    name: Create GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download installers artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: installers
-          path: installers
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: installers/*
-          generate_release_notes: true
+          app-dir: app-dist
+          manifest: gloria.toml
+          certificate: ${{ secrets.WINDOWS_PFX_BASE64 }}
+          certificate-password: ${{ secrets.WINDOWS_PFX_PASSWORD }}
