@@ -20,3 +20,4 @@ resources/speech/
 # "Lumina Quick Note.exe" launcher stub — compiled from build/quicknote-launcher
 # by scripts/build-quicknote-launcher.ps1 during build:win / build:dir.
 resources/launcher/
+[Dd]esktop.ini
