@@ -1,6 +1,6 @@
 id             = "Lumina"
 name           = "Lumina"
-version        = "1.0.1"
+version        = "1.0.2"
 main_exe       = "Lumina.exe"
 icon           = "resources/icon.ico"
 accent         = "#d97706"

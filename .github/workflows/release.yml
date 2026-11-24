@@ -1,0 +1,106 @@
+# projectGloria app release. Copy to .github/workflows/release.yml and edit only the `build` job.
+#
+# Runs only when started on purpose: /monjita-github-release, or `gh workflow run release.yml`.
+# Pushing to main never releases.
+#
+#   check   (shared)  version files agree, version not released yet, gloria.toml valid, picks newest gloria-setup
+#   build   (this repo) builds the app and uploads its files as the artifact `app`
+#   release (shared)  packs with that gloria-setup + dry run (or, without gloria.toml, publishes the files as-is),
+#                     then publishes GitHub Release v<version> with SHA256SUMS.txt
+#
+# The shared jobs live in projectGloria/GloriaSetup and are used from @main, so every release picks up
+# the newest checks and the newest gloria-setup without editing this file.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify everything, but do not publish
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: projectGloria/GloriaSetup/.github/workflows/app-check.yml@main
+
+  build:
+    needs: check
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore Electron and electron-builder cache
+        id: electron-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Typecheck and test
+        shell: pwsh
+        run: npm run typecheck && npm test
+
+      - name: Build Lumina (unpacked)
+        shell: pwsh
+        run: npm run build:dir -- --publish never
+
+      - name: Save Electron and electron-builder cache
+        if: steps.electron-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('package-lock.json') }}
+
+      - name: Stage runtime files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = 'release/win-unpacked'
+          if (-not (Test-Path (Join-Path $src 'Lumina.exe'))) { throw "Lumina.exe not found in $src" }
+          if (-not (Test-Path (Join-Path $src 'Lumina Quick Note.exe'))) { throw "Lumina Quick Note.exe not found in $src" }
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          Copy-Item -Path (Join-Path $src '*') -Destination stage -Recurse -Force
+          Get-ChildItem stage | Select-Object -First 50
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: app
+          path: stage/
+          if-no-files-found: error
+
+  release:
+    needs: [check, build]
+    uses: projectGloria/GloriaSetup/.github/workflows/app-release.yml@main
+    permissions:
+      contents: write
+    with:
+      version: ${{ needs.check.outputs.version }}
+      installer: ${{ needs.check.outputs.installer == 'true' }}
+      gloria_setup: ${{ needs.check.outputs.gloria_setup }}
+      dry_run: ${{ inputs.dry_run }}
