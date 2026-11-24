@@ -24,5 +24,9 @@
     "src/preload/**/*",
     "src/shared/**/*",
     "tests/**/*"
+  ],
+  "exclude": [
+    "tests/audit/stores.test.ts",
+    "tests/audit/voice.test.ts"
   ]
 }

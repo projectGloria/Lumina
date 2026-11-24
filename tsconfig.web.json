@@ -18,5 +18,12 @@
       "@shared/*": ["src/shared/*"]
     }
   },
-  "include": ["src/renderer/**/*", "src/quicknote/**/*", "src/shared/**/*", "src/preload/**/*"]
+  "include": [
+    "src/renderer/**/*",
+    "src/quicknote/**/*",
+    "src/shared/**/*",
+    "src/preload/**/*",
+    "tests/audit/stores.test.ts",
+    "tests/audit/voice.test.ts"
+  ]
 }
